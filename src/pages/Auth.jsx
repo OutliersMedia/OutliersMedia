@@ -19,9 +19,13 @@ export default function Auth() {
 
   useEffect(() => {
     if (user && !showOtp) {
-      navigate('/');
+      if (profile?.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     }
-  }, [user, navigate, showOtp]);
+  }, [user, profile, navigate, showOtp]);
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();

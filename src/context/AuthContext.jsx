@@ -138,10 +138,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithProvider = async (provider) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://outliersmedia.vercel.app';
     return supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin
+        redirectTo: `${origin}/dashboard`
       }
     });
   };
