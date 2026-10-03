@@ -59,14 +59,14 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
+    } else if (isAdmin) {
+      navigate('/admin', { replace: true });
+    } else if (!isProfileComplete) {
+      navigate('/onboarding');
     } else {
-      if (!isProfileComplete && !isAdmin) {
-        navigate('/onboarding');
-      } else {
-        fetchActiveOrder();
-      }
+      fetchActiveOrder();
     }
-  }, [user, isProfileComplete, isAdmin, navigate]);
+  }, [user, isAdmin, isProfileComplete, navigate]);
 
   const fetchActiveOrder = async () => {
     setLoadingOrder(true);

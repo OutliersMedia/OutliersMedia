@@ -41,7 +41,8 @@ function GlobalOnboardingGuard({ children }) {
   );
 }
 
-// This component guards /admin routes so only authorized admins can access them
+// This component guards /admin routes so only authorized admins can access them,
+// and ensures admins are directed to Command Center, not client dashboard
 function AdminEnforcer({ children }) {
   const { user, isAdmin, loading } = useAuth();
   const location = useLocation();
@@ -57,6 +58,8 @@ function AdminEnforcer({ children }) {
       } else if (!isAdmin) {
         navigate('/dashboard', { replace: true });
       }
+    } else if (location.pathname === '/dashboard' && isAdmin) {
+      navigate('/admin', { replace: true });
     }
   }, [user, isAdmin, loading, location.pathname, navigate]);
 

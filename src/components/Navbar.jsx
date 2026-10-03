@@ -110,22 +110,21 @@ export default function Navbar() {
             </Link>
 
             {user ? (
-              <div className="flex items-center gap-3">
+              isAdmin ? (
+                <Link
+                  to="/admin"
+                  className="bg-accent text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl flex items-center gap-2 border-2 border-transparent"
+                >
+                  Command Center
+                </Link>
+              ) : (
                 <Link
                   to="/dashboard"
                   className="bg-[#3428f8] text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl flex items-center gap-2"
                 >
                   Dashboard
                 </Link>
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className="bg-accent text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl flex items-center gap-2 border-2 border-transparent"
-                  >
-                    Command Center
-                  </Link>
-                )}
-              </div>
+              )
             ) : (
               <Link
                 to="/auth"
@@ -190,7 +189,15 @@ export default function Navbar() {
               </Link>
               
               {user ? (
-                <>
+                isAdmin ? (
+                  <Link
+                    to="/admin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="bg-accent text-[#EEF2FF] px-8 py-4 text-sm tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl"
+                  >
+                    Command Center
+                  </Link>
+                ) : (
                   <Link
                     to="/dashboard"
                     onClick={() => setMobileMenuOpen(false)}
@@ -198,16 +205,7 @@ export default function Navbar() {
                   >
                     Go to Dashboard
                   </Link>
-                  {isAdmin && (
-                    <Link
-                      to="/admin"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="bg-accent text-[#EEF2FF] px-8 py-4 text-sm tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl"
-                    >
-                      Command Center
-                    </Link>
-                  )}
-                </>
+                )
               ) : (
                 <Link
                   to="/auth"
