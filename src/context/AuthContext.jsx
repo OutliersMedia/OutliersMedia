@@ -28,33 +28,29 @@ export const AuthProvider = ({ children }) => {
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
+        const isOAuthCallback = searchParams.has('code') || hashParams.has('access_token');
+
         // 2. Explicitly handle PKCE auth code if present in the URL
         const code = searchParams.get('code');
         if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) {
-            console.error("exchangeCodeForSession error:", error);
-          } else if (data?.session && mounted) {
-            setUser(data.session.user);
-            await fetchProfile(data.session.user.id);
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return;
+          try {
+            await supabase.auth.exchangeCodeForSession(code);
+          } catch (e) {
+            console.warn("PKCE exchange notice:", e);
           }
         }
 
-        // 2b. Explicitly handle Implicit tokens if present in the URL hash
+        // 2b. Implicit tokens fallback (if both access_token and refresh_token are present)
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
-        if (accessToken) {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken || ''
-          });
-          if (!error && data?.session && mounted) {
-            setUser(data.session.user);
-            await fetchProfile(data.session.user.id);
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return;
+        if (accessToken && refreshToken) {
+          try {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+          } catch (e) {
+            console.error("setSession notice:", e);
           }
         }
 
@@ -64,6 +60,13 @@ export const AuthProvider = ({ children }) => {
           setUser(session?.user ?? null);
           if (session?.user) {
             await fetchProfile(session.user.id);
+            if (isOAuthCallback) {
+              window.history.replaceState({}, document.title, window.location.pathname);
+              if (window.location.pathname === '/' || window.location.pathname === '/auth') {
+                const isUserAdmin = session.user.email === 'dhimanpashvinder@gmail.com' || session.user.email === 'outliersmedia22@gmail.com';
+                window.location.replace(isUserAdmin ? '/admin' : '/dashboard');
+              }
+            }
           } else {
             setLoading(false);
           }
@@ -81,7 +84,7 @@ export const AuthProvider = ({ children }) => {
       if (!mounted) return;
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchProfile(session.user.id);
       } else {
         setProfile(null);
         setLoading(false);
@@ -100,12 +103,12 @@ export const AuthProvider = ({ children }) => {
         .from('profiles')
         .select('*')
         .eq('auth_id', authId)
-        .single();
+        .maybeSingle();
       
-      if (error) {
+      if (!data) {
         if (retries > 0) {
-          setTimeout(() => fetchProfile(authId, retries - 1), 1000);
-          return;
+          await new Promise((res) => setTimeout(res, 800));
+          return await fetchProfile(authId, retries - 1);
         }
         console.warn("Profile not found in database, creating placeholder...");
         // Auto-heal: If user is authenticated but has no profile row, create basic profile row
@@ -168,6 +171,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
+    setUser(null);
+    setProfile(null);
     return supabase.auth.signOut();
   };
 
@@ -189,11 +194,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isProfileComplete = profile && profile.phone;
+  const isAdmin = profile?.role === 'admin' || user?.email === 'dhimanpashvinder@gmail.com' || user?.email === 'outliersmedia22@gmail.com';
 
   return (
     <AuthContext.Provider value={{ 
       user, 
       profile, 
+      isAdmin,
       loading, 
       isProfileComplete,
       signInWithProvider, 

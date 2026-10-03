@@ -41,21 +41,24 @@ function GlobalOnboardingGuard({ children }) {
   );
 }
 
-// This component enforces strict separation of concerns for Admins
+// This component guards /admin routes so only authorized admins can access them
 function AdminEnforcer({ children }) {
-  const { profile, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
     
-    // If the user is an admin, they are strictly forbidden from seeing the public marketing
-    // site or the client dashboard. They are immediately teleported to the Command Center.
-    if (profile?.role === 'admin' && !location.pathname.startsWith('/admin')) {
-      navigate('/admin', { replace: true });
+    // Protect /admin routes from unauthorized access
+    if (location.pathname.startsWith('/admin')) {
+      if (!user) {
+        navigate('/auth', { replace: true });
+      } else if (!isAdmin) {
+        navigate('/dashboard', { replace: true });
+      }
     }
-  }, [profile, loading, location.pathname, navigate]);
+  }, [user, isAdmin, loading, location.pathname, navigate]);
 
   return <>{children}</>;
 }

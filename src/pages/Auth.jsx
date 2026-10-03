@@ -14,18 +14,18 @@ export default function Auth() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, isProfileComplete } = useAuth();
+  const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, profile, isAdmin, isProfileComplete } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (user && !showOtp) {
-      if (profile?.role === 'admin') {
+      if (isAdmin) {
         navigate('/admin', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
       }
     }
-  }, [user, profile, navigate, showOtp]);
+  }, [user, isAdmin, navigate, showOtp]);
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
@@ -47,7 +47,7 @@ export default function Auth() {
           setShowOtp(true);
           setSuccessMsg('A 6-digit code has been sent to your email.');
         } else if (result.data?.session) {
-          navigate('/');
+          navigate(isAdmin ? '/admin' : '/dashboard');
         }
       } else {
         // Sign In

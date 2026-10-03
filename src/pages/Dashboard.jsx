@@ -7,7 +7,7 @@ import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 
 export default function Dashboard() {
-  const { user, profile, isProfileComplete, signOut, updateProfile } = useAuth();
+  const { user, profile, isAdmin, isProfileComplete, signOut, updateProfile } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -59,12 +59,14 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-    } else if (!isProfileComplete) {
-      navigate('/onboarding');
     } else {
-      fetchActiveOrder();
+      if (!isProfileComplete && !isAdmin) {
+        navigate('/onboarding');
+      } else {
+        fetchActiveOrder();
+      }
     }
-  }, [user, isProfileComplete, navigate]);
+  }, [user, isProfileComplete, isAdmin, navigate]);
 
   const fetchActiveOrder = async () => {
     setLoadingOrder(true);

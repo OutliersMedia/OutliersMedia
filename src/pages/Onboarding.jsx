@@ -27,7 +27,7 @@ export default function Onboarding() {
       return;
     }
     if (isProfileComplete) {
-      navigate('/');
+      navigate('/dashboard');
     }
   }, [user, isProfileComplete, navigate]);
 
