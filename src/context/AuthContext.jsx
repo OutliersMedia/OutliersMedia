@@ -42,6 +42,22 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
+        // 2b. Explicitly handle Implicit tokens if present in the URL hash
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken) {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || ''
+          });
+          if (!error && data?.session && mounted) {
+            setUser(data.session.user);
+            await fetchProfile(data.session.user.id);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+        }
+
         // 3. Normal session restore
         const { data: { session } } = await supabase.auth.getSession();
         if (mounted) {
