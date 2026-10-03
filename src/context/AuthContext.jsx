@@ -11,18 +11,58 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
+    let mounted = true;
 
-    // Listen for changes on auth state
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const initAuth = async () => {
+      try {
+        // 1. Check for errors returned in query string or URL hash (from Supabase/Google)
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(
+          window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash
+        );
+        const errorDescription = searchParams.get('error_description') || hashParams.get('error_description') || searchParams.get('error') || hashParams.get('error');
+        
+        if (errorDescription) {
+          console.error("OAuth Error:", errorDescription);
+          alert("Sign-in notification: " + decodeURIComponent(errorDescription.replace(/\+/g, ' ')));
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // 2. Explicitly handle PKCE auth code if present in the URL
+        const code = searchParams.get('code');
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error("exchangeCodeForSession error:", error);
+          } else if (data?.session && mounted) {
+            setUser(data.session.user);
+            await fetchProfile(data.session.user.id);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+        }
+
+        // 3. Normal session restore
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted) {
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            await fetchProfile(session.user.id);
+          } else {
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.error("Auth init exception:", err);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // 4. Listen for auth changes (sign in, sign out, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -33,6 +73,7 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => {
+      mounted = false;
       subscription?.unsubscribe();
     };
   }, []);
@@ -47,16 +88,34 @@ export const AuthProvider = ({ children }) => {
       
       if (error) {
         if (retries > 0) {
-          // The database trigger might still be creating the profile, wait 1s and retry
           setTimeout(() => fetchProfile(authId, retries - 1), 1000);
           return;
         }
-        console.error("Error fetching profile:", error);
+        console.warn("Profile not found in database, creating placeholder...");
+        // Auto-heal: If user is authenticated but has no profile row, create basic profile row
+        const { data: userResp } = await supabase.auth.getUser();
+        const authedUser = userResp?.user;
+        if (authedUser) {
+          const defaultName = authedUser.user_metadata?.full_name || authedUser.user_metadata?.name || authedUser.email?.split('@')[0] || 'Client';
+          const { data: newProf, error: insErr } = await supabase
+            .from('profiles')
+            .upsert({
+              auth_id: authedUser.id,
+              email: authedUser.email,
+              name: defaultName,
+              role: (authedUser.email === 'dhimanpashvinder@gmail.com' || authedUser.email === 'outliersmedia22@gmail.com') ? 'admin' : 'client'
+            }, { onConflict: 'auth_id' })
+            .select()
+            .single();
+          if (!insErr && newProf) {
+            setProfile(newProf);
+          }
+        }
       } else {
         setProfile(data);
       }
     } catch (err) {
-      console.error(err);
+      console.error("fetchProfile exception:", err);
     } finally {
       setLoading(false);
     }
