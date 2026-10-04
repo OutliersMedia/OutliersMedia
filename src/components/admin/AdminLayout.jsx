@@ -1,17 +1,18 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, checkIsAdmin } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
 import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Mail, LogOut, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 
 export default function AdminLayout() {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, loading, signOut } = useAuth();
+  const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const location = useLocation();
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
 
   useEffect(() => {
-    if (profile?.role === 'admin') {
+    if (isAdmin) {
       fetchTicketCount();
       
       // Subscribe to new tickets to update the badge live
@@ -26,7 +27,7 @@ export default function AdminLayout() {
         supabase.removeChannel(subscription);
       };
     }
-  }, [profile]);
+  }, [isAdmin]);
 
   const fetchTicketCount = async () => {
     const { count } = await supabase
@@ -44,8 +45,8 @@ export default function AdminLayout() {
     );
   }
 
-  if (!user || profile?.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
+  if (!user || !isAdmin) {
+    return <Navigate to="/auth" replace />;
   }
 
   const navItems = [

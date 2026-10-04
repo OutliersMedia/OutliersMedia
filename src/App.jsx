@@ -18,7 +18,7 @@ import Contact from './pages/Contact';
 import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth, checkIsAdmin } from './context/AuthContext';
 
 export const ThemeContext = createContext();
 export const SplashContext = createContext();
@@ -44,7 +44,8 @@ function GlobalOnboardingGuard({ children }) {
 // This component guards /admin routes so only authorized admins can access them,
 // and ensures admins are directed to Command Center, not client dashboard
 function AdminEnforcer({ children }) {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, loading } = useAuth();
+  const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const location = useLocation();
   const navigate = useNavigate();
 

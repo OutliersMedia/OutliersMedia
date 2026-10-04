@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, checkIsAdmin } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Auth() {
@@ -14,7 +14,8 @@ export default function Auth() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, profile, isAdmin, isProfileComplete } = useAuth();
+  const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, profile, isAdmin: authIsAdmin, isProfileComplete } = useAuth();
+  const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const navigate = useNavigate();
 
   useEffect(() => {

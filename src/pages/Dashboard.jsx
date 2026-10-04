@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { useAuth, checkIsAdmin } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { supabase } from '../utils/supabaseClient';
 import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 
 export default function Dashboard() {
-  const { user, profile, isAdmin, isProfileComplete, signOut, updateProfile } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isProfileComplete, signOut, updateProfile } = useAuth();
+  const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -129,6 +130,10 @@ export default function Dashboard() {
       return false;
     }
   };
+
+  if (isAdmin) {
+    return <Navigate to="/admin" replace />;
+  }
 
   if (!user || !profile) return null;
 

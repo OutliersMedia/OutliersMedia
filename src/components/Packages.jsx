@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth, checkIsAdmin } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { packages } from '../utils/data';
 import FadeSection from './FadeSection';
@@ -8,6 +9,8 @@ import FadeSection from './FadeSection';
 export default function Packages() {
   const [selectedPlanId, setSelectedPlanId] = useState("Growth");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { user, profile, isAdmin: authIsAdmin } = useAuth();
+  const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const navigate = useNavigate();
 
   const handleSelectClick = (id) => {
@@ -133,7 +136,11 @@ export default function Packages() {
                 <button
                   onClick={() => {
                     setIsModalOpen(false);
-                    navigate(`/dashboard?plan=${selectedPlan.id.toLowerCase()}`);
+                    if (isAdmin) {
+                      navigate('/admin');
+                    } else {
+                      navigate(`/dashboard?plan=${selectedPlan.id.toLowerCase()}`);
+                    }
                   }}
                   className="w-full bg-[#2d23c9] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-[#3c06cf] transition-colors text-sm"
                 >

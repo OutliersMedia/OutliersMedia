@@ -3,6 +3,26 @@ import { supabase } from '../utils/supabaseClient';
 
 const AuthContext = createContext({});
 
+export const ADMIN_EMAILS = [
+  'dhimanpashvinder@gmail.com',
+  'outliersmedia22@gmail.com'
+];
+
+export const isEmailAdmin = (email) => {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+
+export const checkIsAdmin = (user, profile) => {
+  if (profile?.role?.toLowerCase() === 'admin') return true;
+  const emails = [
+    user?.email,
+    user?.user_metadata?.email,
+    profile?.email
+  ];
+  return emails.some((e) => isEmailAdmin(e));
+};
+
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
@@ -63,7 +83,7 @@ export const AuthProvider = ({ children }) => {
             if (isOAuthCallback) {
               window.history.replaceState({}, document.title, window.location.pathname);
               if (window.location.pathname === '/' || window.location.pathname === '/auth') {
-                const isUserAdmin = session.user.email === 'dhimanpashvinder@gmail.com' || session.user.email === 'outliersmedia22@gmail.com';
+                const isUserAdmin = checkIsAdmin(session.user, null);
                 window.location.replace(isUserAdmin ? '/admin' : '/dashboard');
               }
             }
@@ -116,13 +136,14 @@ export const AuthProvider = ({ children }) => {
         const authedUser = userResp?.user;
         if (authedUser) {
           const defaultName = authedUser.user_metadata?.full_name || authedUser.user_metadata?.name || authedUser.email?.split('@')[0] || 'Client';
+          const isAuthedAdmin = isEmailAdmin(authedUser.email);
           const { data: newProf, error: insErr } = await supabase
             .from('profiles')
             .upsert({
               auth_id: authedUser.id,
               email: authedUser.email,
               name: defaultName,
-              role: (authedUser.email === 'dhimanpashvinder@gmail.com' || authedUser.email === 'outliersmedia22@gmail.com') ? 'admin' : 'client'
+              role: isAuthedAdmin ? 'admin' : 'client'
             }, { onConflict: 'auth_id' })
             .select()
             .single();
@@ -131,6 +152,11 @@ export const AuthProvider = ({ children }) => {
           }
         }
       } else {
+        // If user is an admin email, guarantee role is set to admin
+        if (isEmailAdmin(data.email) || isEmailAdmin(user?.email)) {
+          data.role = 'admin';
+          supabase.from('profiles').update({ role: 'admin' }).eq('auth_id', authId).then();
+        }
         setProfile(data);
       }
     } catch (err) {
@@ -194,7 +220,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isProfileComplete = profile && profile.phone;
-  const isAdmin = profile?.role === 'admin' || user?.email === 'dhimanpashvinder@gmail.com' || user?.email === 'outliersmedia22@gmail.com';
+  const isAdmin = checkIsAdmin(user, profile);
 
   return (
     <AuthContext.Provider value={{ 
