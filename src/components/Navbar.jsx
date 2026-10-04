@@ -102,13 +102,6 @@ export default function Navbar() {
                 </Link>
               ))}
             </div>
-            
-            <Link
-              to="/contact"
-              className="bg-surface hover:bg-raised text-primary px-5 py-2.5 text-xs tracking-wide uppercase font-bold transition-all duration-300 rounded-2xl border border-themeborder hover:border-accent"
-            >
-              Start Project
-            </Link>
 
             {user ? (
               isAdmin ? (
@@ -180,14 +173,6 @@ export default function Navbar() {
                   {link.name}
                 </Link>
               ))}
-              
-              <Link
-                to="/contact"
-                onClick={() => setMobileMenuOpen(false)}
-                className="bg-surface hover:bg-raised text-primary border border-themeborder px-8 py-3 text-sm tracking-wide uppercase font-bold mt-4 transition-all duration-300 hover:scale-105 rounded-2xl"
-              >
-                Start a Project
-              </Link>
               
               {user ? (
                 isAdmin ? (
