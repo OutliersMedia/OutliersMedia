@@ -1,16 +1,29 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../utils/supabaseClient';
-import { IndianRupee, TrendingUp, Clock, Search, ExternalLink, CheckCircle, PauseCircle, PlayCircle, XCircle, History, X, FileDown } from 'lucide-react';
+import { IndianRupee, TrendingUp, Clock, Search, ExternalLink, CheckCircle, PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3 } from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
+
+export const getStandardPlanPrice = (planName) => {
+  const p = (planName || '').toLowerCase();
+  if (p.includes('premium')) return 11000;
+  if (p.includes('growth')) return 6000;
+  if (p.includes('starter') || p.includes('basic')) return 3500;
+  return 3500;
+};
 
 export default function AdminFinances() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
-  const [metrics, setMetrics] = useState({ totalRevenue: 0, pendingRevenue: 0, totalTransactions: 0 });
+  const [metrics, setMetrics] = useState({ totalRevenue: 0, pendingRevenue: 0, totalDiscounts: 0, totalTransactions: 0 });
   const [selectedClientHistory, setSelectedClientHistory] = useState(null);
+
+  // Custom price / discount approval modal state
+  const [acceptModalOrder, setAcceptModalOrder] = useState(null);
+  const [finalPriceInput, setFinalPriceInput] = useState('');
+  const [updatingOrder, setUpdatingOrder] = useState(false);
 
   useEffect(() => {
     fetchFinances();
@@ -40,16 +53,27 @@ export default function AdminFinances() {
     if (orders) {
       let totalRev = 0;
       let pendingRev = 0;
+      let totalDiscountGiven = 0;
 
       const mapped = orders.map(order => {
+        const stdPrice = getStandardPlanPrice(order.plan_name);
+        const paid = Number(order.amount_paid || 0);
+        const originalPrice = order.original_amount ? Number(order.original_amount) : stdPrice;
+        const discountAmount = Math.max(0, originalPrice - paid);
+
         if (order.status === 'active' || order.status === 'paused' || order.status === 'cancelled') {
-          totalRev += Number(order.amount_paid || 0);
+          totalRev += paid;
+          if (discountAmount > 0) {
+            totalDiscountGiven += discountAmount;
+          }
         } else if (order.status === 'pending') {
-          pendingRev += Number(order.amount_paid || 0);
+          pendingRev += paid;
         }
 
         return {
           ...order,
+          standardPrice: originalPrice,
+          discountAmount,
           client: profileMap[order.client_id] || { name: 'Unknown Client', email: 'Unknown' }
         };
       });
@@ -58,10 +82,52 @@ export default function AdminFinances() {
       setMetrics({
         totalRevenue: totalRev,
         pendingRevenue: pendingRev,
+        totalDiscounts: totalDiscountGiven,
         totalTransactions: orders.length
       });
     }
     setLoading(false);
+  };
+
+  const handleOpenAcceptModal = (order) => {
+    setAcceptModalOrder(order);
+    const currentPrice = order.amount_paid !== undefined && order.amount_paid !== null
+      ? Number(order.amount_paid)
+      : (order.standardPrice || getStandardPlanPrice(order.plan_name));
+    setFinalPriceInput(String(currentPrice));
+  };
+
+  const handleConfirmAcceptWithPrice = async () => {
+    if (!acceptModalOrder) return;
+    const finalPrice = Number(finalPriceInput);
+    if (isNaN(finalPrice) || finalPrice < 0) {
+      alert("Please enter a valid price in INR (e.g. 3000)");
+      return;
+    }
+
+    setUpdatingOrder(true);
+    try {
+      const updatePayload = {
+        status: 'active',
+        amount_paid: finalPrice
+      };
+
+      const { error } = await supabase
+        .from('orders')
+        .update(updatePayload)
+        .eq('id', acceptModalOrder.id);
+
+      if (error) {
+        alert("Error updating order: " + error.message);
+      } else {
+        setAcceptModalOrder(null);
+        await fetchFinances();
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setUpdatingOrder(false);
+    }
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
@@ -73,7 +139,6 @@ export default function AdminFinances() {
     if (error) {
       alert("Error updating status: " + error.message);
     } else {
-      // Refresh to update metrics and UI
       fetchFinances();
     }
   };
@@ -115,7 +180,7 @@ export default function AdminFinances() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 text-green-500">
             <TrendingUp size={64} />
@@ -124,6 +189,17 @@ export default function AdminFinances() {
           <h3 className="text-3xl font-serif text-white flex items-center gap-2">
             <IndianRupee size={24} className="text-green-500" />
             {metrics.totalRevenue.toLocaleString()}
+          </h3>
+        </div>
+
+        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-5 text-emerald-500">
+            <Tag size={64} />
+          </div>
+          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Total Discounts Granted</p>
+          <h3 className="text-3xl font-serif text-white flex items-center gap-2">
+            <IndianRupee size={24} className="text-emerald-400" />
+            {metrics.totalDiscounts.toLocaleString()}
           </h3>
         </div>
         
@@ -200,7 +276,36 @@ export default function AdminFinances() {
                       </button>
                     </td>
                     <td className="p-4">
-                      <p className="text-white font-bold text-sm">₹{Number(txn.amount_paid).toLocaleString()}</p>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-mono font-bold text-sm">
+                            ₹{Number(txn.amount_paid || 0).toLocaleString()}
+                          </span>
+                          {txn.discountAmount > 0 && (
+                            <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                              ₹{txn.discountAmount.toLocaleString()} OFF
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {txn.discountAmount > 0 ? (
+                            <span className="text-[#666] text-xs line-through">
+                              Listed: ₹{txn.standardPrice.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-[#555] text-[10px]">
+                              Standard Price
+                            </span>
+                          )}
+                          <button 
+                            onClick={() => handleOpenAcceptModal(txn)}
+                            className="text-[#3428f8] hover:text-[#5246ff] text-[10px] font-bold underline transition-colors"
+                            title="Edit accepted price or apply discount"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </div>
                     </td>
                     <td className="p-4">
                       {txn.status === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
@@ -236,10 +341,12 @@ export default function AdminFinances() {
                       <div className="flex justify-end gap-2">
                         {txn.status === 'pending' && (
                           <button 
-                            onClick={() => handleUpdateOrderStatus(txn.id, 'active')}
-                            className="bg-green-500/10 hover:bg-green-500/20 text-green-400 p-2 rounded-lg transition-colors tooltip" title="Approve Payment"
+                            onClick={() => handleOpenAcceptModal(txn)}
+                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                            title="Accept order and set final discounted price"
                           >
-                            <CheckCircle size={16} />
+                            <CheckCircle size={14} />
+                            Accept & Set Price
                           </button>
                         )}
                         {txn.status === 'active' && (
@@ -407,6 +514,191 @@ export default function AdminFinances() {
                     className="bg-[#1a1a1a] hover:bg-[#252525] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222]"
                   >
                     Close
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* Accept / Set Discounted Price Modal */}
+      <AnimatePresence>
+        {acceptModalOrder && (() => {
+          const stdPrice = acceptModalOrder.standardPrice || getStandardPlanPrice(acceptModalOrder.plan_name);
+          const currentInputVal = Number(finalPriceInput || 0);
+          const discountVal = Math.max(0, stdPrice - currentInputVal);
+          const discountPercent = stdPrice > 0 ? Math.round((discountVal / stdPrice) * 100) : 0;
+          const isPending = acceptModalOrder.status === 'pending';
+
+          const quickPresets = [];
+          if (stdPrice === 3500) {
+            quickPresets.push({ label: '₹3,500 (Full)', price: 3500 });
+            quickPresets.push({ label: '₹3,000 (₹500 off)', price: 3000 });
+            quickPresets.push({ label: '₹2,500 (₹1k off)', price: 2500 });
+            quickPresets.push({ label: '₹2,000 (Special)', price: 2000 });
+          } else if (stdPrice === 6000) {
+            quickPresets.push({ label: '₹6,000 (Full)', price: 6000 });
+            quickPresets.push({ label: '₹5,000 (₹1k off)', price: 5000 });
+            quickPresets.push({ label: '₹4,000 (₹2k off)', price: 4000 });
+            quickPresets.push({ label: '₹3,500 (₹2.5k off)', price: 3500 });
+            quickPresets.push({ label: '₹3,000 (50% off)', price: 3000 });
+          } else if (stdPrice === 11000) {
+            quickPresets.push({ label: '₹11,000 (Full)', price: 11000 });
+            quickPresets.push({ label: '₹10,000 (₹1k off)', price: 10000 });
+            quickPresets.push({ label: '₹8,500 (Discount)', price: 8500 });
+            quickPresets.push({ label: '₹6,000 (No Setup)', price: 6000 });
+          } else {
+            quickPresets.push({ label: `₹${stdPrice.toLocaleString()} (Full)`, price: stdPrice });
+            if (stdPrice > 1000) {
+              quickPresets.push({ label: `₹${(stdPrice - 500).toLocaleString()}`, price: stdPrice - 500 });
+              quickPresets.push({ label: `₹${(stdPrice - 1000).toLocaleString()}`, price: stdPrice - 1000 });
+            }
+          }
+
+          return (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+              onClick={() => !updatingOrder && setAcceptModalOrder(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ duration: 0.2 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative"
+              >
+                <button
+                  onClick={() => !updatingOrder && setAcceptModalOrder(null)}
+                  className="absolute top-6 right-6 text-[#666] hover:text-white p-2 rounded-full bg-[#1a1a1a] transition-colors"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Tag size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-serif text-white">
+                      {isPending ? 'Accept Order & Set Final Price' : 'Edit Accepted Price / Discount'}
+                    </h3>
+                    <p className="text-xs text-[#888]">
+                      Order ID: <span className="font-mono text-white font-bold">{acceptModalOrder.order_id}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Client & Package Summary */}
+                <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4 mb-6">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-white font-medium text-sm">{acceptModalOrder.client?.name}</p>
+                      <p className="text-[#666] text-xs font-mono">{acceptModalOrder.client?.email}</p>
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20">
+                      {acceptModalOrder.plan_name}
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-[#222] flex justify-between items-center text-xs">
+                    <span className="text-[#888]">Standard Listed Price:</span>
+                    <span className="text-white font-bold font-mono">₹{stdPrice.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* Final Price Input Form */}
+                <div className="mb-6">
+                  <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
+                    Final Price to Charge Client (₹)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold text-lg">₹</span>
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="100"
+                      value={finalPriceInput}
+                      onChange={(e) => setFinalPriceInput(e.target.value)}
+                      placeholder="e.g. 3000"
+                      className="w-full bg-[#0a0a0a] border border-[#333] focus:border-emerald-500 text-white font-mono text-2xl font-bold p-3.5 pl-9 rounded-xl outline-none transition-colors"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                {/* Discount Live Calculation Feedback */}
+                <div className="mb-6">
+                  {discountVal > 0 ? (
+                    <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between">
+                      <div>
+                        <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle size={14} /> Custom Discount Applied
+                        </p>
+                        <p className="text-[#aaa] text-xs mt-0.5">
+                          Client pays <strong className="text-white">₹{currentInputVal.toLocaleString()}</strong> (saves ₹{discountVal.toLocaleString()} • {discountPercent}% off)
+                        </p>
+                      </div>
+                      <span className="text-emerald-400 font-bold font-mono text-sm bg-emerald-500/20 px-2.5 py-1 rounded-lg">
+                        -{discountPercent}%
+                      </span>
+                    </div>
+                  ) : currentInputVal === stdPrice ? (
+                    <div className="p-3 bg-[#1a1a1a] border border-[#282828] rounded-xl text-center">
+                      <p className="text-[#888] text-xs">Standard Full Package Price (No discount applied)</p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
+                      <p className="text-amber-400 text-xs font-medium">Custom Price (+₹{(currentInputVal - stdPrice).toLocaleString()} higher than standard package)</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Presets */}
+                <div className="mb-8">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#666] mb-2">Quick Price Presets:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {quickPresets.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setFinalPriceInput(String(preset.price))}
+                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
+                          Number(finalPriceInput) === preset.price
+                            ? 'bg-emerald-500 text-black border-emerald-400 font-bold'
+                            : 'bg-[#181818] hover:bg-[#222] text-[#ccc] border-[#333]'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => !updatingOrder && setAcceptModalOrder(null)}
+                    disabled={updatingOrder}
+                    className="flex-1 bg-[#1a1a1a] hover:bg-[#252525] text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAcceptWithPrice}
+                    disabled={updatingOrder}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2"
+                  >
+                    {updatingOrder ? (
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
+                    ) : (
+                      <>
+                        <CheckCircle size={16} />
+                        {isPending ? 'Accept & Activate' : 'Save Price'}
+                      </>
+                    )}
                   </button>
                 </div>
               </motion.div>

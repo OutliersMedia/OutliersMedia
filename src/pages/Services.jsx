@@ -39,7 +39,9 @@ export default function Services() {
                 {packages.map(pkg => (
                   <th key={pkg.id} className="p-8 border-b border-l border-themeborder w-1/4 align-top" style={{ background: pkg.isPopular ? 'var(--bg-raised)' : 'var(--bg-surface)' }}>
                     <div className="text-2xl font-serif text-primary">{pkg.name}</div>
-                    <div className={`text-xs font-bold uppercase tracking-widest mt-2 ${pkg.isPopular ? 'text-accent' : 'text-accent'}`}>{pkg.price}</div>
+                    <div className={`text-xs font-bold uppercase tracking-widest mt-2 ${pkg.isPopular ? 'text-accent' : 'text-accent'}`}>
+                      {pkg.id === 'Premium' ? '₹6,000 + ₹5,000 (only once for website)' : pkg.price}
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -72,7 +74,7 @@ export default function Services() {
                 {packages.map(pkg => (
                   <td key={pkg.id} className="p-6 border-l border-themeborder text-center" style={{ background: pkg.isPopular ? 'var(--bg-raised)' : 'transparent' }}>
                     <Link
-                      to={`/contact?package=${pkg.id}`}
+                      to={`/dashboard?plan=${pkg.id.toLowerCase()}`}
                       className={`inline-block px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all duration-300 w-full rounded-2xl border-2 ${pkg.isPopular ? 'bg-[#3c06cf] border-[#3c06cf] text-white hover:bg-transparent hover:text-[#3c06cf]' : 'bg-transparent border-[#3c06cf] text-[#3c06cf] hover:bg-[#3c06cf] hover:text-white'}`}
                     >
                       Select Plan

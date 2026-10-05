@@ -81,10 +81,20 @@ export const AuthProvider = ({ children }) => {
           if (session?.user) {
             await fetchProfile(session.user.id);
             if (isOAuthCallback) {
-              window.history.replaceState({}, document.title, window.location.pathname);
+              window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
               if (window.location.pathname === '/' || window.location.pathname === '/auth') {
                 const isUserAdmin = checkIsAdmin(session.user, null);
-                window.location.replace(isUserAdmin ? '/admin' : '/dashboard');
+                const savedRedirect = typeof window !== 'undefined' ? sessionStorage.getItem('auth_redirect') : null;
+                if (typeof window !== 'undefined') {
+                  sessionStorage.removeItem('auth_redirect');
+                }
+                if (isUserAdmin) {
+                  window.location.replace('/admin');
+                } else if (savedRedirect) {
+                  window.location.replace(savedRedirect);
+                } else {
+                  window.location.replace('/dashboard');
+                }
               }
             }
           } else {
@@ -166,12 +176,20 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const signInWithProvider = async (provider) => {
+  const signInWithProvider = async (provider, customRedirect) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://outliersmedia.vercel.app';
+    let target = customRedirect;
+    if (!target && typeof window !== 'undefined') {
+      target = sessionStorage.getItem('auth_redirect');
+    }
+    if (target && typeof window !== 'undefined') {
+      sessionStorage.setItem('auth_redirect', target);
+    }
+    const cleanTarget = target ? (target.startsWith('/') ? target : `/${target}`) : '/dashboard';
     return supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${origin}/dashboard`
+        redirectTo: `${origin}${cleanTarget}`
       }
     });
   };

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, checkIsAdmin } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -17,14 +17,28 @@ export default function Auth() {
   const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, profile, isAdmin: authIsAdmin, isProfileComplete } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const redirectParam = searchParams.get('redirect');
+  const planParam = searchParams.get('plan');
+  const incomingPlan = planParam || (redirectParam?.includes('plan=') ? new URLSearchParams(redirectParam.split('?')[1]).get('plan') : null);
+
+  const getRedirectDestination = () => {
+    if (isAdmin) return '/admin';
+    if (redirectParam && redirectParam.startsWith('/')) return redirectParam;
+    if (planParam) return `/dashboard?plan=${planParam.toLowerCase()}`;
+    const saved = typeof window !== 'undefined' ? sessionStorage.getItem('auth_redirect') : null;
+    if (saved && saved.startsWith('/')) return saved;
+    return '/dashboard';
+  };
 
   useEffect(() => {
     if (user && !showOtp) {
-      if (isAdmin) {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
+      const destination = getRedirectDestination();
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('auth_redirect');
       }
+      navigate(destination, { replace: true });
     }
   }, [user, isAdmin, navigate, showOtp]);
 
@@ -48,7 +62,11 @@ export default function Auth() {
           setShowOtp(true);
           setSuccessMsg('A 6-digit code has been sent to your email.');
         } else if (result.data?.session) {
-          navigate(isAdmin ? '/admin' : '/dashboard');
+          const destination = getRedirectDestination();
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('auth_redirect');
+          }
+          navigate(destination, { replace: true });
         }
       } else {
         // Sign In
@@ -91,7 +109,11 @@ export default function Auth() {
 
   const handleOAuth = async (provider) => {
     try {
-      const { error } = await signInWithProvider(provider);
+      const destination = getRedirectDestination();
+      if (typeof window !== 'undefined' && destination && destination !== '/dashboard') {
+        sessionStorage.setItem('auth_redirect', destination);
+      }
+      const { error } = await signInWithProvider(provider, destination);
       if (error) throw error;
     } catch (error) {
       setErrorMsg(error.message);
@@ -122,6 +144,14 @@ export default function Auth() {
                 {isSignUp ? 'Join Outliers Media today' : 'Log in to your client dashboard'}
               </p>
             </div>
+
+            {incomingPlan && (
+              <div className="mb-6 p-4 bg-accent/10 border border-accent/30 rounded-2xl text-center">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-accent block">Plan Selected</span>
+                <span className="text-base font-serif font-bold text-primary capitalize">{incomingPlan} Plan</span>
+                <p className="text-xs text-muted mt-1">Sign in or register below to proceed to your plan activation.</p>
+              </div>
+            )}
 
             {errorMsg && (
               <div className="mb-6 p-4 bg-danger/10 border border-danger text-danger text-sm rounded-xl text-center font-medium">

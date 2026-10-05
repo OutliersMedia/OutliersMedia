@@ -41,7 +41,7 @@ const plans = [
     name: 'Premium Plan',
     price: 11000,
     period: 'first mo',
-    subtext: '(₹6,000/mo + ₹5,000 Setup)',
+    subtext: '(₹6,000/mo + ₹5,000 Setup only once for website)',
     features: [
       'Everything in Growth',
       '5-Page Website',
@@ -59,30 +59,8 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
   const [isProcessing, setIsProcessing] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);
 
-  // Auto-select the plan passed from homepage
-  useState(() => {
-    if (preSelectedPlanId && isOpen && !selectedPlan) {
-      const found = plans.find(p => p.id === preSelectedPlanId);
-      if (found) setSelectedPlan(found);
-    }
-  });
-
   if (!isOpen) {
-    if (selectedPlan) {
-      setSelectedPlan(null);
-      setReceiptFile(null);
-      setIsProcessing(false);
-    }
     return null;
-  }
-
-  // If modal just opened with a preSelectedPlanId but selectedPlan is still null, set it now
-  if (preSelectedPlanId && !selectedPlan) {
-    const found = plans.find(p => p.id === preSelectedPlanId);
-    if (found) {
-      setSelectedPlan(found);
-      return null; // Let React re-render with the selected plan
-    }
   }
 
   const handleConfirmPayment = async () => {
@@ -169,51 +147,56 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {plans.map((plan) => (
-                  <div 
-                    key={plan.id}
-                    className={`relative flex flex-col p-8 rounded-2xl border transition-all duration-300 ${
-                      plan.highlight 
-                        ? 'bg-surface border-accent shadow-[0_0_30px_rgba(52,40,248,0.15)] transform md:-translate-y-4' 
-                        : 'bg-glass border-themeborder hover:border-accent/50'
-                    }`}
-                  >
-                    {plan.badge && (
-                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-accent text-[#EEF2FF] text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">
-                        {plan.badge}
-                      </div>
-                    )}
-                    
-                    <h3 className="text-2xl font-serif text-primary mb-2">{plan.name}</h3>
-                    <div className="mb-6 flex items-end gap-1">
-                      <span className="text-4xl font-bold text-primary">₹{plan.price.toLocaleString()}</span>
-                      <span className="text-muted text-sm pb-1">/{plan.period}</span>
-                    </div>
-                    {plan.subtext && <p className="text-muted text-sm mb-4">{plan.subtext}</p>}
-                    
-                    <div className="h-px w-full bg-themeborder mb-6"></div>
-                    
-                    <ul className="flex flex-col gap-4 mb-8 flex-grow">
-                      {plan.features.map((feature, idx) => (
-                        <li key={idx} className="flex items-start gap-3 text-sm text-primary">
-                          <CheckCircle2 size={20} className="text-accent shrink-0" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
+                {plans.map((plan) => {
+                  const isPreSelected = Boolean(preSelectedPlanId && plan.id.toLowerCase() === preSelectedPlanId.toLowerCase());
+                  const isHighlighted = isPreSelected || plan.highlight;
 
-                    <button 
-                      onClick={() => setSelectedPlan(plan)}
-                      className={`w-full py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
-                        plan.highlight 
-                          ? 'bg-accent text-[#EEF2FF] hover:opacity-90 shadow-[0_0_20px_var(--accent-glow)]' 
-                          : 'bg-surface text-primary border border-themeborder hover:border-accent'
+                  return (
+                    <div 
+                      key={plan.id}
+                      className={`relative flex flex-col p-8 rounded-2xl border transition-all duration-300 ${
+                        isHighlighted 
+                          ? 'bg-surface border-accent shadow-[0_0_30px_rgba(52,40,248,0.2)] transform md:-translate-y-4 ring-2 ring-accent/50' 
+                          : 'bg-glass border-themeborder hover:border-accent/50'
                       }`}
                     >
-                      Select Plan
-                    </button>
-                  </div>
-                ))}
+                      {(isPreSelected || plan.badge) && (
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-accent text-[#EEF2FF] text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg whitespace-nowrap">
+                          {isPreSelected ? 'YOUR SELECTED PLAN' : plan.badge}
+                        </div>
+                      )}
+                      
+                      <h3 className="text-2xl font-serif text-primary mb-2">{plan.name}</h3>
+                      <div className="mb-6 flex items-end gap-1">
+                        <span className="text-4xl font-bold text-primary">₹{plan.price.toLocaleString()}</span>
+                        <span className="text-muted text-sm pb-1">/{plan.period}</span>
+                      </div>
+                      {plan.subtext && <p className="text-muted text-sm mb-4">{plan.subtext}</p>}
+                      
+                      <div className="h-px w-full bg-themeborder mb-6"></div>
+                      
+                      <ul className="flex flex-col gap-4 mb-8 flex-grow">
+                        {plan.features.map((feature, idx) => (
+                          <li key={idx} className="flex items-start gap-3 text-sm text-primary">
+                            <CheckCircle2 size={20} className="text-accent shrink-0" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <button 
+                        onClick={() => setSelectedPlan(plan)}
+                        className={`w-full py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                          isHighlighted 
+                            ? 'bg-accent text-[#EEF2FF] hover:opacity-90 shadow-[0_0_20px_var(--accent-glow)]' 
+                            : 'bg-surface text-primary border border-themeborder hover:border-accent'
+                        }`}
+                      >
+                        Activate This Plan
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </>
           ) : (

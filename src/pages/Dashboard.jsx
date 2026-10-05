@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, Navigate } from 'react-router-dom';
 import { useAuth, checkIsAdmin } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { supabase } from '../utils/supabaseClient';
@@ -7,9 +7,10 @@ import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 
 export default function Dashboard() {
-  const { user, profile, isAdmin: authIsAdmin, isProfileComplete, signOut, updateProfile } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isProfileComplete, signOut, updateProfile, loading } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [orderId, setOrderId] = useState('');
@@ -33,16 +34,16 @@ export default function Dashboard() {
     }
   }, [profile]);
 
-  // Auto-open PlanModal if user arrived from homepage with ?plan=starter/growth/premium
+  // Auto-open PlanModal if user arrived with ?plan=starter/growth/premium
   useEffect(() => {
     const planParam = searchParams.get('plan');
-    if (planParam && !activeOrder && !loadingOrder) {
-      setPreSelectedPlanId(planParam);
+    if (planParam && !loadingOrder) {
+      setPreSelectedPlanId(planParam.toLowerCase());
       setShowPlanModal(true);
       // Clean the URL so refreshing doesn't re-trigger
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, activeOrder, loadingOrder]);
+  }, [searchParams, loadingOrder]);
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
@@ -58,8 +59,14 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    if (loading) return;
+
     if (!user) {
-      navigate('/auth');
+      const target = location.pathname + location.search;
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('auth_redirect', target);
+      }
+      navigate(`/auth?redirect=${encodeURIComponent(target)}`, { replace: true });
     } else if (isAdmin) {
       navigate('/admin', { replace: true });
     } else if (!isProfileComplete) {
@@ -67,7 +74,7 @@ export default function Dashboard() {
     } else {
       fetchActiveOrder();
     }
-  }, [user, isAdmin, isProfileComplete, navigate]);
+  }, [user, isAdmin, isProfileComplete, loading, navigate, location]);
 
   const fetchActiveOrder = async () => {
     setLoadingOrder(true);
@@ -133,6 +140,14 @@ export default function Dashboard() {
 
   if (isAdmin) {
     return <Navigate to="/admin" replace />;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-base pt-32 pb-20 px-6 flex items-center justify-center">
+        <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></span>
+      </div>
+    );
   }
 
   if (!user || !profile) return null;

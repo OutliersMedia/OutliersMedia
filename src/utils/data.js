@@ -37,7 +37,7 @@ export const packages = [
     id: "Premium",
     name: "Premium",
     price: "₹6,000",
-    frequency: "/month + ₹5,000 one-time",
+    frequency: "/month + ₹5,000 (only once for website)",
     features: [
       "Everything in Growth",
       "5-page website (Home, About, Menu/Services, Contact, Offers)",
