@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { packages, faqs } from '../utils/data';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Services() {
   const [openFaq, setOpenFaq] = useState(0);
+  const [selectedPlanId, setSelectedPlanId] = useState('Growth');
 
   const toggleFaq = (idx) => {
     setOpenFaq(openFaq === idx ? null : idx);
@@ -28,22 +30,53 @@ export default function Services() {
         </div>
 
         {/* Feature Comparison Table */}
-        <div className="mb-32 overflow-x-auto bg-surface border border-themeborder shadow-sm rounded-3xl">
+        <div className="mb-32 overflow-x-auto bg-transparent border border-themeborder shadow-sm rounded-3xl">
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr>
-                <th className="p-8 border-b border-themeborder font-serif text-2xl text-primary w-1/4 bg-section">
+                <th className="p-8 border-b border-themeborder font-serif text-2xl text-primary w-1/4 bg-transparent select-none">
                   <span className="text-sm font-bold uppercase tracking-widest text-muted block mb-2">Compare</span>
                   Features
                 </th>
-                {packages.map(pkg => (
-                  <th key={pkg.id} className="p-8 border-b border-l border-themeborder w-1/4 align-top" style={{ background: pkg.isPopular ? 'var(--bg-raised)' : 'var(--bg-surface)' }}>
-                    <div className="text-2xl font-serif text-primary">{pkg.name}</div>
-                    <div className={`text-xs font-bold uppercase tracking-widest mt-2 ${pkg.isPopular ? 'text-accent' : 'text-accent'}`}>
-                      {pkg.id === 'Premium' ? '₹6,000 + ₹5,000 (only once for website)' : pkg.price}
-                    </div>
-                  </th>
-                ))}
+                {packages.map(pkg => {
+                  const isSelected = pkg.id === selectedPlanId;
+                  return (
+                    <th 
+                      key={pkg.id} 
+                      onClick={() => setSelectedPlanId(pkg.id)}
+                      className={`p-8 border-b border-l border-themeborder w-1/4 align-top cursor-pointer transition-all duration-500 ease-in-out relative select-none ${
+                        isSelected 
+                          ? 'bg-white/[0.08] backdrop-blur-md opacity-100 z-10 shadow-[0_0_30px_rgba(37,99,235,0.1)]' 
+                          : 'bg-transparent opacity-60 hover:opacity-90'
+                      }`}
+                    >
+                      <div className={`transition-all duration-500 ease-out origin-top-left ${isSelected ? 'scale-[1.04]' : 'scale-100'}`}>
+                        <div className="flex items-center justify-between min-h-[32px]">
+                          <div className={`font-serif text-primary transition-all duration-500 ${isSelected ? 'text-3xl font-bold' : 'text-2xl'}`}>
+                            {pkg.name}
+                          </div>
+                          <AnimatePresence>
+                            {isSelected && (
+                              <motion.span 
+                                initial={{ opacity: 0, scale: 0.8, y: -4 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.8, y: -4 }}
+                                transition={{ duration: 0.35, ease: "easeOut" }}
+                                className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1.5 shadow-sm"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                                Selected
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                        <div className={`text-xs font-bold uppercase tracking-widest mt-2 transition-colors duration-500 ${isSelected ? 'text-blue-400' : 'text-accent'}`}>
+                          {pkg.id === 'Premium' ? '₹6,000 + ₹5,000 (only once for website)' : pkg.price}
+                        </div>
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -56,31 +89,70 @@ export default function Services() {
                 "WhatsApp Content",
                 "Custom Website",
               ].map((feature, idx) => (
-                <tr key={idx} className="border-b border-themeborder hover:bg-raised transition-colors">
-                  <td className="p-6 px-8 text-primary font-medium bg-section">{feature}</td>
-                  <td className="p-6 border-l border-themeborder text-center text-primary font-medium">
-                    {idx === 0 || idx === 1 || idx === 2 || idx === 4 ? <span className="text-accent">Included</span> : <span className="text-muted opacity-30">—</span>}
-                  </td>
-                  <td className="p-6 border-l border-themeborder text-center font-bold" style={{ background: 'var(--bg-raised)' }}>
-                    {idx !== 6 ? <span className="text-success">Included</span> : <span className="text-muted opacity-30">—</span>}
-                  </td>
-                  <td className="p-6 border-l border-themeborder text-center text-primary font-medium">
-                    <span className="text-accent">Included</span>
-                  </td>
+                <tr key={idx} className="border-b border-themeborder hover:bg-white/[0.02] transition-colors duration-300">
+                  <td className="p-6 px-8 text-primary font-medium bg-transparent select-none">{feature}</td>
+                  {packages.map((pkg) => {
+                    const isSelected = pkg.id === selectedPlanId;
+                    let isIncluded = false;
+                    if (pkg.id === 'Starter') {
+                      isIncluded = idx === 0 || idx === 1 || idx === 2 || idx === 4;
+                    } else if (pkg.id === 'Growth') {
+                      isIncluded = idx !== 6;
+                    } else if (pkg.id === 'Premium') {
+                      isIncluded = true;
+                    }
+
+                    return (
+                      <td 
+                        key={pkg.id} 
+                        onClick={() => setSelectedPlanId(pkg.id)}
+                        className={`p-6 border-l border-themeborder text-center transition-all duration-500 ease-in-out cursor-pointer select-none ${
+                          isSelected 
+                            ? 'bg-white/[0.08] backdrop-blur-md opacity-100 z-10' 
+                            : 'bg-transparent opacity-60 hover:opacity-90'
+                        }`}
+                      >
+                        <div className={`transition-all duration-500 ease-out origin-center ${isSelected ? 'scale-110 font-bold' : 'scale-100'}`}>
+                          {isIncluded ? (
+                            <span className={isSelected ? 'text-white' : 'text-accent'}>Included</span>
+                          ) : (
+                            <span className="text-muted opacity-30 select-none">—</span>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
               <tr>
-                <td className="p-6 bg-section"></td>
-                {packages.map(pkg => (
-                  <td key={pkg.id} className="p-6 border-l border-themeborder text-center" style={{ background: pkg.isPopular ? 'var(--bg-raised)' : 'transparent' }}>
-                    <Link
-                      to={`/dashboard?plan=${pkg.id.toLowerCase()}`}
-                      className={`inline-block px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all duration-300 w-full rounded-2xl border-2 ${pkg.isPopular ? 'bg-[#3c06cf] border-[#3c06cf] text-white hover:bg-transparent hover:text-[#3c06cf]' : 'bg-transparent border-[#3c06cf] text-[#3c06cf] hover:bg-[#3c06cf] hover:text-white'}`}
+                <td className="p-6 bg-transparent"></td>
+                {packages.map(pkg => {
+                  const isSelected = pkg.id === selectedPlanId;
+                  return (
+                    <td 
+                      key={pkg.id} 
+                      className={`p-6 border-l border-themeborder text-center transition-all duration-500 ease-in-out ${
+                        isSelected 
+                          ? 'bg-white/[0.08] backdrop-blur-md opacity-100 z-10' 
+                          : 'bg-transparent opacity-60 hover:opacity-90'
+                      }`}
                     >
-                      Select Plan
-                    </Link>
-                  </td>
-                ))}
+                      <div className={`transition-all duration-500 ease-out origin-center ${isSelected ? 'scale-105' : 'scale-100'}`}>
+                        <Link
+                          to={`/dashboard?plan=${pkg.id.toLowerCase()}`}
+                          onClick={() => setSelectedPlanId(pkg.id)}
+                          className={`inline-block px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all duration-500 ease-out w-full rounded-2xl border-2 transform active:scale-95 ${
+                            isSelected 
+                              ? 'bg-[#2563eb] border-[#2563eb] text-white shadow-[0_8px_30px_rgba(37,99,235,0.45)] hover:bg-[#1d4ed8] hover:border-[#1d4ed8]' 
+                              : 'bg-transparent border-[#2563eb] text-[#2563eb] hover:bg-[#2563eb]/10'
+                          }`}
+                        >
+                          Select Plan
+                        </Link>
+                      </div>
+                    </td>
+                  );
+                })}
               </tr>
             </tbody>
           </table>
