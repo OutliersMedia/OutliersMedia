@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { packages, faqs } from '../utils/data';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Services() {
   const [openFaq, setOpenFaq] = useState(0);
@@ -51,24 +50,8 @@ export default function Services() {
                       }`}
                     >
                       <div className={`transition-all duration-500 ease-out origin-top-left ${isSelected ? 'scale-[1.04]' : 'scale-100'}`}>
-                        <div className="flex items-center justify-between min-h-[32px]">
-                          <div className={`font-serif text-primary transition-all duration-500 ${isSelected ? 'text-3xl font-bold' : 'text-2xl'}`}>
-                            {pkg.name}
-                          </div>
-                          <AnimatePresence>
-                            {isSelected && (
-                              <motion.span 
-                                initial={{ opacity: 0, scale: 0.8, y: -4 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.8, y: -4 }}
-                                transition={{ duration: 0.35, ease: "easeOut" }}
-                                className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1.5 shadow-sm"
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                                Selected
-                              </motion.span>
-                            )}
-                          </AnimatePresence>
+                        <div className={`font-serif text-primary transition-all duration-500 ${isSelected ? 'text-3xl font-bold' : 'text-2xl'}`}>
+                          {pkg.name}
                         </div>
                         <div className={`text-xs font-bold uppercase tracking-widest mt-2 transition-colors duration-500 ${isSelected ? 'text-blue-400' : 'text-accent'}`}>
                           {pkg.id === 'Premium' ? '₹6,000 + ₹5,000 (only once for website)' : pkg.price}
