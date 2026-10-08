@@ -8,9 +8,20 @@ export const ADMIN_EMAILS = [
   'outliersmedia22@gmail.com'
 ];
 
+export const TESTER_EMAILS = [
+  'tester@outliersmedia.com',
+  'test@outliersmedia.com',
+  'tester.outliersmedia@gmail.com'
+];
+
 export const isEmailAdmin = (email) => {
   if (!email) return false;
   return ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+
+export const isEmailTester = (email) => {
+  if (!email) return false;
+  return TESTER_EMAILS.includes(email.trim().toLowerCase());
 };
 
 export const checkIsAdmin = (user, profile) => {
@@ -21,6 +32,22 @@ export const checkIsAdmin = (user, profile) => {
     profile?.email
   ];
   return emails.some((e) => isEmailAdmin(e));
+};
+
+export const checkIsTester = (user, profile) => {
+  if (profile?.role?.toLowerCase() === 'tester') return true;
+  const emails = [
+    user?.email,
+    user?.user_metadata?.email,
+    profile?.email
+  ];
+  return emails.some((e) => isEmailTester(e));
+};
+
+export const getUserRole = (user, profile) => {
+  if (checkIsAdmin(user, profile)) return 'admin';
+  if (checkIsTester(user, profile)) return 'tester';
+  return 'client';
 };
 
 export const useAuth = () => useContext(AuthContext);
@@ -84,11 +111,12 @@ export const AuthProvider = ({ children }) => {
               window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
               if (window.location.pathname === '/' || window.location.pathname === '/auth') {
                 const isUserAdmin = checkIsAdmin(session.user, null);
+                const isUserTester = checkIsTester(session.user, null);
                 const savedRedirect = typeof window !== 'undefined' ? sessionStorage.getItem('auth_redirect') : null;
                 if (typeof window !== 'undefined') {
                   sessionStorage.removeItem('auth_redirect');
                 }
-                if (isUserAdmin) {
+                if (isUserAdmin || isUserTester) {
                   window.location.replace('/admin');
                 } else if (savedRedirect) {
                   window.location.replace(savedRedirect);
@@ -147,13 +175,15 @@ export const AuthProvider = ({ children }) => {
         if (authedUser) {
           const defaultName = authedUser.user_metadata?.full_name || authedUser.user_metadata?.name || authedUser.email?.split('@')[0] || 'Client';
           const isAuthedAdmin = isEmailAdmin(authedUser.email);
+          const isAuthedTester = isEmailTester(authedUser.email);
+          const initialRole = isAuthedAdmin ? 'admin' : (isAuthedTester ? 'tester' : 'client');
           const { data: newProf, error: insErr } = await supabase
             .from('profiles')
             .upsert({
               auth_id: authedUser.id,
               email: authedUser.email,
               name: defaultName,
-              role: isAuthedAdmin ? 'admin' : 'client'
+              role: initialRole
             }, { onConflict: 'auth_id' })
             .select()
             .single();
@@ -162,10 +192,17 @@ export const AuthProvider = ({ children }) => {
           }
         }
       } else {
-        // If user is an admin email, guarantee role is set to admin
+        // If user is an admin or tester email, guarantee role is set appropriately
         if (isEmailAdmin(data.email) || isEmailAdmin(user?.email)) {
-          data.role = 'admin';
-          supabase.from('profiles').update({ role: 'admin' }).eq('auth_id', authId).then();
+          if (data.role !== 'admin') {
+            data.role = 'admin';
+            supabase.from('profiles').update({ role: 'admin' }).eq('auth_id', authId).then();
+          }
+        } else if (isEmailTester(data.email) || isEmailTester(user?.email)) {
+          if (data.role !== 'tester') {
+            data.role = 'tester';
+            supabase.from('profiles').update({ role: 'tester' }).eq('auth_id', authId).then();
+          }
         }
         setProfile(data);
       }
@@ -239,12 +276,16 @@ export const AuthProvider = ({ children }) => {
 
   const isProfileComplete = profile && profile.phone;
   const isAdmin = checkIsAdmin(user, profile);
+  const isTester = checkIsTester(user, profile);
+  const userRole = getUserRole(user, profile);
 
   return (
     <AuthContext.Provider value={{ 
       user, 
       profile, 
       isAdmin,
+      isTester,
+      userRole,
       loading, 
       isProfileComplete,
       signInWithProvider, 

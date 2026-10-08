@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
 import { ThemeContext, SplashContext } from '../App';
-import { useAuth, checkIsAdmin } from '../context/AuthContext';
+import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 
 const CloseIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -29,8 +29,9 @@ export default function Navbar() {
   const location = useLocation();
   const { theme, setTheme } = useContext(ThemeContext);
   const { isSplashActive } = useContext(SplashContext);
-  const { user, profile, isAdmin: authIsAdmin } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
+  const isTester = Boolean(authIsTester || checkIsTester(user, profile));
 
   useEffect(() => {
     const handleScroll = () => {
@@ -104,12 +105,17 @@ export default function Navbar() {
             </div>
 
             {user ? (
-              isAdmin ? (
+              isAdmin || isTester ? (
                 <Link
                   to="/admin"
                   className="bg-accent text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl flex items-center gap-2 border-2 border-transparent"
                 >
                   Command Center
+                  {isTester && (
+                    <span className="text-[9px] bg-amber-500/30 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-mono">
+                      TESTER
+                    </span>
+                  )}
                 </Link>
               ) : (
                 <Link
@@ -175,13 +181,18 @@ export default function Navbar() {
               ))}
               
               {user ? (
-                isAdmin ? (
+                isAdmin || isTester ? (
                   <Link
                     to="/admin"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="bg-accent text-[#EEF2FF] px-8 py-4 text-sm tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl"
+                    className="bg-accent text-[#EEF2FF] px-8 py-4 text-sm tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl flex items-center gap-2"
                   >
                     Command Center
+                    {isTester && (
+                      <span className="text-[10px] bg-amber-500/30 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-mono">
+                        TESTER
+                      </span>
+                    )}
                   </Link>
                 ) : (
                   <Link

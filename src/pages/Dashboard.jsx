@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams, useLocation, Navigate } from 'react-router-dom';
-import { useAuth, checkIsAdmin } from '../context/AuthContext';
+import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { supabase } from '../utils/supabaseClient';
 import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 
 export default function Dashboard() {
-  const { user, profile, isAdmin: authIsAdmin, isProfileComplete, signOut, updateProfile, loading } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete, signOut, updateProfile, loading } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
+  const isTester = Boolean(authIsTester || checkIsTester(user, profile));
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,14 +68,14 @@ export default function Dashboard() {
         sessionStorage.setItem('auth_redirect', target);
       }
       navigate(`/auth?redirect=${encodeURIComponent(target)}`, { replace: true });
-    } else if (isAdmin) {
+    } else if (isAdmin || isTester) {
       navigate('/admin', { replace: true });
     } else if (!isProfileComplete) {
       navigate('/onboarding');
     } else {
       fetchActiveOrder();
     }
-  }, [user, isAdmin, isProfileComplete, loading, navigate, location]);
+  }, [user, isAdmin, isTester, isProfileComplete, loading, navigate, location]);
 
   const fetchActiveOrder = async () => {
     setLoadingOrder(true);
@@ -138,7 +139,7 @@ export default function Dashboard() {
     }
   };
 
-  if (isAdmin) {
+  if (isAdmin || isTester) {
     return <Navigate to="/admin" replace />;
   }
 

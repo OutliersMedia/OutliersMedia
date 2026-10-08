@@ -118,6 +118,7 @@ export default function AdminClients() {
     if (filter === 'Expired') return c.calculatedStatus === 'expired';
     if (filter === 'Leads') return c.calculatedStatus === 'lead';
     if (filter === 'Inactive') return c.calculatedStatus === 'cancelled';
+    if (filter === 'Testers') return c.role === 'tester';
     return true;
   });
 
@@ -141,7 +142,7 @@ export default function AdminClients() {
       </div>
 
       <div className="flex flex-wrap gap-2 bg-[#0a0a0a] p-1 rounded-xl mb-6 inline-flex border border-[#222]">
-        {['All', 'Leads', 'Pending', 'Active', 'Expired', 'Paused', 'Inactive'].map(f => (
+        {['All', 'Leads', 'Pending', 'Active', 'Testers', 'Expired', 'Paused', 'Inactive'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -178,7 +179,8 @@ export default function AdminClients() {
                     <td className="p-4 min-w-[280px]">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-white font-medium">{client.name || 'Unknown'}</p>
-                        {client.role === 'admin' && <span className="text-[9px] bg-[#3428f8] px-1 py-0.5 rounded text-white uppercase">Admin</span>}
+                        {client.role === 'admin' && <span className="text-[9px] bg-[#3428f8] px-1 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
+                        {client.role === 'tester' && <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Tester</span>}
                         {client.user_id && <span className="text-[9px] text-[#666] font-mono border border-[#333] px-1 py-0.5 rounded">{client.user_id}</span>}
                       </div>
                       <div className="flex items-center gap-0 mb-0.5">

@@ -18,7 +18,7 @@ import Contact from './pages/Contact';
 import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
-import { AuthProvider, useAuth, checkIsAdmin } from './context/AuthContext';
+import { AuthProvider, useAuth, checkIsAdmin, checkIsTester } from './context/AuthContext';
 
 export const ThemeContext = createContext();
 export const SplashContext = createContext();
@@ -41,11 +41,13 @@ function GlobalOnboardingGuard({ children }) {
   );
 }
 
-// This component guards /admin routes so only authorized admins can access them,
-// and ensures admins are directed to Command Center, not client dashboard
+// This component guards /admin routes so only authorized admins and testers can access them,
+// and ensures admins/testers are directed to Command Center, not client dashboard
 function AdminEnforcer({ children }) {
-  const { user, profile, isAdmin: authIsAdmin, loading } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, loading } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
+  const isTester = Boolean(authIsTester || checkIsTester(user, profile));
+  const canAccessAdmin = isAdmin || isTester;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -56,13 +58,13 @@ function AdminEnforcer({ children }) {
     if (location.pathname.startsWith('/admin')) {
       if (!user) {
         navigate('/auth', { replace: true });
-      } else if (!isAdmin) {
+      } else if (!canAccessAdmin) {
         navigate('/dashboard', { replace: true });
       }
-    } else if (location.pathname === '/dashboard' && isAdmin) {
+    } else if (location.pathname === '/dashboard' && (isAdmin || isTester)) {
       navigate('/admin', { replace: true });
     }
-  }, [user, isAdmin, loading, location.pathname, navigate]);
+  }, [user, isAdmin, isTester, canAccessAdmin, loading, location.pathname, navigate]);
 
   return <>{children}</>;
 }

@@ -1,18 +1,20 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { useAuth, checkIsAdmin } from '../../context/AuthContext';
+import { useAuth, checkIsAdmin, checkIsTester } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
 import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Mail, LogOut, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 
 export default function AdminLayout() {
-  const { user, profile, isAdmin: authIsAdmin, loading, signOut } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, loading, signOut } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
+  const isTester = Boolean(authIsTester || checkIsTester(user, profile));
+  const canAccessAdmin = isAdmin || isTester;
   const location = useLocation();
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canAccessAdmin) {
       fetchTicketCount();
       
       // Subscribe to new tickets to update the badge live
@@ -27,7 +29,7 @@ export default function AdminLayout() {
         supabase.removeChannel(subscription);
       };
     }
-  }, [isAdmin]);
+  }, [canAccessAdmin]);
 
   const fetchTicketCount = async () => {
     const { count } = await supabase
@@ -45,7 +47,7 @@ export default function AdminLayout() {
     );
   }
 
-  if (!user || !isAdmin) {
+  if (!user || !canAccessAdmin) {
     return <Navigate to="/auth" replace />;
   }
 
@@ -66,6 +68,12 @@ export default function AdminLayout() {
           <Link to="/admin" className="flex items-center gap-3 group">
             <img src="/icon.png" alt="Outliers Media" className="h-8 w-8 object-contain transition-transform group-hover:scale-110" />
             <span className="font-serif text-xl tracking-wide">COMMAND CENTER</span>
+            {isTester && (
+              <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                Tester Mode
+              </span>
+            )}
           </Link>
           
           <nav className="hidden lg:flex items-center gap-1">
@@ -109,6 +117,16 @@ export default function AdminLayout() {
 
       {/* Main Content Area */}
       <main className="flex-grow pt-28 pb-12 px-6">
+        {isTester && (
+          <div className="mb-6 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between text-amber-400 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+              <span className="font-bold uppercase tracking-wider">Tester Access:</span>
+              <span>You are viewing Command Center with a Tester account. Use this environment to test admin and operational workflows.</span>
+            </div>
+            <span className="font-mono text-[10px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 uppercase">Role: Tester</span>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

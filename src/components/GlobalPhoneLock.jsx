@@ -3,14 +3,14 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function GlobalPhoneLock() {
-  const { user, profile, isAdmin, updateProfile, isProfileComplete, loading: authLoading, signOut } = useAuth();
+  const { user, profile, isAdmin, isTester, updateProfile, isProfileComplete, loading: authLoading, signOut } = useAuth();
   
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // If loading auth, or no user, or profile is complete, or user is admin -> Do NOT show lock
-  const shouldShowLock = !authLoading && user && isProfileComplete === false && !isAdmin;
+  // If loading auth, or no user, or profile is complete, or user is admin or tester -> Do NOT show lock
+  const shouldShowLock = !authLoading && user && isProfileComplete === false && !isAdmin && !isTester;
 
   const handleSubmit = async (e) => {
     e.preventDefault();

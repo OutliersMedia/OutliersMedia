@@ -65,13 +65,13 @@ export default function AdminTickets() {
       // Get profiles for these clients
       const clientIds = [...new Set(threads.map(t => t.client_id))];
       if (clientIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('auth_id, name, business_type').in('auth_id', clientIds);
+        const { data: profiles } = await supabase.from('profiles').select('auth_id, name, business_type, role').in('auth_id', clientIds);
         const profileMap = {};
         if (profiles) {
           profiles.forEach(p => profileMap[p.auth_id] = p);
         }
         threads.forEach(t => {
-          t.client = profileMap[t.client_id] || { name: 'Unknown Client', business_type: 'Unknown' };
+          t.client = profileMap[t.client_id] || { name: 'Unknown Client', business_type: 'Unknown', role: 'client' };
         });
       }
 
@@ -185,7 +185,14 @@ export default function AdminTickets() {
                   <span className="text-xs font-bold text-white bg-[#222] px-2 py-1 rounded-md uppercase tracking-wider">{thread.order_id}</span>
                   <span className="text-[10px] text-[#666] font-bold uppercase">{new Date(thread.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
-                <h4 className="text-white text-sm font-semibold mb-1 truncate">{thread.client?.name || 'Client'}</h4>
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-white text-sm font-semibold truncate">{thread.client?.name || 'Client'}</h4>
+                  {thread.client?.role === 'tester' && (
+                    <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
+                      Tester
+                    </span>
+                  )}
+                </div>
                 <p className="text-[#888] text-xs font-medium mb-3 truncate">{thread.category}</p>
                 <div className="flex items-center gap-2">
                   {thread.status === 'open' && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>}

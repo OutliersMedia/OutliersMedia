@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, checkIsAdmin } from '../context/AuthContext';
+import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Auth() {
@@ -14,8 +14,9 @@ export default function Auth() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, profile, isAdmin: authIsAdmin, isProfileComplete } = useAuth();
+  const { signInWithProvider, signInWithEmail, signUpWithEmail, verifyEmailOtp, user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
+  const isTester = Boolean(authIsTester || checkIsTester(user, profile));
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -24,7 +25,7 @@ export default function Auth() {
   const incomingPlan = planParam || (redirectParam?.includes('plan=') ? new URLSearchParams(redirectParam.split('?')[1]).get('plan') : null);
 
   const getRedirectDestination = () => {
-    if (isAdmin) return '/admin';
+    if (isAdmin || isTester) return '/admin';
     if (redirectParam && redirectParam.startsWith('/')) return redirectParam;
     if (planParam) return `/dashboard?plan=${planParam.toLowerCase()}`;
     const saved = typeof window !== 'undefined' ? sessionStorage.getItem('auth_redirect') : null;
@@ -40,7 +41,7 @@ export default function Auth() {
       }
       navigate(destination, { replace: true });
     }
-  }, [user, isAdmin, navigate, showOtp]);
+  }, [user, isAdmin, isTester, navigate, showOtp]);
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
