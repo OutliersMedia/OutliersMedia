@@ -36,6 +36,7 @@ export default function AdminFinances() {
 
   const [selectedClientHistory, setSelectedClientHistory] = useState(null);
   const [previewReceiptUrl, setPreviewReceiptUrl] = useState(null);
+  const [popupType, setPopupType] = useState(null); // 'discount' | 'retainer' | null
 
   // Installment & Custom Price Configurator State
   const [configModalOrder, setConfigModalOrder] = useState(null);
@@ -575,24 +576,42 @@ export default function AdminFinances() {
         </div>
 
         {/* Total Discounts Granted */}
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-emerald-500 transition-opacity">
+        <div 
+          onClick={() => setPopupType('discount')}
+          className="bg-[#0a0a0a] border border-[#222] hover:border-emerald-500/40 rounded-2xl p-6 relative overflow-hidden cursor-pointer transition-all group"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-15 text-emerald-500 transition-opacity">
             <Tag size={64} />
           </div>
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Special Discounts Granted</p>
+          <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center justify-between">
+            <span>Special Discounts Granted</span>
+            <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold">
+              {transactions.filter(t => (t.instMetrics?.discountAmount || t.discountAmount || 0) > 0).length} Clients
+            </span>
+          </p>
           <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
             <IndianRupee size={24} className="text-emerald-400" />
             {metrics.totalDiscounts.toLocaleString()}
           </h3>
-          <p className="text-[#666] text-xs mt-2">Client concessions applied</p>
+          <p className="text-[#777] text-xs mt-2 group-hover:text-emerald-400 transition-colors flex items-center gap-1">
+            Click to view discount breakdown <ArrowRight size={10} />
+          </p>
         </div>
 
         {/* Retainers & Active EMI Deals */}
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-[#3428f8] transition-opacity">
+        <div 
+          onClick={() => setPopupType('retainer')}
+          className="bg-[#0a0a0a] border border-[#222] hover:border-[#3428f8]/50 rounded-2xl p-6 relative overflow-hidden cursor-pointer transition-all group"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-15 text-[#3428f8] transition-opacity">
             <Layers size={64} />
           </div>
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Retainers & Plans</p>
+          <p className="text-[#3428f8] text-xs font-bold uppercase tracking-widest mb-2 flex items-center justify-between">
+            <span>Retainers & Plans</span>
+            <span className="text-[10px] bg-[#3428f8]/15 border border-[#3428f8]/30 px-2 py-0.5 rounded-full font-bold">
+              {metrics.totalTransactions} Total
+            </span>
+          </p>
           <div className="flex items-baseline gap-3">
             <h3 className="text-3xl font-serif text-white">{metrics.totalTransactions}</h3>
             {metrics.activeEmis > 0 && (
@@ -601,7 +620,9 @@ export default function AdminFinances() {
               </span>
             )}
           </div>
-          <p className="text-[#666] text-xs mt-2">Total registered client orders</p>
+          <p className="text-[#777] text-xs mt-2 group-hover:text-[#3428f8] transition-colors flex items-center gap-1">
+            Click to view client plans <ArrowRight size={10} />
+          </p>
         </div>
       </div>
 
@@ -1592,6 +1613,253 @@ export default function AdminFinances() {
             </div>
           );
         })()}
+      </AnimatePresence>
+
+      {/* ============================================================== */}
+      {/* 5. POPUP: SPECIAL DISCOUNTS BREAKDOWN */}
+      {/* ============================================================== */}
+      <AnimatePresence>
+        {popupType === 'discount' && (() => {
+          const discountedOrders = transactions.filter(t => (t.instMetrics?.discountAmount || t.discountAmount || 0) > 0);
+
+          return (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+              onClick={() => setPopupType(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ duration: 0.2 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 max-w-lg w-full shadow-2xl relative max-h-[85vh] flex flex-col"
+              >
+                {/* Header */}
+                <div className="flex justify-between items-start pb-4 border-b border-[#222]">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Tag size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-serif text-white">Special Discounts Breakdown</h3>
+                      <p className="text-xs text-[#888]">
+                        Total Concessions: <span className="font-mono text-emerald-400 font-bold">₹{metrics.totalDiscounts.toLocaleString()}</span> across {discountedOrders.length} client{discountedOrders.length === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setPopupType(null)}
+                    className="text-[#666] hover:text-white p-1.5 rounded-full hover:bg-[#222] transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* List */}
+                <div className="overflow-y-auto pr-1 flex-1 flex flex-col gap-3 py-4 custom-scrollbar">
+                  {discountedOrders.length === 0 ? (
+                    <div className="text-center py-10 text-[#666]">
+                      <Tag size={32} className="mx-auto mb-2 opacity-40 text-emerald-400" />
+                      <p className="text-sm text-white font-medium">No special discounts active</p>
+                      <p className="text-xs text-[#777] mt-1">All retainers are currently charged standard listed fees.</p>
+                    </div>
+                  ) : (
+                    discountedOrders.map((t) => {
+                      const std = t.instMetrics?.standardPrice || t.standardPrice || 3500;
+                      const disc = t.instMetrics?.discountAmount || t.discountAmount || 0;
+                      const finalAmt = t.instMetrics?.totalAgreed || t.totalAgreed || (std - disc);
+                      const discPct = std > 0 ? Math.round((disc / std) * 100) : 0;
+
+                      return (
+                        <div key={t.id} className="bg-[#141414] border border-[#252525] hover:border-[#333] rounded-2xl p-4 transition-colors">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="text-white font-bold text-sm">{t.client?.name || 'Client'}</h4>
+                              <p className="text-[#666] text-xs font-mono">{t.plan_name} • {t.order_id}</p>
+                            </div>
+                            <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                              -{discPct}% OFF
+                            </span>
+                          </div>
+
+                          {/* 3 Metrics: Original Fees, Discount Amount, Final Amount */}
+                          <div className="grid grid-cols-3 gap-2 bg-[#0a0a0a] border border-[#222] rounded-xl p-3 text-center">
+                            <div>
+                              <span className="text-[10px] text-[#777] uppercase font-bold tracking-wider block mb-0.5">Original Fees</span>
+                              <span className="text-[#888] font-mono text-xs line-through block">₹{std.toLocaleString()}</span>
+                            </div>
+
+                            <div className="border-x border-[#1f1f1f]">
+                              <span className="text-[10px] text-emerald-400 uppercase font-bold tracking-wider block mb-0.5">Discount</span>
+                              <span className="text-emerald-400 font-mono text-xs font-bold block">-₹{disc.toLocaleString()}</span>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] text-white uppercase font-bold tracking-wider block mb-0.5">Final Amount</span>
+                              <span className="text-white font-mono text-sm font-bold block">₹{finalAmt.toLocaleString()}</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex justify-end">
+                            <button
+                              onClick={() => {
+                                setPopupType(null);
+                                handleOpenConfigurator(t);
+                              }}
+                              className="text-[10px] text-[#3428f8] hover:text-white font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit3 size={11} /> Edit Payment
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="pt-3 border-t border-[#222] flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setPopupType(null)}
+                    className="bg-[#1a1a1a] hover:bg-[#252525] text-white px-5 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all border border-[#222] cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ============================================================== */}
+      {/* 6. POPUP: RETAINERS & CLIENT PLANS LIST */}
+      {/* ============================================================== */}
+      <AnimatePresence>
+        {popupType === 'retainer' && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setPopupType(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 max-w-lg w-full shadow-2xl relative max-h-[85vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-start pb-4 border-b border-[#222]">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20">
+                    <Layers size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-serif text-white">Retainers & Client Plans</h3>
+                    <p className="text-xs text-[#888]">
+                      {transactions.length} registered order{transactions.length === 1 ? '' : 's'} • {metrics.activeEmis} on milestone EMIs
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setPopupType(null)}
+                  className="text-[#666] hover:text-white p-1.5 rounded-full hover:bg-[#222] transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* List */}
+              <div className="overflow-y-auto pr-1 flex-1 flex flex-col gap-3 py-4 custom-scrollbar">
+                {transactions.length === 0 ? (
+                  <div className="text-center py-10 text-[#666]">
+                    <Layers size={32} className="mx-auto mb-2 opacity-40 text-[#3428f8]" />
+                    <p className="text-sm text-white font-medium">No client retainers found</p>
+                  </div>
+                ) : (
+                  transactions.map((t) => {
+                    const isEmi = t.instMetrics?.hasInstallments && t.instMetrics.installments.length > 1;
+                    const paidCount = t.instMetrics?.installments?.filter(i => i.status === 'paid')?.length || 0;
+                    const totalSplits = t.instMetrics?.installments?.length || 1;
+
+                    return (
+                      <div key={t.id} className="bg-[#141414] border border-[#252525] hover:border-[#333] rounded-2xl p-4 transition-colors">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            {/* Client Name */}
+                            <h4 className="text-white font-bold text-sm">{t.client?.name || 'Client'}</h4>
+                            <p className="text-[#666] text-xs font-mono">{t.client?.email}</p>
+                          </div>
+
+                          {/* Status Badge */}
+                          <div>
+                            {t.status === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
+                            {t.status === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                            {t.status === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
+                            {t.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
+                          </div>
+                        </div>
+
+                        {/* Plan & Pricing Box */}
+                        <div className="bg-[#0a0a0a] border border-[#222] rounded-xl p-3 flex justify-between items-center mt-2">
+                          <div>
+                            <span className="text-[10px] text-[#777] uppercase font-bold tracking-wider block mb-0.5">Retainer Package</span>
+                            <span className="text-[#3428f8] font-bold text-xs">{t.plan_name}</span>
+                            <span className="text-[#555] text-[10px] font-mono block mt-0.5">{t.order_id}</span>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] text-[#777] uppercase font-bold tracking-wider block mb-0.5">Payment Standing</span>
+                            <span className="text-white font-mono font-bold text-xs">
+                              ₹{(t.instMetrics?.paidAmount || t.amount_paid || 0).toLocaleString()} / ₹{(t.instMetrics?.totalAgreed || t.amount_paid || 0).toLocaleString()}
+                            </span>
+                            {isEmi && (
+                              <span className="text-[9px] text-[#888] font-mono block mt-0.5">
+                                EMI {paidCount}/{totalSplits} Paid
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex justify-between items-center pt-2 border-t border-[#1a1a1a]">
+                          <span className="text-[10px] text-[#666]">
+                            Joined {new Date(t.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+
+                          <button
+                            onClick={() => {
+                              setPopupType(null);
+                              handleOpenConfigurator(t);
+                            }}
+                            className="text-[10px] text-[#3428f8] hover:text-white font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                          >
+                            <Edit3 size={11} /> Edit Payment
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="pt-3 border-t border-[#222] flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPopupType(null)}
+                  className="bg-[#1a1a1a] hover:bg-[#252525] text-white px-5 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all border border-[#222] cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );
