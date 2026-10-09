@@ -49,13 +49,13 @@ export default function GlobalNotificationLock() {
     };
   }, [isClient, checkCount]);
 
-  // Once permission is granted, keep listening for real-time push alerts in the background
+  // Once permission is granted, listen for real-time push alerts in the background for ANY logged in user (clients, testers, and admins)
   useEffect(() => {
-    if (isClient && permission === 'granted' && user?.id) {
-      const cleanup = setupNotificationListener(user.id);
+    if (user?.id && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const cleanup = setupNotificationListener(user.id, user.email);
       return cleanup;
     }
-  }, [isClient, permission, user?.id]);
+  }, [user?.id, user?.email, permission]);
 
   // Trigger browser permission prompt
   const handleRequestPermission = async () => {

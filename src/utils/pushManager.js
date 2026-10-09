@@ -24,7 +24,7 @@ export function urlBase64ToUint8Array(base64String) {
  */
 export function isPushSupported() {
   if (typeof window === 'undefined') return false;
-  return 'serviceWorker' in navigator && 'Notification' in window && 'PushManager' in window;
+  return 'serviceWorker' in navigator && 'Notification' in window;
 }
 
 /**
@@ -60,40 +60,47 @@ export async function subscribeClientToPush(user) {
 
   try {
     const reg = await registerPushServiceWorker();
-    if (!reg) return { success: false, reason: 'sw_failed' };
 
     // Request native browser permission
-    const permission = await Notification.requestPermission();
+    let permission = Notification.permission;
+    if (permission !== 'granted') {
+      permission = await Notification.requestPermission();
+    }
+
     if (permission !== 'granted') {
       return { success: false, permission, reason: 'permission_denied' };
     }
 
-    // Attempt push subscription with PushManager
+    // Attempt push subscription with PushManager if supported
     let subJson = null;
-    try {
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
+    if (reg && 'pushManager' in reg) {
+      try {
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+          });
+        }
+        if (sub) {
+          subJson = sub.toJSON();
+        }
+      } catch (subErr) {
+        console.warn('PushManager subscription warning:', subErr);
       }
-      if (sub) {
-        subJson = sub.toJSON();
-      }
-    } catch (subErr) {
-      console.warn('PushManager subscription warning:', subErr);
     }
 
     // Save subscription in Supabase if user exists
-    if (user && user.id && subJson && subJson.endpoint) {
+    if (user && (user.id || user.auth_id)) {
+      const uid = user.id || user.auth_id;
+      const email = user.email || uid;
       try {
         await supabase.from('push_subscriptions').upsert({
-          user_id: user.id,
-          client_id: user.email || user.id,
-          endpoint: subJson.endpoint,
-          p256dh: subJson.keys?.p256dh || '',
-          auth: subJson.keys?.auth || '',
+          user_id: uid,
+          client_id: email,
+          endpoint: subJson?.endpoint || `browser-session-${uid}`,
+          p256dh: subJson?.keys?.p256dh || '',
+          auth: subJson?.keys?.auth || '',
           user_agent: navigator.userAgent
         }, { onConflict: 'endpoint' });
       } catch (dbErr) {
@@ -101,7 +108,6 @@ export async function subscribeClientToPush(user) {
       }
     }
 
-    // Cache granted status in localStorage
     try {
       localStorage.setItem('outliers_push_granted', 'true');
     } catch (e) {}
@@ -117,24 +123,36 @@ export async function subscribeClientToPush(user) {
  * Triggers a native system OS notification via the Service Worker
  */
 export async function triggerLocalNotification(title, options = {}) {
-  if (!isPushSupported() || Notification.permission !== 'granted') return false;
+  if (!isPushSupported()) {
+    alert("Push notifications are not supported in this browser.");
+    return false;
+  }
+
+  // Request permission if not yet decided
+  let perm = Notification.permission;
+  if (perm !== 'granted') {
+    perm = await Notification.requestPermission();
+  }
+
+  if (perm !== 'granted') {
+    alert("Notifications are not allowed. Please allow notifications in your browser settings (click the lock icon 🔒 next to the website URL).");
+    return false;
+  }
 
   try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && reg.showNotification) {
-        await reg.showNotification(title, {
-          body: options.body || '',
-          icon: options.icon || '/icon.png',
-          badge: '/icon.png',
-          vibrate: [200, 100, 200],
-          data: { url: options.url || '/dashboard' }
-        });
-        return true;
-      }
+    const reg = await registerPushServiceWorker();
+    if (reg && reg.showNotification) {
+      await reg.showNotification(title, {
+        body: options.body || '',
+        icon: options.icon || '/icon.png',
+        badge: '/icon.png',
+        vibrate: [200, 100, 200],
+        data: { url: options.url || '/dashboard' }
+      });
+      return true;
     }
 
-    // Fallback to Notification constructor if available
+    // Fallback to Notification constructor
     new Notification(title, {
       body: options.body || '',
       icon: options.icon || '/icon.png'
@@ -146,11 +164,18 @@ export async function triggerLocalNotification(title, options = {}) {
   }
 }
 
+// Global active Realtime channel reference
+let activeAlertChannel = null;
+
+function getAlertChannel() {
+  if (!activeAlertChannel) {
+    activeAlertChannel = supabase.channel('outliers-alerts');
+  }
+  return activeAlertChannel;
+}
+
 /**
  * Dispatches a push notification via Supabase Realtime broadcast
- * Supports:
- * 1. Single Client Upload Alert: { targetUserId: client_id, isGlobal: false, title, body, url }
- * 2. Global Offer/Announcement: { isGlobal: true, title, body, url }
  */
 export async function dispatchPushNotification({
   targetUserId = null,
@@ -175,63 +200,88 @@ export async function dispatchPushNotification({
     timestamp: new Date().toISOString()
   };
 
-  try {
-    // Broadcast across Supabase channel
-    const channel = supabase.channel('outliers-alerts');
-    await channel.subscribe();
-    
-    await channel.send({
-      type: 'broadcast',
-      event: 'new-notification',
-      payload
-    });
+  return new Promise((resolve) => {
+    const channel = getAlertChannel();
 
-    // Save to local dispatch log
-    try {
-      const existingLogs = JSON.parse(localStorage.getItem('outliers_sent_notifications') || '[]');
-      existingLogs.unshift(payload);
-      localStorage.setItem('outliers_sent_notifications', JSON.stringify(existingLogs.slice(0, 50)));
-    } catch (e) {}
+    const sendPayload = async () => {
+      try {
+        const sendResult = await channel.send({
+          type: 'broadcast',
+          event: 'new-notification',
+          payload
+        });
+        console.log("Broadcast send status:", sendResult);
 
-    return { success: true, payload };
-  } catch (err) {
-    console.error('Failed to dispatch notification:', err);
-    return { success: false, error: err.message };
-  }
+        // Record in local dispatch log
+        try {
+          const existingLogs = JSON.parse(localStorage.getItem('outliers_sent_notifications') || '[]');
+          existingLogs.unshift(payload);
+          localStorage.setItem('outliers_sent_notifications', JSON.stringify(existingLogs.slice(0, 50)));
+        } catch (e) {}
+
+        resolve({ success: true, payload, status: sendResult });
+      } catch (err) {
+        console.error('Failed to dispatch notification:', err);
+        resolve({ success: false, error: err.message });
+      }
+    };
+
+    if (channel.state === 'joined') {
+      sendPayload();
+    } else {
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          sendPayload();
+        }
+      });
+    }
+  });
 }
 
 /**
  * Listens on Supabase Realtime channel for incoming push alerts and triggers OS notification
  */
-export function setupNotificationListener(userId, onNotificationReceived) {
-  if (!userId) return () => {};
+export function setupNotificationListener(userId, userEmail = null, onNotificationReceived = null) {
+  if (!userId && !userEmail) return () => {};
 
-  const channel = supabase.channel('outliers-alerts')
-    .on('broadcast', { event: 'new-notification' }, async (event) => {
-      const payload = event.payload;
-      if (!payload) return;
+  const channel = getAlertChannel();
 
-      // Check if message is intended for this user
-      const isForMe = payload.isGlobal === true || payload.targetUserId === userId || payload.targetUserId === 'all';
+  channel.on('broadcast', { event: 'new-notification' }, async (event) => {
+    const payload = event.payload;
+    if (!payload) return;
 
-      if (isForMe) {
-        // Trigger system notification if granted
-        if (Notification.permission === 'granted') {
-          await triggerLocalNotification(payload.title, {
-            body: payload.body,
-            url: payload.url,
-            icon: '/icon.png'
-          });
-        }
+    console.log("Push payload received on client listener:", payload);
 
-        if (typeof onNotificationReceived === 'function') {
-          onNotificationReceived(payload);
-        }
+    // Check if message is intended for this user
+    const isForMe = 
+      payload.isGlobal === true || 
+      payload.targetUserId === 'all' ||
+      payload.targetUserId === userId ||
+      (userEmail && payload.targetUserId === userEmail) ||
+      (payload.targetClientName && userEmail && payload.targetClientName.toLowerCase().includes(userEmail.toLowerCase()));
+
+    if (isForMe) {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        await triggerLocalNotification(payload.title, {
+          body: payload.body,
+          url: payload.url,
+          icon: '/icon.png'
+        });
       }
-    })
-    .subscribe();
+
+      if (typeof onNotificationReceived === 'function') {
+        onNotificationReceived(payload);
+      }
+    }
+  });
+
+  if (channel.state !== 'joined') {
+    channel.subscribe((status) => {
+      console.log("Realtime notification channel status:", status);
+    });
+  }
 
   return () => {
-    supabase.removeChannel(channel);
+    // Keep active or handle cleanup
   };
 }

@@ -1,14 +1,25 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Bell, BellRing, Send, Users, User, Sparkles, CheckCircle, Clock, 
-  ExternalLink, Eye, AlertCircle, RefreshCw, Layers, ShieldCheck, Tag
+  ExternalLink, Eye, AlertCircle, RefreshCw, Layers, ShieldCheck, Tag, Lock
 } from 'lucide-react';
-import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
+import { 
+  dispatchPushNotification, 
+  triggerLocalNotification, 
+  subscribeClientToPush, 
+  getNotificationPermission 
+} from '../../utils/pushManager';
 
 export default function AdminNotifications() {
+  const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [loadingClients, setLoadingClients] = useState(true);
+
+  // Device Permission State
+  const [devicePermission, setDevicePermission] = useState('default');
+  const [deviceRegistering, setDeviceRegistering] = useState(false);
 
   // Form State
   const [targetType, setTargetType] = useState('global'); // 'global' | 'client'
@@ -23,9 +34,20 @@ export default function AdminNotifications() {
   const [successMsg, setSuccessMsg] = useState('');
   const [sentHistory, setSentHistory] = useState([]);
 
+  const checkDevicePermission = () => {
+    if (typeof Notification !== 'undefined') {
+      setDevicePermission(Notification.permission);
+    }
+  };
+
   useEffect(() => {
     fetchClients();
     loadSentHistory();
+    checkDevicePermission();
+
+    const handleFocus = () => checkDevicePermission();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   const fetchClients = async () => {
@@ -37,11 +59,9 @@ export default function AdminNotifications() {
         .order('name', { ascending: true });
 
       if (profiles) {
-        // Exclude admin/testers from client recipient list
-        const filtered = profiles.filter(p => !['admin', 'tester'].includes(p.role));
-        setClients(filtered);
-        if (filtered.length > 0 && !selectedClientId) {
-          setSelectedClientId(filtered[0].auth_id);
+        setClients(profiles);
+        if (profiles.length > 0 && !selectedClientId) {
+          setSelectedClientId(profiles[0].auth_id);
         }
       }
     } catch (err) {
@@ -66,15 +86,31 @@ export default function AdminNotifications() {
     setNotifCategory(category);
   };
 
-  const handleTestLocal = async () => {
-    if (!title.trim()) {
-      alert("Please enter a notification title to test.");
-      return;
+  const handleEnableDevicePush = async () => {
+    setDeviceRegistering(true);
+    const res = await subscribeClientToPush(user);
+    checkDevicePermission();
+    setDeviceRegistering(false);
+
+    if (res.success) {
+      alert("✓ Browser notifications enabled! Your device is now active and will receive push notifications.");
     }
-    await triggerLocalNotification(title, {
-      body: body || 'Test notification preview from Outliers Media.',
+  };
+
+  const handleTestLocal = async () => {
+    const testTitle = title.trim() || '🎉 Outliers Media Test Alert';
+    const testBody = body.trim() || 'This is how notifications appear on your screen and mobile device!';
+    
+    const sent = await triggerLocalNotification(testTitle, {
+      body: testBody,
       url: targetUrl || '/dashboard'
     });
+    
+    checkDevicePermission();
+    if (sent) {
+      setSuccessMsg('✓ Test notification popped up on your screen!');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    }
   };
 
   const handleSendNotification = async (e) => {
@@ -119,6 +155,21 @@ export default function AdminNotifications() {
           : `✓ Targeted notification dispatched directly to ${targetClientName}!`
       );
       loadSentHistory();
+
+      // If the admin broadcasted globally or sent to their own account, trigger immediate test preview
+      const targetClient = clients.find(c => c.auth_id === selectedClientId);
+      const isTargetingMe = isGlobal || 
+        targetUserId === user?.id || 
+        targetUserId === user?.email || 
+        (targetClient && user?.email && targetClient.email === user.email);
+
+      if (isTargetingMe && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        await triggerLocalNotification(title.trim(), {
+          body: body.trim(),
+          url: targetUrl || '/dashboard'
+        });
+      }
+
       setTimeout(() => setSuccessMsg(''), 5000);
     } else {
       alert(`Error sending notification: ${res.error}`);
@@ -128,7 +179,7 @@ export default function AdminNotifications() {
   const selectedClientObj = clients.find(c => c.auth_id === selectedClientId);
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-3xl p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col gap-8">
+    <div className="bg-[#111] border border-[#222] rounded-3xl p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col gap-6">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-[#222]">
         <div>
@@ -146,11 +197,75 @@ export default function AdminNotifications() {
         <button
           type="button"
           onClick={handleTestLocal}
-          className="inline-flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333] px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+          className="inline-flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333] px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
         >
           <Eye size={14} className="text-[#3428f8]" />
           Test Notification on My Screen
         </button>
+      </div>
+
+      {/* Device Notification Status Card */}
+      <div className={`p-4.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
+        devicePermission === 'granted'
+          ? 'bg-emerald-950/20 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.06)]'
+          : devicePermission === 'denied'
+          ? 'bg-red-950/20 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.06)]'
+          : 'bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.06)]'
+      }`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-2.5 rounded-xl border ${
+            devicePermission === 'granted'
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              : devicePermission === 'denied'
+              ? 'bg-red-500/20 text-red-400 border-red-500/30'
+              : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+          }`}>
+            <BellRing size={22} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-white">This Device Notification Status:</h4>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                devicePermission === 'granted'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : devicePermission === 'denied'
+                  ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              }`}>
+                {devicePermission === 'granted' ? 'Active & Ready ✓' : devicePermission === 'denied' ? 'Blocked in Browser ❌' : 'Not Enabled Yet ⚠️'}
+              </span>
+            </div>
+            <p className="text-xs text-[#888] mt-0.5">
+              {devicePermission === 'granted' 
+                ? 'This device is listening for live broadcasts and deliverable upload alerts.'
+                : devicePermission === 'denied'
+                ? 'Notifications are blocked in this browser. Click the lock icon 🔒 next to the website URL to Allow.'
+                : 'To test and receive notifications on this device, click Enable Notifications below.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {devicePermission !== 'granted' && (
+            <button
+              type="button"
+              onClick={handleEnableDevicePush}
+              disabled={deviceRegistering}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#3428f8] hover:bg-[#281fe0] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+            >
+              {deviceRegistering ? <RefreshCw size={13} className="animate-spin" /> : <Bell size={13} />}
+              Enable on This Device
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleTestLocal}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#1c1c1c] hover:bg-[#252525] text-white border border-[#333] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Eye size={13} className="text-[#3428f8]" />
+            Test Screen Popup
+          </button>
+        </div>
       </div>
 
       {/* Top Stats Overview */}
