@@ -7,7 +7,7 @@ import {
 import { 
   getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG 
 } from '../../utils/scheduleEngine';
-import { dispatchPushNotification } from '../../utils/pushManager';
+import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 
 export default function AdminDeliverables() {
   const [clientsList, setClientsList] = useState([]);
@@ -277,21 +277,29 @@ export default function AdminDeliverables() {
     if (error) {
       alert("Error saving deliverable: " + error.message);
     } else {
-      // Dispatch push notification ONLY to this particular client
+      // Dispatch push notification to client with the submitted content title
       const targetUserId = selectedClient.latestOrder.client_id || selectedClient.auth_id;
       const clientDisplayName = selectedClient.name || 'Client';
       const formattedType = postType.toUpperCase();
+      const deliverableTitle = postTitle.trim();
 
       try {
         await dispatchPushNotification({
           targetUserId,
           targetClientName: clientDisplayName,
-          title: `🚀 New ${formattedType} Uploaded!`,
-          body: `"${postTitle}" is now live on your Outliers Media dashboard.`,
+          title: deliverableTitle,
+          body: `🚀 New ${formattedType} deliverable is now live on your Outliers Media dashboard.`,
           url: '/dashboard',
           isGlobal: false,
           postType
         });
+
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          await triggerLocalNotification(deliverableTitle, {
+            body: `🚀 New ${formattedType} uploaded for ${clientDisplayName}!`,
+            url: '/dashboard'
+          });
+        }
       } catch (pushErr) {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
       }

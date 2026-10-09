@@ -6,7 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
-import { dispatchPushNotification } from '../../utils/pushManager';
+import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -61,25 +61,46 @@ export default function AdminOverview() {
     if (error) {
       alert("Error logging deliverable: " + error.message);
     } else {
-      // Dispatch push notification to client
-      try {
-        const targetUserId = selectedEvent?.clientId;
-        const clientDisplayName = selectedEvent?.clientName || 'Client';
-        const formattedType = postType.toUpperCase();
-        const deliverableTitle = eventTitle || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Post'}`;
+      // Dispatch push notification to client with the submitted content title
+      let targetUserId = selectedEvent?.clientId;
+      let clientDisplayName = selectedEvent?.clientName || 'Client';
 
+      if (!targetUserId && selectedEvent?.orderId) {
+        const { data: ordData } = await supabase
+          .from('orders')
+          .select('client_id')
+          .eq('order_id', selectedEvent.orderId)
+          .single();
+        if (ordData) targetUserId = ordData.client_id;
+      }
+
+      const formattedType = postType.toUpperCase();
+      const deliverableTitle = eventTitle.trim() || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Deliverable'}`;
+
+      try {
         await dispatchPushNotification({
           targetUserId,
           targetClientName: clientDisplayName,
-          title: `🚀 New ${formattedType} Uploaded!`,
-          body: `"${deliverableTitle}" is now live on your Outliers Media dashboard.`,
+          title: deliverableTitle,
+          body: `🚀 New ${formattedType} deliverable is now live on your Outliers Media dashboard.`,
           url: '/dashboard',
           isGlobal: false,
           postType
         });
+
+        // Also trigger immediate local notification so submitter sees the notification pop up
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          await triggerLocalNotification(deliverableTitle, {
+            body: `🚀 New ${formattedType} uploaded for ${clientDisplayName}!`,
+            url: '/dashboard'
+          });
+        }
       } catch (pushErr) {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
       }
+
+      setQuickLogSuccess(`✓ Successfully submitted "${deliverableTitle}" & sent push notification to ${clientDisplayName}!`);
+      setTimeout(() => setQuickLogSuccess(null), 5000);
 
       await fetchAll();
       setSelectedEvent(null);
@@ -288,17 +309,25 @@ export default function AdminOverview() {
       const formattedType = logType.toUpperCase();
       const deliverableTitle = logTitle.trim();
 
-      // Dispatch push notification to client
+      // Dispatch push notification to client with submitted content title
       try {
         await dispatchPushNotification({
           targetUserId,
           targetClientName: clientDisplayName,
-          title: `🚀 New ${formattedType} Uploaded!`,
-          body: `"${deliverableTitle}" is now live on your Outliers Media dashboard.`,
+          title: deliverableTitle,
+          body: `🚀 New ${formattedType} deliverable is now live on your Outliers Media dashboard.`,
           url: '/dashboard',
           isGlobal: false,
           postType: logType
         });
+
+        // Also trigger immediate local notification so submitter sees the notification pop up
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          await triggerLocalNotification(deliverableTitle, {
+            body: `🚀 New ${formattedType} uploaded for ${clientDisplayName}!`,
+            url: '/dashboard'
+          });
+        }
       } catch (pushErr) {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
       }
