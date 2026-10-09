@@ -235,6 +235,21 @@ export async function dispatchPushNotification({
         });
         console.log("Broadcast send status:", sendResult);
 
+        // Persist to Supabase notifications table for offline/long-term storage
+        try {
+          await supabase.from('notifications').insert([{
+            user_id: isGlobal ? null : targetUserId,
+            title,
+            body,
+            url: url || '/dashboard',
+            is_global: Boolean(isGlobal),
+            post_type: postType || null,
+            created_at: payload.timestamp
+          }]);
+        } catch (dbErr) {
+          console.warn("Could not persist to notifications table:", dbErr);
+        }
+
         // Record in local dispatch log
         try {
           const existingLogs = JSON.parse(localStorage.getItem('outliers_sent_notifications') || '[]');

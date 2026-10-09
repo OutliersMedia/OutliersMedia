@@ -7,6 +7,7 @@ import { IndianRupee, AlertTriangle, ShieldAlert, CreditCard, MessageSquare, Ext
 import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 import InstallmentPayModal from '../components/dashboard/InstallmentPayModal';
+import NotificationBell from '../components/dashboard/NotificationBell';
 import { computeOrderInstallmentMetrics } from '../utils/installmentEngine';
 
 export default function Dashboard() {
@@ -151,12 +152,15 @@ export default function Dashboard() {
             <h1 className="text-4xl md:text-5xl font-serif text-primary mb-2">Welcome, {profile.name?.split(' ')[0] || 'Client'}</h1>
             <p className="text-muted text-sm uppercase tracking-widest font-bold">Client ID: <span className="text-accent">{profile.user_id}</span></p>
           </div>
-          <button 
-            onClick={() => signOut()} 
-            className="text-xs font-bold uppercase tracking-widest text-muted hover:text-danger transition-colors"
-          >
-            Sign Out
-          </button>
+          <div className="flex items-center gap-4">
+            <NotificationBell user={user} order={activeOrder} />
+            <button 
+              onClick={() => signOut()} 
+              className="text-xs font-bold uppercase tracking-widest text-muted hover:text-danger transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
         </header>
 
         {loadingOrder ? (
