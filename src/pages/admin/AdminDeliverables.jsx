@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import { 
   Search, Image as ImageIcon, Video, Layout, Plus, CheckCircle, Clock, 
@@ -31,6 +31,48 @@ export default function AdminDeliverables() {
   const [postType, setPostType] = useState('static');
   const [postTitle, setPostTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Dedicated refs for right panel scrolling isolation
+  const rightPanelContainerRef = useRef(null);
+  const scheduleScrollRef = useRef(null);
+  const historyScrollRef = useRef(null);
+
+  // Isolate mouse wheel and touchpad scrolling exclusively to the right panel
+  useEffect(() => {
+    const container = rightPanelContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e) => {
+      // Prevent the wheel event from ever scrolling the outer Deliverables page / window
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Check if scrolling over a nested scrollable element (e.g. preview schedule table)
+      const nested = e.target.closest('.nested-scroll');
+      if (nested && nested.scrollHeight > nested.clientHeight) {
+        const canScrollNestedDown = e.deltaY > 0 && nested.scrollTop + nested.clientHeight < nested.scrollHeight;
+        const canScrollNestedUp = e.deltaY < 0 && nested.scrollTop > 0;
+        if (canScrollNestedDown || canScrollNestedUp) {
+          nested.scrollTop += e.deltaY;
+          return;
+        }
+      }
+
+      // Determine active target scroll pane
+      const scrollTarget = activeTab === 'schedule' 
+        ? scheduleScrollRef.current 
+        : historyScrollRef.current;
+
+      if (scrollTarget) {
+        scrollTarget.scrollTop += e.deltaY;
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [activeTab, selectedClient]);
 
   useEffect(() => {
     fetchData();
@@ -395,7 +437,7 @@ export default function AdminDeliverables() {
           </div>
 
           {/* Right Panel: Tabbed Workspace */}
-          <div className="w-full lg:w-2/3 bg-[#0a0a0a] border border-[#222] rounded-2xl flex flex-col h-[740px] overflow-hidden">
+          <div ref={rightPanelContainerRef} className="w-full lg:w-2/3 bg-[#0a0a0a] border border-[#222] rounded-2xl flex flex-col h-[740px] overflow-hidden">
             {selectedClient ? (
               selectedClient.latestOrder ? (
                 <>
@@ -440,7 +482,7 @@ export default function AdminDeliverables() {
 
                   {/* TAB 1: UPLOAD SCHEDULE */}
                   {activeTab === 'schedule' && (
-                    <div data-lenis-prevent="true" className="flex-1 overflow-y-auto p-6 custom-scrollbar overscroll-contain flex flex-col gap-6">
+                    <div ref={scheduleScrollRef} data-lenis-prevent="true" className="flex-1 min-h-0 overflow-y-auto p-6 custom-scrollbar overscroll-contain flex flex-col gap-6">
                       
                       {/* Success Toast */}
                       {scheduleSavedSuccess && (
@@ -660,7 +702,7 @@ export default function AdminDeliverables() {
                         </div>
 
                         {/* Schedule List Preview */}
-                        <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto custom-scrollbar overscroll-contain border border-[#1f1f1f] rounded-xl bg-[#080808]">
+                        <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto custom-scrollbar overscroll-contain border border-[#1f1f1f] rounded-xl bg-[#080808] nested-scroll">
                           {previewSchedule.length === 0 ? (
                             <div className="p-8 text-center text-[#555] text-xs">
                               Select a First Upload Date and enter weekly values to generate the preview.
@@ -708,7 +750,7 @@ export default function AdminDeliverables() {
 
                   {/* TAB 2: DELIVERABLES & LOGGING (KEEP OLD FEATURES + STORIES) */}
                   {activeTab === 'logging' && (
-                    <div className="flex-1 flex flex-col overflow-hidden">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                       {/* Quota Progress Summary Cards */}
                       <div className="p-6 border-b border-[#222]">
                         <div className={`grid gap-4 ${selectedClient.latestOrder.posters_total > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
@@ -766,7 +808,7 @@ export default function AdminDeliverables() {
                         </div>
                       </div>
 
-                      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
                         {/* Form: Log New Delivery */}
                         <div className="w-full md:w-1/2 p-6 border-r border-[#222] flex flex-col">
                           <h4 className="text-white text-sm font-bold uppercase tracking-widest mb-4">Log New Delivery</h4>
@@ -815,7 +857,7 @@ export default function AdminDeliverables() {
                         </div>
 
                         {/* History: Delivery History */}
-                        <div data-lenis-prevent="true" className="w-full md:w-1/2 p-6 overflow-y-auto custom-scrollbar overscroll-contain">
+                        <div ref={historyScrollRef} data-lenis-prevent="true" className="w-full md:w-1/2 p-6 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain">
                           <h4 className="text-white text-sm font-bold uppercase tracking-widest mb-4">Delivery History</h4>
                           
                           <div className="flex flex-col gap-3">
