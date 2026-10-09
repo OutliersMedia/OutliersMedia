@@ -13,6 +13,25 @@ export const getStandardPlanPrice = (planName) => {
 };
 
 /**
+ * Checks if an order or client corresponds to Cravory.
+ */
+export function isCravoryOrder(order) {
+  if (!order) return false;
+  const searchable = [
+    order.order_id,
+    order.plan_name,
+    order.client_id,
+    order.client?.name,
+    order.client?.email,
+    order.client?.phone,
+    order.client?.business_type,
+    order.client?.instagram_handle
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return searchable.includes('cravory');
+}
+
+/**
  * Computes live metrics for an order with or without an installment plan.
  */
 export function computeOrderInstallmentMetrics(order) {
@@ -39,6 +58,63 @@ export function computeOrderInstallmentMetrics(order) {
   const rawInstallments = Array.isArray(order.installments) 
     ? order.installments 
     : (order.schedule_config?.installments || []);
+
+  // --- SPECIAL RETROACTIVE HANDLING FOR CRAVORY ---
+  // Cravory closed at ₹3,000 total with ₹1,500 advance paid as of now (50% / 50% split)
+  const isCravory = isCravoryOrder(order);
+  if (isCravory && (rawInstallments.length === 0 || Number(order.total_agreed_amount || 0) !== 3000 || Number(order.amount_paid || 0) !== 1500)) {
+    const totalAgreed = 3000;
+    const paidAmount = 1500;
+    const balanceDue = 1500;
+    const discountAmount = Math.max(0, standardPrice - totalAgreed);
+    const orderDate = order.created_at ? new Date(order.created_at).toISOString().split('T')[0] : '2026-10-08';
+    
+    const secondDateObj = order.created_at ? new Date(order.created_at) : new Date();
+    secondDateObj.setDate(secondDateObj.getDate() + 15);
+    const secondDate = secondDateObj.toISOString().split('T')[0];
+
+    const cravoryInstallments = [
+      {
+        installment_number: 1,
+        amount: 1500,
+        due_date: orderDate,
+        paid_at: order.created_at || new Date().toISOString(),
+        payment_id: order.payment_id || 'TXN-CRAVORY-50PCT-ADVANCE',
+        receipt_url: order.payment_receipt_url || null,
+        status: 'paid',
+        notes: 'Advance Payment (50%)'
+      },
+      {
+        installment_number: 2,
+        amount: 1500,
+        due_date: secondDate,
+        paid_at: null,
+        payment_id: null,
+        receipt_url: null,
+        status: 'pending',
+        notes: 'Final Milestone (50%)'
+      }
+    ];
+
+    return {
+      hasInstallments: true,
+      installments: cravoryInstallments,
+      standardPrice,
+      totalAgreed,
+      discountAmount,
+      paidAmount,
+      balanceDue,
+      gracePeriodDays: Number(order.grace_period_days || 3),
+      isFullyPaid: false,
+      isOverdue: false,
+      inGracePeriod: false,
+      graceDaysLeft: 3,
+      daysOverdue: 0,
+      nextInstallment: cravoryInstallments[1],
+      hasPendingVerification: false,
+      calculatedAccountStatus: 'active'
+    };
+  }
 
   const totalAgreed = Number(
     order.total_agreed_amount !== undefined && order.total_agreed_amount !== null

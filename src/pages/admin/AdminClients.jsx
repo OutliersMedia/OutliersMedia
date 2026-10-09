@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabaseClient';
-import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle } from 'lucide-react';
+import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle, Edit3 } from 'lucide-react';
 
 // --- COPY BUTTON COMPONENT ---
 function CopyButton({ text }) {
@@ -20,6 +21,7 @@ function CopyButton({ text }) {
 import { generateUploadSchedule, getNextUpload, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
 
 export default function AdminClients() {
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
@@ -219,7 +221,14 @@ export default function AdminClients() {
                       {order ? (
                         <>
                           <p className="text-[#3428f8] font-bold text-sm mb-1">{order.plan_name}</p>
-                          <p className="text-[#666] text-xs font-mono">{order.order_id}</p>
+                          <p className="text-[#666] text-xs font-mono mb-1.5">{order.order_id}</p>
+                          <button
+                            onClick={() => navigate(`/admin/finances?search=${encodeURIComponent(client.name || order.order_id)}`)}
+                            className="inline-flex items-center gap-1.5 text-[10px] text-[#aaa] hover:text-white font-bold bg-[#141414] hover:bg-[#3428f8] px-2 py-1 rounded-lg border border-[#2a2a2a] hover:border-[#3428f8] transition-all cursor-pointer shadow-sm"
+                            title="Edit client payment, agreed price, or EMI schedule in Finances"
+                          >
+                            <Edit3 size={10} className="text-[#3428f8] group-hover:text-white" /> Edit Payment
+                          </button>
                         </>
                       ) : (
                         <span className="text-[#555] text-sm italic">No Plan Selected</span>

@@ -12,7 +12,8 @@ import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../ut
 import { 
   computeOrderInstallmentMetrics, 
   generateDefaultInstallmentPlan, 
-  getStandardPlanPrice 
+  getStandardPlanPrice,
+  isCravoryOrder
 } from '../../utils/installmentEngine';
 
 export { getStandardPlanPrice };
@@ -86,8 +87,66 @@ export default function AdminFinances() {
       let activeEmiCount = 0;
 
       const mapped = await Promise.all(orders.map(async (order) => {
+        const clientProfile = profileMap[order.client_id] || { name: 'Unknown Client', email: 'Unknown' };
+        const orderWithClient = { ...order, client: clientProfile };
+
+        // --- RETROACTIVE AUTO-SYNC FOR CRAVORY (₹3,000 Total, ₹1,500 Paid Advance, ₹1,500 Due) ---
+        if (isCravoryOrder(orderWithClient)) {
+          const rawInst = Array.isArray(order.installments) ? order.installments : [];
+          if (Number(order.total_agreed_amount) !== 3000 || Number(order.amount_paid) !== 1500 || rawInst.length === 0) {
+            const orderDate = order.created_at ? new Date(order.created_at).toISOString().split('T')[0] : '2026-10-08';
+            const secondDateObj = order.created_at ? new Date(order.created_at) : new Date();
+            secondDateObj.setDate(secondDateObj.getDate() + 15);
+            const secondDate = secondDateObj.toISOString().split('T')[0];
+
+            const cravoryInstallments = [
+              {
+                installment_number: 1,
+                amount: 1500,
+                due_date: orderDate,
+                paid_at: order.created_at || new Date().toISOString(),
+                payment_id: order.payment_id || 'TXN-CRAVORY-50PCT-ADVANCE',
+                receipt_url: order.payment_receipt_url || null,
+                status: 'paid',
+                notes: 'Advance Payment (50%)'
+              },
+              {
+                installment_number: 2,
+                amount: 1500,
+                due_date: secondDate,
+                paid_at: null,
+                payment_id: null,
+                receipt_url: null,
+                status: 'pending',
+                notes: 'Final Milestone (50%)'
+              }
+            ];
+
+            try {
+              await supabase.from('orders').update({
+                total_agreed_amount: 3000,
+                amount_paid: 1500,
+                balance_due: 1500,
+                installments: cravoryInstallments,
+                status: 'active',
+                payment_status: 'partial',
+                grace_period_days: 3
+              }).eq('id', order.id);
+
+              order.total_agreed_amount = 3000;
+              order.amount_paid = 1500;
+              order.balance_due = 1500;
+              order.installments = cravoryInstallments;
+              order.status = 'active';
+              order.payment_status = 'partial';
+            } catch (err) {
+              console.warn("Could not auto-sync Cravory order to Supabase:", err);
+            }
+          }
+        }
+
         let currentStatus = order.status;
-        const instMetrics = computeOrderInstallmentMetrics(order);
+        const instMetrics = computeOrderInstallmentMetrics({ ...order, client: clientProfile });
 
         // Auto-suspension check: active order overdue past grace period -> pause
         if (order.status === 'active' && instMetrics.isOverdue) {
@@ -131,7 +190,7 @@ export default function AdminFinances() {
           totalAgreed: instMetrics.totalAgreed,
           discountAmount: instMetrics.discountAmount,
           instMetrics,
-          client: profileMap[order.client_id] || { name: 'Unknown Client', email: 'Unknown' }
+          client: clientProfile
         };
       }));
 
@@ -672,10 +731,11 @@ export default function AdminFinances() {
 
                           <button 
                             onClick={() => handleOpenConfigurator(txn)}
-                            className="text-[#3428f8] hover:text-[#6a60ff] text-[10px] font-bold underline transition-colors"
-                            title="Edit agreed price, discount, or EMI schedule"
+                            className="inline-flex items-center gap-1.5 bg-[#1b1b1b] hover:bg-[#3428f8] text-[#ddd] hover:text-white border border-[#333] hover:border-[#3428f8] px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+                            title="Edit agreed price, discount, or installment plan"
                           >
-                            Configure Plan
+                            <Edit3 size={11} className="text-[#3428f8]" />
+                            Edit Payment & EMIs
                           </button>
                         </div>
                       </div>
@@ -763,6 +823,16 @@ export default function AdminFinances() {
                     {/* Action Buttons */}
                     <td className="p-4 text-right">
                       <div className="flex justify-end items-center gap-2">
+                        {/* Always Visible: Edit Payment & EMIs */}
+                        <button 
+                          onClick={() => handleOpenConfigurator(txn)}
+                          className="bg-[#1c1c1c] hover:bg-[#3428f8] text-[#ddd] hover:text-white border border-[#333] hover:border-[#3428f8] px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer shadow-sm group"
+                          title="Edit payment amounts, discounts, and installment schedule"
+                        >
+                          <Edit3 size={13} className="text-[#3428f8] group-hover:text-white transition-colors" />
+                          Edit Payment
+                        </button>
+
                         {/* 1. Pending Initial Order Approval */}
                         {txn.status === 'pending' && (
                           <button 
@@ -770,7 +840,7 @@ export default function AdminFinances() {
                             className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.15)] cursor-pointer"
                             title="Approve order and configure agreed pricing & EMIs"
                           >
-                            <CheckCircle size={14} /> Accept & Set EMIs
+                            <CheckCircle size={14} /> Accept Order
                           </button>
                         )}
 
@@ -900,7 +970,7 @@ export default function AdminFinances() {
                     </div>
                     <div>
                       <h3 className="text-xl font-serif text-white">
-                        {isPending ? 'Approve Retainer & Configure Payment Plan' : 'Edit Agreed Pricing & EMI Milestones'}
+                        {isPending ? 'Approve Retainer & Set Payment Plan' : 'Edit Client Payment & Milestone Schedule'}
                       </h3>
                       <p className="text-xs text-[#888]">
                         Order ID: <span className="font-mono text-white font-bold">{configModalOrder.order_id}</span> • {configModalOrder.client?.name}
@@ -1178,6 +1248,26 @@ export default function AdminFinances() {
                       </select>
                     </div>
                   </div>
+
+                  {/* Live Contract & Payment Summary Card */}
+                  <div className="bg-[#141414] border border-[#262626] rounded-2xl p-4 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                      <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Agreed Contract Value</span>
+                      <span className="text-white font-mono font-bold text-lg">₹{currentInputVal.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Paid So Far</span>
+                      <span className="text-green-400 font-mono font-bold text-lg">
+                        ₹{configInstallments.filter(i => i.status === 'paid').reduce((sum, i) => sum + Number(i.amount || 0), 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Remaining Balance</span>
+                      <span className="text-yellow-400 font-mono font-bold text-lg">
+                        ₹{Math.max(0, currentInputVal - configInstallments.filter(i => i.status === 'paid').reduce((sum, i) => sum + Number(i.amount || 0), 0)).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Footer Buttons */}
@@ -1205,7 +1295,7 @@ export default function AdminFinances() {
                     ) : (
                       <>
                         <CheckCircle size={16} />
-                        {isPending ? 'Approve & Activate Retainer' : 'Save Plan & Pricing'}
+                        {isPending ? 'Approve & Activate Retainer' : 'Save Payment Changes'}
                       </>
                     )}
                   </button>
