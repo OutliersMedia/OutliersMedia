@@ -6,6 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
+import { dispatchPushNotification } from '../../utils/pushManager';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export default function AdminOverview() {
   const [logType, setLogType] = useState('static');
   const [logTitle, setLogTitle] = useState('');
   const [isLogging, setIsLogging] = useState(false);
+  const [quickLogSuccess, setQuickLogSuccess] = useState(null);
   const [activeOrders, setActiveOrders] = useState([]);
 
   // Calendar Event Card Popup state
@@ -59,6 +61,26 @@ export default function AdminOverview() {
     if (error) {
       alert("Error logging deliverable: " + error.message);
     } else {
+      // Dispatch push notification to client
+      try {
+        const targetUserId = selectedEvent?.clientId;
+        const clientDisplayName = selectedEvent?.clientName || 'Client';
+        const formattedType = postType.toUpperCase();
+        const deliverableTitle = eventTitle || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Post'}`;
+
+        await dispatchPushNotification({
+          targetUserId,
+          targetClientName: clientDisplayName,
+          title: `🚀 New ${formattedType} Uploaded!`,
+          body: `"${deliverableTitle}" is now live on your Outliers Media dashboard.`,
+          url: '/dashboard',
+          isGlobal: false,
+          postType
+        });
+      } catch (pushErr) {
+        console.warn("Could not dispatch deliverable push notification:", pushErr);
+      }
+
       await fetchAll();
       setSelectedEvent(null);
     }
@@ -176,6 +198,7 @@ export default function AdminOverview() {
           time: slot.time,
           note: slot.note,
           clientName,
+          clientId: order.client_id,
           orderId: order.order_id,
           delivered,
           isOverdue: !delivered && slotDate < today && ['static', 'reel', 'poster', 'story'].includes(slot.type)
@@ -237,6 +260,7 @@ export default function AdminOverview() {
     e.preventDefault();
     if (!logOrderId || !logTitle) return;
     setIsLogging(true);
+    setQuickLogSuccess(null);
 
     const { error } = await supabase.from('posts_log').insert([{
       order_id: logOrderId,
@@ -247,6 +271,41 @@ export default function AdminOverview() {
     if (error) {
       alert("Error: " + error.message);
     } else {
+      // Find the corresponding order and client
+      let targetOrder = activeOrders.find(o => o.order_id === logOrderId);
+      let targetUserId = targetOrder?.client_id;
+      let clientDisplayName = targetOrder?.clientName || 'Client';
+
+      if (!targetUserId) {
+        const { data: ordData } = await supabase
+          .from('orders')
+          .select('client_id')
+          .eq('order_id', logOrderId)
+          .single();
+        if (ordData) targetUserId = ordData.client_id;
+      }
+
+      const formattedType = logType.toUpperCase();
+      const deliverableTitle = logTitle.trim();
+
+      // Dispatch push notification to client
+      try {
+        await dispatchPushNotification({
+          targetUserId,
+          targetClientName: clientDisplayName,
+          title: `🚀 New ${formattedType} Uploaded!`,
+          body: `"${deliverableTitle}" is now live on your Outliers Media dashboard.`,
+          url: '/dashboard',
+          isGlobal: false,
+          postType: logType
+        });
+      } catch (pushErr) {
+        console.warn("Could not dispatch deliverable push notification:", pushErr);
+      }
+
+      setQuickLogSuccess(`✓ Logged "${deliverableTitle}" & sent push notification to ${clientDisplayName}!`);
+      setTimeout(() => setQuickLogSuccess(null), 5000);
+
       setLogTitle('');
       await fetchAll();
     }
@@ -416,6 +475,17 @@ export default function AdminOverview() {
           className="lg:col-span-1 bg-[#111] border border-[#222] rounded-2xl p-6 md:p-8 flex flex-col"
         >
           <h2 className="text-xl font-serif text-white mb-6">Quick Post Logger</h2>
+
+          {quickLogSuccess && (
+            <motion.div 
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-5 p-3.5 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs font-semibold flex items-center gap-2 shadow-[0_0_15px_rgba(34,197,94,0.15)]"
+            >
+              <CheckCircle size={16} className="shrink-0" />
+              <span>{quickLogSuccess}</span>
+            </motion.div>
+          )}
 
           <form onSubmit={handleQuickLog} className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">

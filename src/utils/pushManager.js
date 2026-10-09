@@ -164,12 +164,35 @@ export async function triggerLocalNotification(title, options = {}) {
   }
 }
 
-// Global active Realtime channel reference
+// Global active Realtime channel reference and registered listeners set
 let activeAlertChannel = null;
+const notificationListeners = new Set();
 
 function getAlertChannel() {
   if (!activeAlertChannel) {
-    activeAlertChannel = supabase.channel('outliers-alerts');
+    activeAlertChannel = supabase.channel('outliers-alerts', {
+      config: {
+        broadcast: { self: true } // Ensure sender and local clients receive the event
+      }
+    });
+
+    activeAlertChannel.on('broadcast', { event: 'new-notification' }, async (event) => {
+      const payload = event?.payload;
+      if (!payload) return;
+      console.log("Push payload received on outliers-alerts channel:", payload);
+
+      notificationListeners.forEach((callback) => {
+        try {
+          callback(payload);
+        } catch (err) {
+          console.error("Error executing notification callback:", err);
+        }
+      });
+    });
+
+    activeAlertChannel.subscribe((status) => {
+      console.log("outliers-alerts channel subscription status:", status);
+    });
   }
   return activeAlertChannel;
 }
@@ -200,10 +223,10 @@ export async function dispatchPushNotification({
     timestamp: new Date().toISOString()
   };
 
-  return new Promise((resolve) => {
-    const channel = getAlertChannel();
+  const channel = getAlertChannel();
 
-    const sendPayload = async () => {
+  return new Promise((resolve) => {
+    const doSend = async () => {
       try {
         const sendResult = await channel.send({
           type: 'broadcast',
@@ -227,13 +250,19 @@ export async function dispatchPushNotification({
     };
 
     if (channel.state === 'joined') {
-      sendPayload();
+      doSend();
     } else {
       channel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          sendPayload();
+          doSend();
         }
       });
+      // Fallback timer if subscription was already transitioning
+      setTimeout(() => {
+        if (channel.state === 'joined') {
+          doSend();
+        }
+      }, 350);
     }
   });
 }
@@ -241,23 +270,24 @@ export async function dispatchPushNotification({
 /**
  * Listens on Supabase Realtime channel for incoming push alerts and triggers OS notification
  */
-export function setupNotificationListener(userId, userEmail = null, onNotificationReceived = null) {
+export function setupNotificationListener(userOrId, profileOrEmail = null, onNotificationReceived = null) {
+  const userId = typeof userOrId === 'object' ? userOrId?.id : userOrId;
+  const userEmail = typeof userOrId === 'object' ? userOrId?.email : (typeof profileOrEmail === 'string' ? profileOrEmail : null);
+  const profile = typeof profileOrEmail === 'object' ? profileOrEmail : null;
+  const callback = typeof profileOrEmail === 'function' ? profileOrEmail : onNotificationReceived;
+
   if (!userId && !userEmail) return () => {};
 
-  const channel = getAlertChannel();
-
-  channel.on('broadcast', { event: 'new-notification' }, async (event) => {
-    const payload = event.payload;
-    if (!payload) return;
-
-    console.log("Push payload received on client listener:", payload);
-
+  const listener = async (payload) => {
     // Check if message is intended for this user
     const isForMe = 
       payload.isGlobal === true || 
       payload.targetUserId === 'all' ||
       payload.targetUserId === userId ||
+      (profile?.auth_id && payload.targetUserId === profile.auth_id) ||
+      (profile?.user_id && payload.targetUserId === profile.user_id) ||
       (userEmail && payload.targetUserId === userEmail) ||
+      (payload.targetClientName && profile?.name && payload.targetClientName.toLowerCase().trim() === profile.name.toLowerCase().trim()) ||
       (payload.targetClientName && userEmail && payload.targetClientName.toLowerCase().includes(userEmail.toLowerCase()));
 
     if (isForMe) {
@@ -269,19 +299,18 @@ export function setupNotificationListener(userId, userEmail = null, onNotificati
         });
       }
 
-      if (typeof onNotificationReceived === 'function') {
-        onNotificationReceived(payload);
+      if (typeof callback === 'function') {
+        callback(payload);
       }
     }
-  });
+  };
 
-  if (channel.state !== 'joined') {
-    channel.subscribe((status) => {
-      console.log("Realtime notification channel status:", status);
-    });
-  }
+  notificationListeners.add(listener);
+
+  // Ensure channel is initialized and connected
+  getAlertChannel();
 
   return () => {
-    // Keep active or handle cleanup
+    notificationListeners.delete(listener);
   };
 }
