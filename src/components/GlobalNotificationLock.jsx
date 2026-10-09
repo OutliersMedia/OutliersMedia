@@ -206,9 +206,6 @@ export default function GlobalNotificationLock() {
             </>
           ) : (
             <>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#3428f8]/10 border border-[#3428f8]/25 text-[#3428f8] text-[11px] font-bold uppercase tracking-wider mb-3">
-                <Sparkles size={12} /> Instant Delivery Alerts
-              </div>
               <h2 className="text-2xl md:text-3xl font-serif text-white mb-2">
                 Enable Content Alerts
               </h2>
