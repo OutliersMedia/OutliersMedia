@@ -11,6 +11,7 @@ import TicketModal from './TicketModal';
 import { generateSingleInvoicePDF } from '../../utils/invoiceGenerator';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { getClientSchedule } from '../../utils/scheduleEngine';
+import { triggerLocalNotification } from '../../utils/pushManager';
 
 export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpenPayModal }) {
   const [posts, setPosts] = useState([]);
@@ -27,7 +28,34 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
         .select('*')
         .eq('order_id', order.order_id)
         .order('published_at', { ascending: true });
-      if (data) setPosts(data);
+      if (data) {
+        setPosts(data);
+
+        // Offline Catch-up Notification: fires if a post was uploaded while user was offline/closed
+        try {
+          if (data.length > 0) {
+            const latestPost = data[data.length - 1];
+            const storageKey = `outliers_seen_post_${order.order_id}`;
+            const lastSeenId = localStorage.getItem(storageKey);
+
+            if (latestPost && latestPost.id && String(latestPost.id) !== lastSeenId) {
+              const pubTime = new Date(latestPost.published_at || latestPost.created_at || Date.now()).getTime();
+              const isRecent = (Date.now() - pubTime) < 48 * 60 * 60 * 1000; // uploaded within last 48h
+
+              if (lastSeenId && isRecent && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                const formattedType = (latestPost.post_type || 'post').toUpperCase();
+                triggerLocalNotification(latestPost.title || 'New Deliverable Available', {
+                  body: `🚀 New ${formattedType} deliverable is now live on your Outliers Media dashboard.`,
+                  url: '/dashboard'
+                });
+              }
+              localStorage.setItem(storageKey, String(latestPost.id));
+            }
+          }
+        } catch (e) {
+          console.warn("Offline catch-up notification notice:", e);
+        }
+      }
     };
 
     // Fetch Tickets
