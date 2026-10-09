@@ -1,5 +1,5 @@
 import { useEffect, useState, createContext } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
@@ -24,19 +24,20 @@ export const ThemeContext = createContext();
 export const SplashContext = createContext();
 
 import GlobalPhoneLock from './components/GlobalPhoneLock';
+import GlobalNotificationLock from './components/GlobalNotificationLock';
 import AdminTickets from './pages/admin/AdminTickets';
 import AdminClients from './pages/admin/AdminClients';
 import AdminFinances from './pages/admin/AdminFinances';
 import AdminDeliverables from './pages/admin/AdminDeliverables';
+import AdminNotifications from './pages/admin/AdminNotifications';
 
-// This component acts as a global lock for clients missing their phone number.
+// This component acts as a global lock for clients missing phone or notification permissions.
 function GlobalOnboardingGuard({ children }) {
-  // We no longer redirect to /onboarding.
-  // Instead, we render the GlobalPhoneLock which overlays a mandatory modal on ANY screen.
   return (
     <>
       {children}
       <GlobalPhoneLock />
+      <GlobalNotificationLock />
     </>
   );
 }
@@ -158,7 +159,8 @@ function App() {
                         <Route path="deliverables" element={<AdminDeliverables />} />
                         <Route path="finances" element={<AdminFinances />} />
                         <Route path="tickets" element={<AdminTickets />} />
-                        <Route path="email" element={<div className="text-white text-center p-20 text-2xl font-serif">Email Broadcaster <br/><span className="text-[#3428f8] text-sm font-sans uppercase tracking-widest">Under Construction</span></div>} />
+                        <Route path="notifications" element={<AdminNotifications />} />
+                        <Route path="email" element={<Navigate to="/admin/notifications" replace />} />
                       </Route>
 
                       {/* Standard Marketing & App Routes */}

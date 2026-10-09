@@ -1,7 +1,7 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Mail, LogOut, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 
@@ -57,7 +57,7 @@ export default function AdminLayout() {
     { name: 'DELIVERABLES', path: '/admin/deliverables', icon: ImagePlus },
     { name: 'FINANCES', path: '/admin/finances', icon: Landmark },
     { name: 'TICKETS', path: '/admin/tickets', icon: Ticket },
-    { name: 'EMAIL', path: '/admin/email', icon: Mail },
+    { name: 'NOTIFICATIONS', path: '/admin/notifications', icon: Bell },
   ];
 
   return (
