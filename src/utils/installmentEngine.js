@@ -62,7 +62,7 @@ export function computeOrderInstallmentMetrics(order) {
   // --- SPECIAL RETROACTIVE HANDLING FOR CRAVORY ---
   // Cravory closed at ₹3,000 total with ₹1,500 advance paid as of now (50% / 50% split)
   const isCravory = isCravoryOrder(order);
-  if (isCravory && (rawInstallments.length === 0 || Number(order.total_agreed_amount || 0) !== 3000 || Number(order.amount_paid || 0) !== 1500)) {
+  if (isCravory && rawInstallments.length === 0) {
     const totalAgreed = 3000;
     const paidAmount = 1500;
     const balanceDue = 1500;

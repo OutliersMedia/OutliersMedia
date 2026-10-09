@@ -94,7 +94,7 @@ export default function AdminFinances() {
         // --- RETROACTIVE AUTO-SYNC FOR CRAVORY (₹3,000 Total, ₹1,500 Paid Advance, ₹1,500 Due) ---
         if (isCravoryOrder(orderWithClient)) {
           const rawInst = Array.isArray(order.installments) ? order.installments : [];
-          if (Number(order.total_agreed_amount) !== 3000 || Number(order.amount_paid) !== 1500 || rawInst.length === 0) {
+          if (rawInst.length === 0 && (!order.total_agreed_amount || !order.amount_paid)) {
             const orderDate = order.created_at ? new Date(order.created_at).toISOString().split('T')[0] : '2026-10-08';
             const secondDateObj = order.created_at ? new Date(order.created_at) : new Date();
             secondDateObj.setDate(secondDateObj.getDate() + 15);
@@ -221,6 +221,7 @@ export default function AdminFinances() {
         amount: Number(inst.amount || 0),
         due_date: inst.due_date || new Date().toISOString().split('T')[0],
         status: inst.status || 'pending',
+        paid_at: inst.paid_at || (inst.status === 'paid' ? new Date().toISOString() : null),
         payment_id: inst.payment_id || '',
         notes: inst.notes || '',
         receipt_url: inst.receipt_url || null
@@ -244,9 +245,10 @@ export default function AdminFinances() {
           installment_number: 1,
           amount: Number(agreed),
           due_date: order.created_at ? new Date(order.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          paid_at: order.created_at || new Date().toISOString(),
           status: 'paid',
           payment_id: order.payment_id || 'TXN-FULL-PAID',
-          notes: 'Full Retainer Payment',
+          notes: 'Full Retainer Payment (Complete Payment)',
           receipt_url: order.payment_receipt_url || null
         }]);
       }
@@ -262,9 +264,10 @@ export default function AdminFinances() {
         installment_number: 1,
         amount: total,
         due_date: new Date().toISOString().split('T')[0],
-        status: configModalOrder?.status === 'pending' ? 'paid' : 'paid',
-        payment_id: configModalOrder?.payment_id || 'TXN-FULL-PAID',
-        notes: 'Full Retainer Payment',
+        paid_at: new Date().toISOString(),
+        status: 'paid',
+        payment_id: configModalOrder?.payment_id || `TXN-FULL-PAID-${Date.now().toString().slice(-6)}`,
+        notes: 'Complete Payment (100% Upfront)',
         receipt_url: configModalOrder?.payment_receipt_url || null
       }]);
     } else {
@@ -276,6 +279,38 @@ export default function AdminFinances() {
         firstReceiptUrl: configModalOrder?.payment_receipt_url,
         firstIsPaid: true
       }));
+    }
+  };
+
+  // 1-Click Complete Payment Option (Client gave complete payment at once)
+  const handleMarkCompletePayment = (consolidateToSingle = false) => {
+    const total = Number(agreedPriceInput) || getStandardPlanPrice(configModalOrder?.plan_name);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowIso = new Date().toISOString();
+
+    if (consolidateToSingle || configInstallments.length <= 1) {
+      setSplitCount(1);
+      setConfigInstallments([{
+        installment_number: 1,
+        amount: total,
+        due_date: configInstallments[0]?.due_date || todayStr,
+        paid_at: configInstallments[0]?.paid_at || nowIso,
+        status: 'paid',
+        payment_id: configInstallments[0]?.payment_id || configModalOrder?.payment_id || `TXN-FULL-PAID-${Date.now().toString().slice(-6)}`,
+        notes: 'Complete Payment (Paid in Full)',
+        receipt_url: configInstallments[0]?.receipt_url || configModalOrder?.payment_receipt_url || null
+      }]);
+    } else {
+      // Mark all existing milestones as paid in full
+      const updated = configInstallments.map((inst, idx) => ({
+        ...inst,
+        status: 'paid',
+        paid_at: inst.paid_at || nowIso,
+        due_date: inst.due_date || todayStr,
+        payment_id: inst.payment_id || `TXN-PAID-${Date.now().toString().slice(-6)}`,
+        notes: inst.notes || (configInstallments.length > 1 ? `Milestone #${idx + 1} (Complete Payment)` : 'Complete Payment')
+      }));
+      setConfigInstallments(updated);
     }
   };
 
@@ -386,15 +421,30 @@ export default function AdminFinances() {
 
       const paymentStatus = balanceDue <= 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending');
 
+      const sanitizedInstallments = configInstallments.map(inst => {
+        if (inst.status === 'paid' && !inst.paid_at) {
+          return {
+            ...inst,
+            paid_at: new Date().toISOString(),
+            payment_id: inst.payment_id || `TXN-PAID-${Date.now().toString().slice(-6)}`
+          };
+        }
+        return inst;
+      });
+
       const updatePayload = {
         total_agreed_amount: totalAgreed,
         amount_paid: paidAmount,
         balance_due: balanceDue,
-        installments: configInstallments,
+        installments: sanitizedInstallments,
         grace_period_days: Number(gracePeriodInput || 3),
         status: nextStatus,
         payment_status: paymentStatus
       };
+
+      if (balanceDue <= 0 && (!configModalOrder.payment_id || configModalOrder.payment_id.trim() === '')) {
+        updatePayload.payment_id = sanitizedInstallments[0]?.payment_id || `TXN-FULL-PAID-${Date.now().toString().slice(-6)}`;
+      }
 
       const { error } = await supabase
         .from('orders')
@@ -948,6 +998,12 @@ export default function AdminFinances() {
           const sumDiff = currentInputVal - milestonesSum;
           const isBalanced = Math.abs(sumDiff) <= 1;
 
+          const totalPaidNow = configInstallments
+            .filter(inst => inst.status === 'paid')
+            .reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+          const remainingBalVal = Math.max(0, currentInputVal - totalPaidNow);
+          const isFullyPaidNow = configInstallments.length > 0 && remainingBalVal === 0 && configInstallments.every(inst => inst.status === 'paid');
+
           const quickPresets = [];
           if (stdPrice === 3500) {
             quickPresets.push({ label: '₹3,500 (Full)', price: 3500 });
@@ -1090,6 +1146,68 @@ export default function AdminFinances() {
                       </button>
                     </div>
 
+                    {/* Dedicated Complete Payment Option */}
+                    <div className={`mb-4 p-4 rounded-2xl border transition-all ${
+                      isFullyPaidNow 
+                        ? 'bg-emerald-950/20 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.08)]' 
+                        : 'bg-[#15171d] border-[#2d3045] hover:border-emerald-500/50'
+                    }`}>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-xl border ${
+                            isFullyPaidNow 
+                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          }`}>
+                            <CheckCircle size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-white">Complete Payment Option</h4>
+                              {isFullyPaidNow ? (
+                                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                                  <Check size={10} className="stroke-[3]" /> 100% Paid (₹0 Due)
+                                </span>
+                              ) : (
+                                <span className="text-[10px] bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                                  ₹{remainingBalVal.toLocaleString()} Remaining
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-[#888] mt-0.5">
+                              If the client gave the full payment at once, mark everything as paid with 1 click.
+                            </p>
+                            {configInstallments.length > 1 && !isFullyPaidNow && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkCompletePayment(true)}
+                                className="text-[11px] text-[#3428f8] hover:text-white underline cursor-pointer mt-1 font-medium inline-block"
+                              >
+                                Or convert to 1x single full payment
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleMarkCompletePayment(false)}
+                            disabled={isFullyPaidNow}
+                            className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                              isFullyPaidNow
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 cursor-default font-medium'
+                                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] active:scale-[0.98]'
+                            }`}
+                            title="Mark all installments as paid in full"
+                          >
+                            <Check size={14} className="stroke-[3]" />
+                            {isFullyPaidNow ? 'Completed in Full ✓' : 'Complete Payment'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Split Buttons */}
                     <div className="grid grid-cols-3 gap-2.5 mb-4">
                       <button
@@ -1101,8 +1219,8 @@ export default function AdminFinances() {
                             : 'bg-[#141414] border-[#252525] text-[#888] hover:text-white'
                         }`}
                       >
-                        <p className="text-xs font-bold uppercase tracking-wider">1x Full Payment</p>
-                        <p className="text-[10px] text-[#666] mt-0.5">100% upfront</p>
+                        <p className="text-xs font-bold uppercase tracking-wider">1x Complete Payment</p>
+                        <p className="text-[10px] text-emerald-400 mt-0.5 font-medium">100% upfront (Single)</p>
                       </button>
 
                       <button
@@ -1279,13 +1397,16 @@ export default function AdminFinances() {
                     <div>
                       <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Paid So Far</span>
                       <span className="text-green-400 font-mono font-bold text-lg">
-                        ₹{configInstallments.filter(i => i.status === 'paid').reduce((sum, i) => sum + Number(i.amount || 0), 0).toLocaleString()}
+                        ₹{totalPaidNow.toLocaleString()}
                       </span>
                     </div>
                     <div>
                       <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Remaining Balance</span>
-                      <span className="text-yellow-400 font-mono font-bold text-lg">
-                        ₹{Math.max(0, currentInputVal - configInstallments.filter(i => i.status === 'paid').reduce((sum, i) => sum + Number(i.amount || 0), 0)).toLocaleString()}
+                      <span className={`font-mono font-bold text-lg ${remainingBalVal === 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+                        ₹{remainingBalVal.toLocaleString()}
+                        {remainingBalVal === 0 && (
+                          <span className="text-xs ml-1.5 font-sans font-medium text-green-400">(Paid in Full ✓)</span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -1316,7 +1437,9 @@ export default function AdminFinances() {
                     ) : (
                       <>
                         <CheckCircle size={16} />
-                        {isPending ? 'Approve & Activate Retainer' : 'Save Payment Changes'}
+                        {isFullyPaidNow
+                          ? '✓ Save & Complete Payment'
+                          : (isPending ? 'Approve & Activate Retainer' : 'Save Payment Changes')}
                       </>
                     )}
                   </button>
