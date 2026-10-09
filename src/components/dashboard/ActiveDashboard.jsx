@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Download, Copy, LifeBuoy, CheckCircle, Clock } from 'lucide-react';
+import { Download, Copy, LifeBuoy, CheckCircle, Clock, AlertTriangle, IndianRupee, CreditCard, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import TicketModal from './TicketModal';
 import { generateSingleInvoicePDF } from '../../utils/invoiceGenerator';
+import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 
-export default function ActiveDashboard({ order, profile }) {
+export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpenPayModal }) {
   const [posts, setPosts] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
@@ -49,6 +50,9 @@ export default function ActiveDashboard({ order, profile }) {
   const currentStatic = posts.filter(p => p.post_type === 'static').length;
   const currentReels = posts.filter(p => p.post_type === 'reel').length;
   const currentPosters = posts.filter(p => p.post_type === 'poster').length;
+
+  const instMetrics = computeOrderInstallmentMetrics(order);
+  const nextInst = instMetrics.nextInstallment;
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(order.order_id);
@@ -112,6 +116,45 @@ export default function ActiveDashboard({ order, profile }) {
         </button>
       </motion.div>
 
+      {/* Grace Period or Upcoming Due Alert Banner */}
+      {instMetrics.inGracePeriod && nextInst && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-lg"
+        >
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-2xl flex-shrink-0">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <p className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                Action Required: Installment #{nextInst.installment_number} is Due (₹{Number(nextInst.amount).toLocaleString('en-IN')})
+              </p>
+              <p className="text-[#aaa] text-xs mt-0.5">
+                You have <strong className="text-amber-400">{instMetrics.graceDaysLeft} day(s)</strong> remaining in your grace period. Clear payment now to keep deliverables uninterrupted.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onOpenPayModal && onOpenPayModal(nextInst)}
+            className="bg-amber-500 hover:bg-amber-400 text-black px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(245,158,11,0.3)] whitespace-nowrap flex items-center gap-1.5"
+          >
+            <CreditCard size={14} /> Pay Installment Now
+          </button>
+        </motion.div>
+      )}
+
+      {/* Pending Proof Review Notice */}
+      {instMetrics.hasPendingVerification && (
+        <div className="bg-[#3428f8]/10 border border-[#3428f8]/30 rounded-2xl p-4 flex items-center gap-3 text-xs text-white">
+          <Clock size={16} className="text-[#3428f8]" />
+          <span>
+            Payment proof submitted for your milestone installment. Admin verification is in progress.
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* Left Column: Progress & Activity */}
@@ -169,8 +212,105 @@ export default function ActiveDashboard({ order, profile }) {
           </motion.div>
         </div>
 
-        {/* Right Column: Ticketing */}
+        {/* Right Column: Billing & Ticketing */}
         <div className="lg:col-span-1 flex flex-col gap-8">
+          
+          {/* Milestone Payment & Billing Card */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="bg-surface border border-themeborder rounded-3xl p-6 md:p-8 flex flex-col gap-5"
+          >
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-serif text-primary flex items-center gap-2">
+                <CreditCard size={20} className="text-accent" />
+                Billing & Retainer
+              </h3>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                instMetrics.isFullyPaid 
+                  ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+              }`}>
+                {instMetrics.isFullyPaid ? 'Fully Paid' : 'Active EMI Plan'}
+              </span>
+            </div>
+
+            {/* Price Overview */}
+            <div className="bg-raised p-4 rounded-2xl border border-themeborder flex justify-between items-center">
+              <div>
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Agreed Plan Total</span>
+                <span className="text-xl font-serif text-primary font-bold">₹{instMetrics.totalAgreed.toLocaleString('en-IN')}</span>
+                {instMetrics.discountAmount > 0 && (
+                  <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
+                    ₹{instMetrics.discountAmount.toLocaleString('en-IN')} Discount Applied
+                  </span>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Outstanding Balance</span>
+                <span className={`text-xl font-mono font-bold ${instMetrics.balanceDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  ₹{instMetrics.balanceDue.toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] text-muted block mt-0.5">₹{instMetrics.paidAmount.toLocaleString('en-IN')} Paid</span>
+              </div>
+            </div>
+
+            {/* Installments List */}
+            {instMetrics.hasInstallments && (
+              <div className="flex flex-col gap-2.5">
+                <span className="text-[10px] text-muted font-bold uppercase tracking-widest">Installment Schedule:</span>
+                {instMetrics.installments.map((inst, idx) => {
+                  const isPaid = inst.status === 'paid';
+                  const isPendingReview = inst.status === 'pending_verification';
+
+                  return (
+                    <div key={idx} className="p-3 bg-raised border border-themeborder rounded-xl flex justify-between items-center">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-primary">Installment #{inst.installment_number || idx + 1}</span>
+                          <span className="text-xs font-mono font-bold text-accent">₹{Number(inst.amount).toLocaleString('en-IN')}</span>
+                        </div>
+                        <span className="text-[10px] text-muted">
+                          {isPaid 
+                            ? `Paid on ${inst.paid_at ? new Date(inst.paid_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Verified'}`
+                            : (inst.due_date ? `Due ${new Date(inst.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'Scheduled')
+                          }
+                        </span>
+                      </div>
+
+                      <div>
+                        {isPaid ? (
+                          <span className="text-green-500 bg-green-500/10 border border-green-500/20 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <CheckCircle size={10} /> Paid
+                          </span>
+                        ) : isPendingReview ? (
+                          <span className="text-amber-400 bg-amber-500/10 border border-amber-500/20 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Clock size={10} /> In Review
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => onOpenPayModal && onOpenPayModal(inst)}
+                            className="bg-[#3428f8] hover:bg-[#281cd4] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-lg transition-all shadow-sm"
+                          >
+                            Pay Now
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={handleDownloadInvoice}
+              className="w-full bg-raised hover:bg-themeborder/50 border border-themeborder text-primary py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+            >
+              <Download size={14} /> Download Tax Invoice PDF
+            </button>
+          </motion.div>
+
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

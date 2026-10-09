@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { computeOrderInstallmentMetrics } from './installmentEngine';
 
 /**
  * OUTLIERS MEDIA — PROFESSIONAL INVOICE & STATEMENT GENERATOR
@@ -81,7 +82,13 @@ export function generateSingleInvoicePDF(order, client = {}) {
   const orderId = order.order_id || 'OM1002';
   const paymentId = order.payment_id || 'TXN-DIRECT-UPI';
   const planName = order.plan_name || order.plan || 'Starter Plan';
-  const amountPaid = Number(order.amount_paid || 3500);
+  const instMetrics = computeOrderInstallmentMetrics(order);
+  const standardPrice = instMetrics.standardPrice;
+  const totalAgreed = instMetrics.totalAgreed;
+  const discountAmount = instMetrics.discountAmount;
+  const amountPaid = instMetrics.paidAmount;
+  const balanceDue = instMetrics.balanceDue;
+  const hasInstallments = instMetrics.hasInstallments && instMetrics.installments.length > 1;
   const status = (order.status || 'active').toUpperCase();
 
   const generatedDate = formatDate(new Date());
@@ -286,17 +293,21 @@ export function generateSingleInvoicePDF(order, client = {}) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Rs. ${amountPaid.toLocaleString('en-IN')}`, 192, bodyY + 8, { align: 'right' });
+  doc.text(`Rs. ${standardPrice.toLocaleString('en-IN')}`, 192, bodyY + 8, { align: 'right' });
 
   // Divider Line inside table
   doc.setDrawColor(241, 245, 249);
   doc.line(18, bodyY + 12, 192, bodyY + 12);
 
-  // Deliverables Header
+  // Deliverables Header & Discount Notice
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(71, 85, 105);
-  doc.text('AGREED DELIVERABLES & CONTENT COMMITMENTS FOR THIS CYCLE:', 18, bodyY + 17);
+  if (discountAmount > 0) {
+    doc.text(`DELIVERABLES • SPECIAL DISCOUNT APPLIED: -Rs. ${discountAmount.toLocaleString('en-IN')} (NET CONTRACT: Rs. ${totalAgreed.toLocaleString('en-IN')})`, 18, bodyY + 17);
+  } else {
+    doc.text('AGREED DELIVERABLES & CONTENT COMMITMENTS FOR THIS CYCLE:', 18, bodyY + 17);
+  }
 
   // Deliverables Split into Two Clean Balanced Columns
   const deliverables = getPlanDeliverables(planName);
@@ -321,11 +332,75 @@ export function generateSingleInvoicePDF(order, client = {}) {
   });
 
   // -------------------------------------------------------------
+  // 4B. MILESTONE / INSTALLMENT SCHEDULE TABLE (If multiple EMIs)
+  // -------------------------------------------------------------
+  let nextSectionY = 174;
+  if (hasInstallments) {
+    const instTableY = bodyY + bodyH + 3;
+    const instRows = instMetrics.installments;
+    const instTableH = 6 + (instRows.length * 5.5);
+
+    doc.setFillColor(30, 41, 59); // Slate 800
+    doc.rect(14, instTableY, 182, 6, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('MILESTONE / INSTALLMENT #', 18, instTableY + 4.2);
+    doc.text('SCHEDULED DUE DATE', 72, instTableY + 4.2);
+    doc.text('AMOUNT (INR)', 120, instTableY + 4.2);
+    doc.text('TRANSACTION REF', 152, instTableY + 4.2);
+    doc.text('STATUS', 192, instTableY + 4.2, { align: 'right' });
+
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(14, instTableY + 6, 182, instTableH - 6, 'FD');
+
+    let rowY = instTableY + 10.5;
+    instRows.forEach((inst, idx) => {
+      const isInstPaid = inst.status === 'paid';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`Installment ${inst.installment_number || idx + 1}`, 18, rowY);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(inst.due_date ? formatDate(inst.due_date) : 'On Activation', 72, rowY);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(`Rs. ${Number(inst.amount || 0).toLocaleString('en-IN')}`, 120, rowY);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(truncateString(inst.payment_id || (isInstPaid ? 'Verified' : 'Pending Direct UPI'), 20), 152, rowY);
+
+      doc.setFont('helvetica', 'bold');
+      if (isInstPaid) {
+        doc.setTextColor(4, 120, 87);
+        doc.text('PAID / CLEARED', 192, rowY, { align: 'right' });
+      } else if (inst.isOverdue) {
+        doc.setTextColor(220, 38, 38);
+        doc.text('OVERDUE', 192, rowY, { align: 'right' });
+      } else {
+        doc.setTextColor(217, 119, 6);
+        doc.text('PAYMENT DUE', 192, rowY, { align: 'right' });
+      }
+
+      rowY += 5.5;
+    });
+
+    nextSectionY = instTableY + instTableH + 3;
+  }
+
+  // -------------------------------------------------------------
   // 5. PAYMENT VERIFICATION (Left) & FINANCIAL TOTALS (Right)
-  // Box: y = 174, h = 36
+  // Box: y = nextSectionY, h = 36
   // Left: x = 14, w = 96 | Right: x = 114, w = 82
   // -------------------------------------------------------------
-  const summaryY = 174;
+  const summaryY = nextSectionY;
   const summaryH = 36;
 
   // Left Box: Payment Details
@@ -372,29 +447,45 @@ export function generateSingleInvoicePDF(order, client = {}) {
   doc.roundedRect(114, summaryY, 82, summaryH, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('Subtotal:', 119, summaryY + 7);
+  doc.text('Package Standard Price:', 119, summaryY + 6.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Rs. ${amountPaid.toLocaleString('en-IN')}`, 192, summaryY + 7, { align: 'right' });
+  doc.text(`Rs. ${standardPrice.toLocaleString('en-IN')}`, 192, summaryY + 6.5, { align: 'right' });
 
-  doc.setTextColor(100, 116, 139);
-  doc.text('GST / Taxes:', 119, summaryY + 13.5);
-  doc.text('Rs. 0.00 (Inclusive)', 192, summaryY + 13.5, { align: 'right' });
-
-  // Total Paid Highlight Ribbon
-  doc.setFillColor(239, 242, 254); // Light Indigo
-  doc.roundedRect(117, summaryY + 18, 76, 14, 1.5, 1.5, 'F');
+  if (discountAmount > 0) {
+    doc.setTextColor(4, 120, 87);
+    doc.text('Agency Discount Granted:', 119, summaryY + 12);
+    doc.text(`-Rs. ${discountAmount.toLocaleString('en-IN')}`, 192, summaryY + 12, { align: 'right' });
+    doc.setTextColor(100, 116, 139);
+  } else {
+    doc.text('GST / Taxes:', 119, summaryY + 12);
+    doc.text('Rs. 0.00 (Inclusive)', 192, summaryY + 12, { align: 'right' });
+  }
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text('TOTAL PAID:', 121, summaryY + 27);
+  doc.text('Agreed Contract Value:', 119, summaryY + 17.5);
+  doc.text(`Rs. ${totalAgreed.toLocaleString('en-IN')}`, 192, summaryY + 17.5, { align: 'right' });
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11.5);
-  doc.setTextColor(52, 40, 248);
-  doc.text(`Rs. ${amountPaid.toLocaleString('en-IN')}`, 190, summaryY + 27, { align: 'right' });
+  // Ribbon
+  if (balanceDue <= 0) {
+    doc.setFillColor(236, 253, 245); // Light Emerald
+    doc.roundedRect(117, summaryY + 21.5, 76, 11.5, 1.5, 1.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(4, 120, 87);
+    doc.text('TOTAL PAID IN FULL:', 121, summaryY + 29);
+    doc.text(`Rs. ${amountPaid.toLocaleString('en-IN')}`, 190, summaryY + 29, { align: 'right' });
+  } else {
+    doc.setFillColor(239, 242, 254); // Light Indigo
+    doc.roundedRect(117, summaryY + 21.5, 76, 11.5, 1.5, 1.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(52, 40, 248);
+    doc.text('PAID SO FAR:', 121, summaryY + 29);
+    doc.text(`Rs. ${amountPaid.toLocaleString('en-IN')} (BAL: Rs. ${balanceDue.toLocaleString('en-IN')})`, 190, summaryY + 29, { align: 'right' });
+  }
 
   // -------------------------------------------------------------
   // 6. TERMS & CONDITIONS + AUTHORIZED SIGNATORY

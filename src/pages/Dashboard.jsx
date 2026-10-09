@@ -3,8 +3,11 @@ import { useNavigate, useSearchParams, useLocation, Navigate } from 'react-route
 import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { supabase } from '../utils/supabaseClient';
+import { IndianRupee, AlertTriangle, ShieldAlert, CreditCard, MessageSquare, ExternalLink } from 'lucide-react';
 import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
+import InstallmentPayModal from '../components/dashboard/InstallmentPayModal';
+import { computeOrderInstallmentMetrics } from '../utils/installmentEngine';
 
 export default function Dashboard() {
   const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete, signOut, updateProfile, loading } = useAuth();
@@ -21,6 +24,7 @@ export default function Dashboard() {
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [preSelectedPlanId, setPreSelectedPlanId] = useState(null);
+  const [payModalInstallment, setPayModalInstallment] = useState(null);
 
   const [editName, setEditName] = useState('');
   const [editBusiness, setEditBusiness] = useState('');
@@ -89,6 +93,17 @@ export default function Dashboard() {
       .single();
       
     if (data) {
+      const instMetrics = computeOrderInstallmentMetrics(data);
+      // Automated suspension check: if active but past grace period, auto-pause
+      if (data.status === 'active' && instMetrics.isOverdue) {
+        await supabase.from('orders').update({ status: 'paused' }).eq('id', data.id);
+        data.status = 'paused';
+      }
+      // Automated restoration check: if paused but all overdue payments confirmed, auto-restore
+      if (data.status === 'paused' && !instMetrics.isOverdue && instMetrics.isFullyPaid) {
+        await supabase.from('orders').update({ status: 'active' }).eq('id', data.id);
+        data.status = 'active';
+      }
       setActiveOrder(data);
     }
     setLoadingOrder(false);
@@ -185,15 +200,90 @@ export default function Dashboard() {
               <p className="text-muted text-xs font-bold uppercase tracking-widest mt-6 bg-base px-4 py-2 rounded-lg border border-themeborder">Order ID: {activeOrder.order_id}</p>
             </motion.div>
           ) : activeOrder.status === 'paused' ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-surface/30 border border-themeborder border-dashed p-12 rounded-3xl text-center flex flex-col items-center justify-center min-h-[400px]">
-              <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6 text-red-500 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-              </div>
-              <h3 className="text-3xl font-serif text-primary mb-4">Plan Paused</h3>
-              <p className="text-muted text-sm max-w-lg">Your <strong>{activeOrder.plan_name}</strong> is currently paused by the admin. Please contact support for more details.</p>
-            </motion.div>
+            (() => {
+              const instMetrics = computeOrderInstallmentMetrics(activeOrder);
+              const overdueInst = instMetrics.nextInstallment;
+              const hasPendingProof = instMetrics.hasPendingVerification;
+
+              return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-[#111] border border-red-500/30 p-8 md:p-12 rounded-3xl text-center flex flex-col items-center justify-center max-w-2xl mx-auto shadow-2xl">
+                  <div className="w-20 h-20 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mb-6 text-red-500 shadow-[0_0_25px_rgba(239,68,68,0.2)]">
+                    <ShieldAlert size={36} />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full mb-3">
+                    Account Temporarily Paused
+                  </span>
+                  <h3 className="text-3xl font-serif text-white mb-3">Overdue Milestone Payment</h3>
+                  <p className="text-[#aaa] text-sm max-w-lg mb-6 leading-relaxed">
+                    Your <strong>{activeOrder.plan_name}</strong> deliverables are temporarily on hold because an installment payment is past due and the grace period has elapsed.
+                  </p>
+
+                  {/* Overdue Breakdown Box */}
+                  <div className="w-full bg-[#0a0a0a] border border-[#222] p-5 rounded-2xl mb-6 text-left space-y-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-[#888]">Installment Due:</span>
+                      <span className="text-white font-bold font-mono">
+                        {overdueInst ? `Installment #${overdueInst.installment_number}` : 'Remaining Balance'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-[#888]">Amount to Clear:</span>
+                      <span className="text-emerald-400 font-bold font-mono text-lg flex items-center">
+                        <IndianRupee size={16} />
+                        {Number(overdueInst?.amount || instMetrics.balanceDue).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    {overdueInst?.due_date && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[#888]">Scheduled Due Date:</span>
+                        <span className="text-red-400 font-mono">
+                          {new Date(overdueInst.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-[#1a1a1a] flex justify-between text-xs text-[#666]">
+                      <span>Total Agreed: ₹{instMetrics.totalAgreed.toLocaleString()}</span>
+                      <span>Paid to Date: ₹{instMetrics.paidAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {hasPendingProof ? (
+                    <div className="w-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 p-4 rounded-xl text-xs font-medium mb-6">
+                      ✓ Payment proof submitted! Our finance team is verifying your transaction. Your dashboard will automatically unlock as soon as confirmed.
+                    </div>
+                  ) : (
+                    <div className="w-full space-y-3 mb-6">
+                      <button
+                        onClick={() => setPayModalInstallment(overdueInst || { amount: instMetrics.balanceDue, installment_number: 2 })}
+                        className="w-full bg-[#3428f8] hover:bg-[#281cd4] text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] flex items-center justify-center gap-2"
+                      >
+                        <CreditCard size={16} /> Pay Installment & Submit Receipt Proof
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Support Link */}
+                  <div className="flex items-center gap-4 text-xs text-[#777]">
+                    <span>Need assistance?</span>
+                    <a
+                      href="https://wa.me/919915357805"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#3428f8] hover:underline font-bold inline-flex items-center gap-1"
+                    >
+                      <MessageSquare size={13} /> Contact Support on WhatsApp
+                    </a>
+                  </div>
+                </motion.div>
+              );
+            })()
           ) : (
-            <ActiveDashboard order={activeOrder} profile={profile} />
+            <ActiveDashboard 
+              order={activeOrder} 
+              profile={profile} 
+              onRefreshOrder={fetchActiveOrder}
+              onOpenPayModal={(inst) => setPayModalInstallment(inst)}
+            />
           )
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -322,6 +412,14 @@ export default function Dashboard() {
         onClose={() => { setShowPlanModal(false); setPreSelectedPlanId(null); }} 
         onSelectPlan={handleSelectPlan}
         preSelectedPlanId={preSelectedPlanId}
+      />
+
+      <InstallmentPayModal
+        isOpen={Boolean(payModalInstallment)}
+        onClose={() => setPayModalInstallment(null)}
+        order={activeOrder}
+        installment={payModalInstallment}
+        onSuccess={fetchActiveOrder}
       />
     </div>
   );

@@ -1,29 +1,58 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../utils/supabaseClient';
-import { IndianRupee, TrendingUp, Clock, Search, ExternalLink, CheckCircle, PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3 } from 'lucide-react';
+import { 
+  IndianRupee, TrendingUp, Clock, Search, ExternalLink, CheckCircle, 
+  PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3, 
+  AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, Calendar, 
+  Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight
+} from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
+import { 
+  computeOrderInstallmentMetrics, 
+  generateDefaultInstallmentPlan, 
+  getStandardPlanPrice 
+} from '../../utils/installmentEngine';
 
-export const getStandardPlanPrice = (planName) => {
-  const p = (planName || '').toLowerCase();
-  if (p.includes('premium')) return 11000;
-  if (p.includes('growth')) return 6000;
-  if (p.includes('starter') || p.includes('basic')) return 3500;
-  return 3500;
-};
+export { getStandardPlanPrice };
 
 export default function AdminFinances() {
+  const [searchParams] = useSearchParams();
+  const initialFilterParam = searchParams.get('filter');
+
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('All');
+  const [filter, setFilter] = useState(initialFilterParam || 'All');
   const [search, setSearch] = useState('');
-  const [metrics, setMetrics] = useState({ totalRevenue: 0, pendingRevenue: 0, totalDiscounts: 0, totalTransactions: 0 });
-  const [selectedClientHistory, setSelectedClientHistory] = useState(null);
+  const [metrics, setMetrics] = useState({ 
+    totalRevenue: 0, 
+    pendingRevenue: 0, 
+    totalDiscounts: 0, 
+    totalTransactions: 0,
+    activeEmis: 0
+  });
 
-  // Custom price / discount approval modal state
-  const [acceptModalOrder, setAcceptModalOrder] = useState(null);
-  const [finalPriceInput, setFinalPriceInput] = useState('');
-  const [updatingOrder, setUpdatingOrder] = useState(false);
+  const [selectedClientHistory, setSelectedClientHistory] = useState(null);
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState(null);
+
+  // Installment & Custom Price Configurator State
+  const [configModalOrder, setConfigModalOrder] = useState(null);
+  const [agreedPriceInput, setAgreedPriceInput] = useState('');
+  const [gracePeriodInput, setGracePeriodInput] = useState(3);
+  const [splitCount, setSplitCount] = useState(2); // 1 | 2 | 3 | 'custom'
+  const [configInstallments, setConfigInstallments] = useState([]);
+  const [savingPlan, setSavingPlan] = useState(false);
+
+  // Quick Milestone Verification State
+  const [verifyModalData, setVerifyModalData] = useState(null);
+  const [verifyingMilestone, setVerifyingMilestone] = useState(false);
+
+  useEffect(() => {
+    if (initialFilterParam) {
+      setFilter(initialFilterParam);
+    }
+  }, [initialFilterParam]);
 
   useEffect(() => {
     fetchFinances();
@@ -32,7 +61,7 @@ export default function AdminFinances() {
   const fetchFinances = async () => {
     setLoading(true);
     
-    // Fetch all profiles (don't filter by role so even admin test accounts show names)
+    // Fetch all profiles
     const { data: profiles } = await supabase
       .from('profiles')
       .select('auth_id, name, email, phone, business_type, instagram_handle');
@@ -52,81 +81,345 @@ export default function AdminFinances() {
 
     if (orders) {
       let totalRev = 0;
-      let pendingRev = 0;
+      let totalPendingBal = 0;
       let totalDiscountGiven = 0;
+      let activeEmiCount = 0;
 
-      const mapped = orders.map(order => {
-        const stdPrice = getStandardPlanPrice(order.plan_name);
-        const paid = Number(order.amount_paid || 0);
-        const originalPrice = order.original_amount ? Number(order.original_amount) : stdPrice;
-        const discountAmount = Math.max(0, originalPrice - paid);
+      const mapped = await Promise.all(orders.map(async (order) => {
+        let currentStatus = order.status;
+        const instMetrics = computeOrderInstallmentMetrics(order);
 
-        if (order.status === 'active' || order.status === 'paused' || order.status === 'cancelled') {
-          totalRev += paid;
-          if (discountAmount > 0) {
-            totalDiscountGiven += discountAmount;
+        // Auto-suspension check: active order overdue past grace period -> pause
+        if (order.status === 'active' && instMetrics.isOverdue) {
+          try {
+            await supabase.from('orders').update({ status: 'paused' }).eq('id', order.id);
+            currentStatus = 'paused';
+            instMetrics.calculatedAccountStatus = 'paused';
+          } catch (e) {
+            console.error("Auto-pause sync error:", e);
           }
-        } else if (order.status === 'pending') {
-          pendingRev += paid;
+        } 
+        // Auto-restoration check: paused order where balance is completely paid -> active
+        else if (order.status === 'paused' && !instMetrics.isOverdue && instMetrics.isFullyPaid) {
+          try {
+            await supabase.from('orders').update({ status: 'active' }).eq('id', order.id);
+            currentStatus = 'active';
+            instMetrics.calculatedAccountStatus = 'active';
+          } catch (e) {
+            console.error("Auto-restore sync error:", e);
+          }
+        }
+
+        // Metrics aggregation
+        if (currentStatus === 'active' || currentStatus === 'paused' || currentStatus === 'cancelled') {
+          totalRev += instMetrics.paidAmount;
+          totalPendingBal += instMetrics.balanceDue;
+          totalDiscountGiven += instMetrics.discountAmount;
+        } else if (currentStatus === 'pending') {
+          totalPendingBal += instMetrics.totalAgreed;
+          totalDiscountGiven += instMetrics.discountAmount;
+        }
+
+        if (instMetrics.hasInstallments && instMetrics.installments.length > 1) {
+          activeEmiCount++;
         }
 
         return {
           ...order,
-          standardPrice: originalPrice,
-          discountAmount,
+          status: currentStatus,
+          standardPrice: instMetrics.standardPrice,
+          totalAgreed: instMetrics.totalAgreed,
+          discountAmount: instMetrics.discountAmount,
+          instMetrics,
           client: profileMap[order.client_id] || { name: 'Unknown Client', email: 'Unknown' }
         };
-      });
+      }));
 
       setTransactions(mapped);
       setMetrics({
         totalRevenue: totalRev,
-        pendingRevenue: pendingRev,
+        pendingRevenue: totalPendingBal,
         totalDiscounts: totalDiscountGiven,
-        totalTransactions: orders.length
+        totalTransactions: orders.length,
+        activeEmis: activeEmiCount
       });
     }
     setLoading(false);
   };
 
-  const handleOpenAcceptModal = (order) => {
-    setAcceptModalOrder(order);
-    const currentPrice = order.amount_paid !== undefined && order.amount_paid !== null
-      ? Number(order.amount_paid)
-      : (order.standardPrice || getStandardPlanPrice(order.plan_name));
-    setFinalPriceInput(String(currentPrice));
+  // Open Installment Configurator Modal
+  const handleOpenConfigurator = (order) => {
+    setConfigModalOrder(order);
+    const metrics = computeOrderInstallmentMetrics(order);
+    const agreed = metrics.totalAgreed || getStandardPlanPrice(order.plan_name);
+    setAgreedPriceInput(String(agreed));
+    setGracePeriodInput(Number(order.grace_period_days || 3));
+
+    if (metrics.hasInstallments && metrics.installments.length > 0) {
+      setConfigInstallments(metrics.installments.map(inst => ({
+        installment_number: inst.installment_number,
+        amount: Number(inst.amount || 0),
+        due_date: inst.due_date || new Date().toISOString().split('T')[0],
+        status: inst.status || 'pending',
+        payment_id: inst.payment_id || '',
+        notes: inst.notes || '',
+        receipt_url: inst.receipt_url || null
+      })));
+      setSplitCount(metrics.installments.length <= 3 ? metrics.installments.length : 'custom');
+    } else {
+      // Default to 2 splits (50% advance / 50% milestone) for new/pending orders
+      if (order.status === 'pending') {
+        setSplitCount(2);
+        setConfigInstallments(generateDefaultInstallmentPlan({
+          total: Number(agreed),
+          splits: 2,
+          firstDueDate: new Date().toISOString().split('T')[0],
+          firstPaymentId: order.payment_id || 'TXN-ADVANCE-UPI',
+          firstReceiptUrl: order.payment_receipt_url,
+          firstIsPaid: true
+        }));
+      } else {
+        setSplitCount(1);
+        setConfigInstallments([{
+          installment_number: 1,
+          amount: Number(agreed),
+          due_date: order.created_at ? new Date(order.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          status: 'paid',
+          payment_id: order.payment_id || 'TXN-FULL-PAID',
+          notes: 'Full Retainer Payment',
+          receipt_url: order.payment_receipt_url || null
+        }]);
+      }
+    }
   };
 
-  const handleConfirmAcceptWithPrice = async () => {
-    if (!acceptModalOrder) return;
-    const finalPrice = Number(finalPriceInput);
-    if (isNaN(finalPrice) || finalPrice < 0) {
-      alert("Please enter a valid price in INR (e.g. 3000)");
+  // Handle Split Selector click (1x, 2x, 3x)
+  const handleSelectSplit = (splits) => {
+    setSplitCount(splits);
+    const total = Number(agreedPriceInput) || getStandardPlanPrice(configModalOrder?.plan_name);
+    if (splits === 1) {
+      setConfigInstallments([{
+        installment_number: 1,
+        amount: total,
+        due_date: new Date().toISOString().split('T')[0],
+        status: configModalOrder?.status === 'pending' ? 'paid' : 'paid',
+        payment_id: configModalOrder?.payment_id || 'TXN-FULL-PAID',
+        notes: 'Full Retainer Payment',
+        receipt_url: configModalOrder?.payment_receipt_url || null
+      }]);
+    } else {
+      setConfigInstallments(generateDefaultInstallmentPlan({
+        total,
+        splits,
+        firstDueDate: new Date().toISOString().split('T')[0],
+        firstPaymentId: configModalOrder?.payment_id || 'TXN-ADVANCE-UPI',
+        firstReceiptUrl: configModalOrder?.payment_receipt_url,
+        firstIsPaid: true
+      }));
+    }
+  };
+
+  // Handle Agreed Price Change
+  const handleAgreedPriceChange = (newVal) => {
+    setAgreedPriceInput(newVal);
+    const total = Number(newVal);
+    if (!isNaN(total) && total > 0 && splitCount !== 'custom') {
+      if (splitCount === 1) {
+        setConfigInstallments([{
+          installment_number: 1,
+          amount: total,
+          due_date: configInstallments[0]?.due_date || new Date().toISOString().split('T')[0],
+          status: configInstallments[0]?.status || 'paid',
+          payment_id: configInstallments[0]?.payment_id || 'TXN-FULL-PAID',
+          notes: 'Full Retainer Payment',
+          receipt_url: configInstallments[0]?.receipt_url || null
+        }]);
+      } else if (splitCount === 2) {
+        const half = Math.round(total / 2);
+        setConfigInstallments(configInstallments.map((inst, i) => ({
+          ...inst,
+          amount: i === 0 ? half : total - half
+        })));
+      } else if (splitCount === 3) {
+        const first = Math.round(total * 0.4);
+        const rem = total - first;
+        const second = Math.round(rem / 2);
+        const third = rem - second;
+        setConfigInstallments(configInstallments.map((inst, i) => ({
+          ...inst,
+          amount: i === 0 ? first : (i === 1 ? second : third)
+        })));
+      }
+    }
+  };
+
+  // Add / Remove Custom Milestone
+  const handleAddMilestone = () => {
+    const nextNum = configInstallments.length + 1;
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + nextNum * 15);
+    setConfigInstallments([
+      ...configInstallments,
+      {
+        installment_number: nextNum,
+        amount: 0,
+        due_date: defaultDate.toISOString().split('T')[0],
+        status: 'pending',
+        payment_id: '',
+        notes: `Milestone ${nextNum}`,
+        receipt_url: null
+      }
+    ]);
+    setSplitCount('custom');
+  };
+
+  const handleRemoveMilestone = (index) => {
+    if (configInstallments.length <= 1) return;
+    const filtered = configInstallments.filter((_, i) => i !== index).map((inst, i) => ({
+      ...inst,
+      installment_number: i + 1
+    }));
+    setConfigInstallments(filtered);
+    setSplitCount('custom');
+  };
+
+  const handleAutoBalance = () => {
+    const total = Number(agreedPriceInput || 0);
+    if (configInstallments.length <= 1) return;
+    const firstItemsSum = configInstallments
+      .slice(0, -1)
+      .reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+    const balance = Math.max(0, total - firstItemsSum);
+    const updated = [...configInstallments];
+    updated[updated.length - 1].amount = balance;
+    setConfigInstallments(updated);
+  };
+
+  // Save Installment Plan to Supabase
+  const handleSaveConfigPlan = async () => {
+    if (!configModalOrder) return;
+    const totalAgreed = Number(agreedPriceInput);
+    if (isNaN(totalAgreed) || totalAgreed < 0) {
+      alert("Please enter a valid agreed price in INR.");
       return;
     }
 
-    setUpdatingOrder(true);
+    const currentSum = configInstallments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+    if (Math.abs(currentSum - totalAgreed) > 1) {
+      alert(`The sum of milestones (₹${currentSum.toLocaleString()}) does not match the agreed contract price (₹${totalAgreed.toLocaleString()}). Please adjust or click 'Auto-Balance'.`);
+      return;
+    }
+
+    setSavingPlan(true);
     try {
+      const paidAmount = configInstallments
+        .filter(inst => inst.status === 'paid')
+        .reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+      const balanceDue = Math.max(0, totalAgreed - paidAmount);
+
+      let nextStatus = configModalOrder.status;
+      if (configModalOrder.status === 'pending') {
+        nextStatus = paidAmount > 0 ? 'active' : 'pending';
+      } else if (configModalOrder.status === 'paused') {
+        nextStatus = balanceDue <= 0 ? 'active' : 'paused';
+      }
+
+      const paymentStatus = balanceDue <= 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending');
+
       const updatePayload = {
-        status: 'active',
-        amount_paid: finalPrice
+        total_agreed_amount: totalAgreed,
+        amount_paid: paidAmount,
+        balance_due: balanceDue,
+        installments: configInstallments,
+        grace_period_days: Number(gracePeriodInput || 3),
+        status: nextStatus,
+        payment_status: paymentStatus
       };
 
       const { error } = await supabase
         .from('orders')
         .update(updatePayload)
-        .eq('id', acceptModalOrder.id);
+        .eq('id', configModalOrder.id);
 
       if (error) {
-        alert("Error updating order: " + error.message);
+        alert("Failed to save installment plan: " + error.message);
       } else {
-        setAcceptModalOrder(null);
+        setConfigModalOrder(null);
         await fetchFinances();
       }
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
-      setUpdatingOrder(false);
+      setSavingPlan(false);
+    }
+  };
+
+  // Open Quick Verify Modal
+  const handleOpenVerifyModal = (order, installment) => {
+    setVerifyModalData({
+      order,
+      installment,
+      txnId: installment.payment_id || `TXN-UPI-${Date.now().toString().slice(-6)}`,
+      receiptUrl: installment.receipt_url || null
+    });
+  };
+
+  // Confirm Quick Verify Milestone
+  const handleConfirmVerifyMilestone = async () => {
+    if (!verifyModalData) return;
+    const { order, installment, txnId } = verifyModalData;
+
+    setVerifyingMilestone(true);
+    try {
+      const rawInstallments = Array.isArray(order.installments) 
+        ? order.installments 
+        : (order.schedule_config?.installments || []);
+
+      let newPaid = 0;
+      const updated = rawInstallments.map(inst => {
+        if (inst.installment_number === installment.installment_number) {
+          newPaid += Number(inst.amount || 0);
+          return {
+            ...inst,
+            status: 'paid',
+            paid_at: new Date().toISOString(),
+            payment_id: txnId.trim() || inst.payment_id || `TXN-UPI-${Date.now().toString().slice(-6)}`
+          };
+        }
+        if (inst.status === 'paid') {
+          newPaid += Number(inst.amount || 0);
+        }
+        return inst;
+      });
+
+      const totalAgreed = Number(order.total_agreed_amount || order.amount_paid || getStandardPlanPrice(order.plan_name));
+      const balanceDue = Math.max(0, totalAgreed - newPaid);
+      const isFullyPaid = balanceDue <= 0;
+
+      // Restore account if it was paused
+      const nextStatus = order.status === 'paused' ? 'active' : order.status;
+
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          installments: updated,
+          amount_paid: newPaid,
+          balance_due: balanceDue,
+          payment_status: isFullyPaid ? 'paid' : 'partial',
+          status: nextStatus
+        })
+        .eq('id', order.id);
+
+      if (error) {
+        alert("Failed to verify payment: " + error.message);
+      } else {
+        setVerifyModalData(null);
+        await fetchFinances();
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setVerifyingMilestone(false);
     }
   };
 
@@ -143,35 +436,42 @@ export default function AdminFinances() {
     }
   };
 
+  // Filter transactions
   const filteredTransactions = transactions.filter(t => {
     const matchesSearch = 
       t.payment_id?.toLowerCase().includes(search.toLowerCase()) ||
       t.order_id?.toLowerCase().includes(search.toLowerCase()) ||
-      t.client.name?.toLowerCase().includes(search.toLowerCase());
+      t.client.name?.toLowerCase().includes(search.toLowerCase()) ||
+      t.client.email?.toLowerCase().includes(search.toLowerCase());
     
     if (!matchesSearch) return false;
 
     if (filter === 'All') return true;
     if (filter === 'Pending') return t.status === 'pending';
-    if (filter === 'Approved') return ['active', 'paused', 'cancelled'].includes(t.status);
+    if (filter === 'Installments') return t.instMetrics.hasInstallments && t.instMetrics.installments.length > 1;
+    if (filter === 'Overdue') return t.instMetrics.isOverdue || t.instMetrics.inGracePeriod || t.status === 'paused';
+    if (filter === 'Approved') return ['active', 'paused', 'cancelled'].includes(t.status) && t.instMetrics.isFullyPaid;
     
     return true;
   });
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-3xl p-8 min-h-[calc(100vh-140px)] shadow-2xl">
+    <div className="bg-[#111] border border-[#222] rounded-3xl p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-white mb-2">Financial Overview</h2>
-          <p className="text-[#888] text-sm">Track payments, review receipts, and monitor agency revenue.</p>
+          <h2 className="text-3xl font-serif text-white mb-2">Financial Command Center</h2>
+          <p className="text-[#888] text-sm">
+            Manage custom client pricing, multi-installment EMI schedules, automated suspensions, and official invoices.
+          </p>
         </div>
 
         <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
+          <div className="relative flex-1 md:w-72">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#555]" />
             <input 
               type="text" 
-              placeholder="Search TXN ID, Client..."
+              placeholder="Search TXN ID, Client, Order ID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-[#0a0a0a] border border-[#222] p-3 pl-10 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
@@ -180,179 +480,328 @@ export default function AdminFinances() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5 text-green-500">
+      {/* Top 4 Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        {/* Verified Collected Revenue */}
+        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-green-500 transition-opacity">
             <TrendingUp size={64} />
           </div>
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Total Verified Revenue</p>
-          <h3 className="text-3xl font-serif text-white flex items-center gap-2">
+          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Verified Revenue Collected</p>
+          <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
             <IndianRupee size={24} className="text-green-500" />
             {metrics.totalRevenue.toLocaleString()}
           </h3>
+          <p className="text-[#666] text-xs mt-2">Cash flow received to date</p>
         </div>
 
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5 text-emerald-500">
+        {/* Pending Payments & Balances */}
+        <div 
+          onClick={() => setFilter(filter === 'Pending' ? 'All' : 'Pending')}
+          className="bg-[#0a0a0a] border border-[#222] hover:border-yellow-500/40 rounded-2xl p-6 relative overflow-hidden cursor-pointer transition-all group"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-yellow-500 transition-opacity">
+            <Clock size={64} />
+          </div>
+          <p className="text-yellow-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            Pending Balances & EMIs
+          </p>
+          <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
+            <IndianRupee size={24} className="text-yellow-400" />
+            {metrics.pendingRevenue.toLocaleString()}
+          </h3>
+          <p className="text-[#777] text-xs mt-2 group-hover:text-yellow-400/80 transition-colors flex items-center gap-1">
+            Click to view pending items <ArrowRight size={10} />
+          </p>
+        </div>
+
+        {/* Total Discounts Granted */}
+        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-emerald-500 transition-opacity">
             <Tag size={64} />
           </div>
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Total Discounts Granted</p>
-          <h3 className="text-3xl font-serif text-white flex items-center gap-2">
+          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Special Discounts Granted</p>
+          <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
             <IndianRupee size={24} className="text-emerald-400" />
             {metrics.totalDiscounts.toLocaleString()}
           </h3>
-        </div>
-        
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5 text-yellow-500">
-            <Clock size={64} />
-          </div>
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Pending Approval</p>
-          <h3 className="text-3xl font-serif text-white flex items-center gap-2">
-            <IndianRupee size={24} className="text-yellow-500" />
-            {metrics.pendingRevenue.toLocaleString()}
-          </h3>
+          <p className="text-[#666] text-xs mt-2">Client concessions applied</p>
         </div>
 
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6">
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Total Transactions</p>
-          <h3 className="text-3xl font-serif text-white">{metrics.totalTransactions}</h3>
+        {/* Retainers & Active EMI Deals */}
+        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-[#3428f8] transition-opacity">
+            <Layers size={64} />
+          </div>
+          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Retainers & Plans</p>
+          <div className="flex items-baseline gap-3">
+            <h3 className="text-3xl font-serif text-white">{metrics.totalTransactions}</h3>
+            {metrics.activeEmis > 0 && (
+              <span className="text-xs bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-2 py-0.5 rounded-full font-bold">
+                {metrics.activeEmis} on EMI
+              </span>
+            )}
+          </div>
+          <p className="text-[#666] text-xs mt-2">Total registered client orders</p>
         </div>
       </div>
 
-      <div className="flex gap-2 bg-[#0a0a0a] p-1 rounded-xl mb-6 inline-flex border border-[#222]">
-        {['All', 'Pending', 'Approved'].map(f => (
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap gap-2 bg-[#0a0a0a] p-1.5 rounded-2xl mb-6 inline-flex border border-[#222]">
+        {[
+          { id: 'All', label: 'All Orders' },
+          { id: 'Pending', label: 'Pending Approval' },
+          { id: 'Installments', label: 'EMI / Installments' },
+          { id: 'Overdue', label: 'Overdue & Grace' },
+          { id: 'Approved', label: 'Fully Cleared' }
+        ].map(tab => (
           <button 
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-6 py-2 text-xs uppercase font-bold tracking-widest rounded-lg transition-all ${filter === f ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]' : 'text-[#666] hover:text-[#aaa]'}`}
+            key={tab.id}
+            onClick={() => setFilter(tab.id)}
+            className={`px-5 py-2 text-xs uppercase font-bold tracking-wider rounded-xl transition-all cursor-pointer ${
+              filter === tab.id 
+                ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.35)]' 
+                : 'text-[#666] hover:text-[#bbb]'
+            }`}
           >
-            {f}
+            {tab.label}
           </button>
         ))}
       </div>
 
+      {/* Main Transactions / Retainers Table */}
       {loading ? (
         <div className="flex justify-center items-center h-64">
           <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3428f8]"></span>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#222]">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+        <div className="overflow-x-auto rounded-2xl border border-[#222]">
+          <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-[#0a0a0a] border-b border-[#222]">
-                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Date</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Payment ID</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Client / Order ID</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Amount</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Status</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Invoice / Receipt</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Date & Order ID</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Client Info</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Contract & EMI Split</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Milestone Standing</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Invoices & Receipts</th>
                 <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666] text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredTransactions.map((txn) => {
-                const isApproved = ['active', 'paused', 'cancelled'].includes(txn.status);
-                
+                const inst = txn.instMetrics;
+                const isEmi = inst.hasInstallments && inst.installments.length > 1;
+                const paidCount = inst.installments.filter(i => i.status === 'paid').length;
+                const totalSplits = inst.installments.length;
+
+                // Find next pending or pending_verification milestone
+                const pendingVerificationInst = inst.installments.find(i => i.status === 'pending_verification');
+                const nextUnpaidInst = inst.installments.find(i => i.status !== 'paid');
+
                 return (
                   <tr key={txn.id} className="border-b border-[#222] bg-[#111] hover:bg-[#151515] transition-colors">
-                    <td className="p-4 text-[#aaa] text-sm">
-                      {new Date(txn.created_at).toLocaleDateString()}<br/>
-                      <span className="text-[10px] text-[#555]">{new Date(txn.created_at).toLocaleTimeString()}</span>
-                    </td>
+                    {/* Date & Order ID */}
                     <td className="p-4">
-                      <p className="text-white font-mono text-sm">{txn.payment_id || 'Legacy-N/A'}</p>
-                    </td>
-                    <td className="p-4">
-                      <p className="text-white font-medium mb-1">{txn.client.name}</p>
-                      <p className="text-[#666] text-xs font-mono mb-2">{txn.order_id} • {txn.plan_name}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-white font-mono font-bold text-sm">{txn.order_id}</span>
+                        <span className="text-[10px] bg-[#1a1a1a] text-[#888] px-2 py-0.5 rounded border border-[#262626] font-medium">
+                          {txn.plan_name}
+                        </span>
+                      </div>
+                      <p className="text-[#666] text-xs">
+                        {new Date(txn.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
                       <button
                         onClick={() => setSelectedClientHistory(txn.client_id)}
-                        className="inline-flex items-center gap-1.5 text-[10px] text-[#3428f8] hover:text-white font-bold uppercase tracking-wider bg-[#3428f8]/10 hover:bg-[#3428f8] px-2.5 py-1 rounded-lg border border-[#3428f8]/20 transition-all cursor-pointer shadow-sm"
-                        title="View all lifetime transactions for this client"
+                        className="inline-flex items-center gap-1.5 text-[10px] text-[#3428f8] hover:text-white font-bold uppercase tracking-wider bg-[#3428f8]/10 hover:bg-[#3428f8] px-2.5 py-1 rounded-lg border border-[#3428f8]/20 transition-all cursor-pointer shadow-sm mt-2"
+                        title="View client lifetime statement"
                       >
-                        <History size={12} />
-                        Lifetime History
+                        <History size={11} /> Lifetime History
                       </button>
                     </td>
+
+                    {/* Client Info */}
                     <td className="p-4">
-                      <div className="flex flex-col">
+                      <p className="text-white font-medium text-sm mb-0.5">{txn.client.name}</p>
+                      <p className="text-[#666] text-xs font-mono mb-1">{txn.client.email}</p>
+                      {txn.client.phone && (
+                        <p className="text-[#555] text-[11px] font-mono">{txn.client.phone}</p>
+                      )}
+                    </td>
+
+                    {/* Contract & EMI Split */}
+                    <td className="p-4">
+                      <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-white font-mono font-bold text-sm">
-                            ₹{Number(txn.amount_paid || 0).toLocaleString()}
+                          <span className="text-white font-mono font-bold text-base">
+                            ₹{inst.totalAgreed.toLocaleString()}
                           </span>
-                          {txn.discountAmount > 0 && (
+                          {inst.discountAmount > 0 && (
                             <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                              ₹{txn.discountAmount.toLocaleString()} OFF
+                              ₹{inst.discountAmount.toLocaleString()} OFF
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          {txn.discountAmount > 0 ? (
-                            <span className="text-[#666] text-xs line-through">
-                              Listed: ₹{txn.standardPrice.toLocaleString()}
-                            </span>
-                          ) : (
-                            <span className="text-[#555] text-[10px]">
-                              Standard Price
+
+                        {inst.discountAmount > 0 && (
+                          <span className="text-[#666] text-[11px] line-through">
+                            Listed: ₹{inst.standardPrice.toLocaleString()}
+                          </span>
+                        )}
+
+                        <div className="text-xs mt-1">
+                          <span className="text-green-400 font-mono font-medium">₹{inst.paidAmount.toLocaleString()} Paid</span>
+                          {inst.balanceDue > 0 && (
+                            <span className="text-yellow-400 font-mono font-medium ml-2">
+                              • ₹{inst.balanceDue.toLocaleString()} Due
                             </span>
                           )}
+                        </div>
+
+                        {/* EMI Badge */}
+                        <div className="mt-1 flex items-center gap-2">
+                          {isEmi ? (
+                            <span className="text-[10px] bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                              EMI {paidCount}/{totalSplits} Paid
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-[#1a1a1a] text-[#777] border border-[#282828] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                              Single Payment
+                            </span>
+                          )}
+
                           <button 
-                            onClick={() => handleOpenAcceptModal(txn)}
-                            className="text-[#3428f8] hover:text-[#5246ff] text-[10px] font-bold underline transition-colors"
-                            title="Edit accepted price or apply discount"
+                            onClick={() => handleOpenConfigurator(txn)}
+                            className="text-[#3428f8] hover:text-[#6a60ff] text-[10px] font-bold underline transition-colors"
+                            title="Edit agreed price, discount, or EMI schedule"
                           >
-                            Edit
+                            Configure Plan
                           </button>
                         </div>
                       </div>
                     </td>
-                    <td className="p-4">
-                      {txn.status === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
-                      {txn.status === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
-                      {txn.status === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
-                      {txn.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
-                    </td>
+
+                    {/* Milestone Standing & Account Status */}
                     <td className="p-4">
                       <div className="flex flex-col gap-1.5 items-start">
+                        {/* Account Status Pill */}
+                        {txn.status === 'active' && (
+                          <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                            <CheckCircle size={10} /> Active Retainer
+                          </span>
+                        )}
+                        {txn.status === 'pending' && (
+                          <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
+                            <Clock size={10} /> Pending Approval
+                          </span>
+                        )}
+                        {txn.status === 'paused' && (
+                          <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                            <PauseCircle size={10} /> Suspended / Paused
+                          </span>
+                        )}
+                        {txn.status === 'cancelled' && (
+                          <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                            <XCircle size={10} /> Cancelled
+                          </span>
+                        )}
+
+                        {/* Milestone State Details */}
+                        {pendingVerificationInst && (
+                          <span className="bg-purple-500/15 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider animate-pulse">
+                            EMI #{pendingVerificationInst.installment_number} Proof Uploaded
+                          </span>
+                        )}
+
+                        {!pendingVerificationInst && inst.isOverdue && (
+                          <span className="bg-red-500/15 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-1">
+                            <AlertTriangle size={10} /> Overdue ({inst.daysOverdue}d)
+                          </span>
+                        )}
+
+                        {!pendingVerificationInst && !inst.isOverdue && inst.inGracePeriod && (
+                          <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-1">
+                            <Clock size={10} /> Grace Period ({inst.graceDaysLeft}d left)
+                          </span>
+                        )}
+
+                        {inst.isFullyPaid && txn.status !== 'pending' && (
+                          <span className="text-[#666] text-[10px] flex items-center gap-1">
+                            <Check size={11} className="text-green-400" /> Fully Paid in Full
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Invoice & Receipts */}
+                    <td className="p-4">
+                      <div className="flex flex-col gap-2 items-start">
                         <button
                           onClick={() => generateSingleInvoicePDF(txn, txn.client)}
-                          className="inline-flex items-center gap-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-[#3428f8] text-white px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
-                          title="Generate & download shareable official PDF invoice"
+                          className="inline-flex items-center gap-1.5 bg-[#181818] hover:bg-[#222] border border-[#333] hover:border-[#3428f8] text-white px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                          title="Generate official PDF Tax Invoice with milestone table"
                         >
                           <FileDown size={12} className="text-[#3428f8]" />
                           PDF Invoice
                         </button>
-                        {txn.payment_receipt_url ? (
-                          <a 
-                            href={txn.payment_receipt_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[#888] hover:text-white text-[10px] font-medium tracking-wider transition-colors ml-0.5"
+
+                        {/* Receipt Link */}
+                        {(pendingVerificationInst?.receipt_url || txn.payment_receipt_url) ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewReceiptUrl(pendingVerificationInst?.receipt_url || txn.payment_receipt_url)}
+                            className="inline-flex items-center gap-1 text-[#aaa] hover:text-white text-[10px] font-medium tracking-wider transition-colors"
                           >
-                            Receipt Proof <ExternalLink size={10} />
-                          </a>
+                            <Eye size={11} className="text-purple-400" /> View Receipt Proof
+                          </button>
                         ) : (
-                          <span className="text-[#444] text-[9px] font-mono ml-0.5">No receipt proof</span>
+                          <span className="text-[#444] text-[9px] font-mono">No receipt proof</span>
                         )}
                       </div>
                     </td>
+
+                    {/* Action Buttons */}
                     <td className="p-4 text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end items-center gap-2">
+                        {/* 1. Pending Initial Order Approval */}
                         {txn.status === 'pending' && (
                           <button 
-                            onClick={() => handleOpenAcceptModal(txn)}
-                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-                            title="Accept order and set final discounted price"
+                            onClick={() => handleOpenConfigurator(txn)}
+                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.15)] cursor-pointer"
+                            title="Approve order and configure agreed pricing & EMIs"
                           >
-                            <CheckCircle size={14} />
-                            Accept & Set Price
+                            <CheckCircle size={14} /> Accept & Set EMIs
                           </button>
                         )}
+
+                        {/* 2. Client Uploaded Proof for Verification */}
+                        {txn.status !== 'pending' && pendingVerificationInst && (
+                          <button 
+                            onClick={() => handleOpenVerifyModal(txn, pendingVerificationInst)}
+                            className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(168,85,247,0.2)] cursor-pointer"
+                            title="Verify client uploaded payment receipt"
+                          >
+                            <ShieldCheck size={14} /> Verify EMI #{pendingVerificationInst.installment_number}
+                          </button>
+                        )}
+
+                        {/* 3. Record Next Unpaid Installment */}
+                        {txn.status !== 'pending' && !pendingVerificationInst && nextUnpaidInst && (
+                          <button 
+                            onClick={() => handleOpenVerifyModal(txn, nextUnpaidInst)}
+                            className="bg-[#3428f8]/15 hover:bg-[#3428f8]/25 text-[#3428f8] hover:text-white border border-[#3428f8]/30 px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider cursor-pointer"
+                            title="Record manual UPI/cash payment for next milestone"
+                          >
+                            <CreditCard size={12} /> Record EMI #{nextUnpaidInst.installment_number}
+                          </button>
+                        )}
+
+                        {/* Plan Status Controls (Pause/Resume/Cancel) */}
                         {txn.status === 'active' && (
                           <button 
                             onClick={() => handleUpdateOrderStatus(txn.id, 'paused')}
-                            className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 p-2 rounded-lg transition-colors tooltip" title="Pause Plan"
+                            className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 p-2 rounded-xl transition-colors cursor-pointer" 
+                            title="Pause Plan Access"
                           >
                             <PauseCircle size={16} />
                           </button>
@@ -360,7 +809,8 @@ export default function AdminFinances() {
                         {txn.status === 'paused' && (
                           <button 
                             onClick={() => handleUpdateOrderStatus(txn.id, 'active')}
-                            className="bg-[#3428f8]/10 hover:bg-[#3428f8]/20 text-[#3428f8] p-2 rounded-lg transition-colors tooltip" title="Resume Plan"
+                            className="bg-green-500/10 hover:bg-green-500/20 text-green-400 p-2 rounded-xl transition-colors cursor-pointer" 
+                            title="Resume Plan Access"
                           >
                             <PlayCircle size={16} />
                           </button>
@@ -368,7 +818,8 @@ export default function AdminFinances() {
                         {['active', 'paused', 'pending'].includes(txn.status) && (
                           <button 
                             onClick={() => handleUpdateOrderStatus(txn.id, 'cancelled')}
-                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-lg transition-colors tooltip" title="Cancel Plan"
+                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-xl transition-colors cursor-pointer" 
+                            title="Cancel Order"
                           >
                             <XCircle size={16} />
                           </button>
@@ -378,10 +829,11 @@ export default function AdminFinances() {
                   </tr>
                 );
               })}
+
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-[#666]">
-                    No transactions found.
+                  <td colSpan="6" className="p-8 text-center text-[#666]">
+                    No transactions or orders found matching the filter.
                   </td>
                 </tr>
               )}
@@ -389,27 +841,565 @@ export default function AdminFinances() {
           </table>
         </div>
       )}
-      {/* Lifetime Transaction History Modal */}
+
+      {/* ============================================================== */}
+      {/* 1. INSTALLMENT & PRICING CONFIGURATOR MODAL */}
+      {/* ============================================================== */}
+      <AnimatePresence>
+        {configModalOrder && (() => {
+          const stdPrice = configModalOrder.standardPrice || getStandardPlanPrice(configModalOrder.plan_name);
+          const currentInputVal = Number(agreedPriceInput || 0);
+          const discountVal = Math.max(0, stdPrice - currentInputVal);
+          const discountPercent = stdPrice > 0 ? Math.round((discountVal / stdPrice) * 100) : 0;
+          const isPending = configModalOrder.status === 'pending';
+
+          const milestonesSum = configInstallments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+          const sumDiff = currentInputVal - milestonesSum;
+          const isBalanced = Math.abs(sumDiff) <= 1;
+
+          const quickPresets = [];
+          if (stdPrice === 3500) {
+            quickPresets.push({ label: '₹3,500 (Full)', price: 3500 });
+            quickPresets.push({ label: '₹3,000 (₹500 off)', price: 3000 });
+            quickPresets.push({ label: '₹2,500 (₹1k off)', price: 2500 });
+            quickPresets.push({ label: '₹2,000 (Special)', price: 2000 });
+          } else if (stdPrice === 6000) {
+            quickPresets.push({ label: '₹6,000 (Full)', price: 6000 });
+            quickPresets.push({ label: '₹5,000 (₹1k off)', price: 5000 });
+            quickPresets.push({ label: '₹4,000 (₹2k off)', price: 4000 });
+            quickPresets.push({ label: '₹3,500 (₹2.5k off)', price: 3500 });
+          } else if (stdPrice === 11000) {
+            quickPresets.push({ label: '₹11,000 (Full)', price: 11000 });
+            quickPresets.push({ label: '₹10,000 (₹1k off)', price: 10000 });
+            quickPresets.push({ label: '₹8,500 (Discount)', price: 8500 });
+          } else {
+            quickPresets.push({ label: `₹${stdPrice.toLocaleString()} (Full)`, price: stdPrice });
+            if (stdPrice > 1000) {
+              quickPresets.push({ label: `₹${(stdPrice - 500).toLocaleString()}`, price: stdPrice - 500 });
+              quickPresets.push({ label: `₹${(stdPrice - 1000).toLocaleString()}`, price: stdPrice - 1000 });
+            }
+          }
+
+          return (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+              onClick={() => !savingPlan && setConfigModalOrder(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl relative max-h-[92vh] flex flex-col"
+              >
+                {/* Header */}
+                <div className="flex justify-between items-start pb-4 border-b border-[#222]">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20">
+                      <Tag size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-serif text-white">
+                        {isPending ? 'Approve Retainer & Configure Payment Plan' : 'Edit Agreed Pricing & EMI Milestones'}
+                      </h3>
+                      <p className="text-xs text-[#888]">
+                        Order ID: <span className="font-mono text-white font-bold">{configModalOrder.order_id}</span> • {configModalOrder.client?.name}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => !savingPlan && setConfigModalOrder(null)}
+                    className="text-[#666] hover:text-white p-2 rounded-full bg-[#1a1a1a] transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Body - Scrollable */}
+                <div className="overflow-y-auto pr-1 flex-1 flex flex-col gap-6 py-4 custom-scrollbar">
+                  {/* Package Summary Box */}
+                  <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 flex justify-between items-center">
+                    <div>
+                      <span className="text-[#888] text-xs uppercase font-bold tracking-wider block mb-0.5">Package Selected</span>
+                      <span className="text-white font-medium text-sm">{configModalOrder.plan_name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[#888] text-xs uppercase font-bold tracking-wider block mb-0.5">Standard Listed Price</span>
+                      <span className="text-white font-mono font-bold text-sm">₹{stdPrice.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Section 1: Agreed Contract Price */}
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
+                      1. Agreed Total Contract Price (₹)
+                    </label>
+                    <div className="relative mb-3">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold text-lg">₹</span>
+                      <input 
+                        type="number" 
+                        min="0"
+                        step="100"
+                        value={agreedPriceInput}
+                        onChange={(e) => handleAgreedPriceChange(e.target.value)}
+                        placeholder="e.g. 3000"
+                        className="w-full bg-[#0a0a0a] border border-[#333] focus:border-emerald-500 text-white font-mono text-2xl font-bold p-3.5 pl-9 rounded-xl outline-none transition-colors"
+                      />
+                    </div>
+
+                    {/* Discount Feedback */}
+                    {discountVal > 0 ? (
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                          <CheckCircle size={14} />
+                          <span>Custom Discount: Client saves ₹{discountVal.toLocaleString()} ({discountPercent}% OFF)</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
+                          -{discountPercent}%
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 bg-[#181818] border border-[#262626] rounded-xl text-center mb-3">
+                        <p className="text-[#777] text-xs">Standard Price (No discount applied)</p>
+                      </div>
+                    )}
+
+                    {/* Quick Presets */}
+                    <div className="flex flex-wrap gap-2">
+                      {quickPresets.map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleAgreedPriceChange(String(preset.price))}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all cursor-pointer ${
+                            Number(agreedPriceInput) === preset.price
+                              ? 'bg-emerald-500 text-black border-emerald-400 font-bold'
+                              : 'bg-[#181818] hover:bg-[#222] text-[#ccc] border-[#333]'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section 2: Installment Split Plan */}
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-xs font-bold uppercase tracking-widest text-[#aaa]">
+                        2. Payment Milestone Strategy
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAddMilestone}
+                        className="text-[11px] text-[#3428f8] hover:text-white font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus size={12} /> Add Milestone
+                      </button>
+                    </div>
+
+                    {/* Split Buttons */}
+                    <div className="grid grid-cols-3 gap-2.5 mb-4">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSplit(1)}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          splitCount === 1 
+                            ? 'bg-[#3428f8]/20 border-[#3428f8] text-white' 
+                            : 'bg-[#141414] border-[#252525] text-[#888] hover:text-white'
+                        }`}
+                      >
+                        <p className="text-xs font-bold uppercase tracking-wider">1x Full Payment</p>
+                        <p className="text-[10px] text-[#666] mt-0.5">100% upfront</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSplit(2)}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          splitCount === 2 
+                            ? 'bg-[#3428f8]/20 border-[#3428f8] text-white' 
+                            : 'bg-[#141414] border-[#252525] text-[#888] hover:text-white'
+                        }`}
+                      >
+                        <p className="text-xs font-bold uppercase tracking-wider">2x EMIs (50/50)</p>
+                        <p className="text-[10px] text-[#666] mt-0.5">Advance + 1 Milestone</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSplit(3)}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          splitCount === 3 
+                            ? 'bg-[#3428f8]/20 border-[#3428f8] text-white' 
+                            : 'bg-[#141414] border-[#252525] text-[#888] hover:text-white'
+                        }`}
+                      >
+                        <p className="text-xs font-bold uppercase tracking-wider">3x EMIs</p>
+                        <p className="text-[10px] text-[#666] mt-0.5">40% / 30% / 30%</p>
+                      </button>
+                    </div>
+
+                    {/* Milestone Items Form */}
+                    <div className="flex flex-col gap-3">
+                      {configInstallments.map((inst, idx) => (
+                        <div key={idx} className="bg-[#141414] border border-[#252525] rounded-xl p-3.5 flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-[#222] text-white text-xs font-bold flex items-center justify-center font-mono">
+                              #{inst.installment_number}
+                            </span>
+                            <div>
+                              <p className="text-white text-xs font-bold">{inst.notes || `Milestone ${inst.installment_number}`}</p>
+                              <span className="text-[10px] text-[#666]">Due: {inst.due_date}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                            {/* Amount Input */}
+                            <div className="relative w-28">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#888] text-xs">₹</span>
+                              <input 
+                                type="number"
+                                min="0"
+                                value={inst.amount}
+                                onChange={(e) => {
+                                  const updated = [...configInstallments];
+                                  updated[idx].amount = Number(e.target.value);
+                                  setConfigInstallments(updated);
+                                }}
+                                className="w-full bg-[#0a0a0a] border border-[#333] text-white text-xs font-mono font-bold p-2 pl-6 rounded-lg outline-none"
+                              />
+                            </div>
+
+                            {/* Due Date Input */}
+                            <input 
+                              type="date"
+                              value={inst.due_date || ''}
+                              onChange={(e) => {
+                                const updated = [...configInstallments];
+                                updated[idx].due_date = e.target.value;
+                                setConfigInstallments(updated);
+                              }}
+                              className="bg-[#0a0a0a] border border-[#333] text-white text-xs font-mono p-2 rounded-lg outline-none"
+                            />
+
+                            {/* Status Selector */}
+                            <select
+                              value={inst.status}
+                              onChange={(e) => {
+                                const updated = [...configInstallments];
+                                updated[idx].status = e.target.value;
+                                if (e.target.value === 'paid' && !updated[idx].paid_at) {
+                                  updated[idx].paid_at = new Date().toISOString();
+                                }
+                                setConfigInstallments(updated);
+                              }}
+                              className={`text-xs font-bold rounded-lg p-2 border outline-none ${
+                                inst.status === 'paid' 
+                                  ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+                                  : inst.status === 'pending_verification'
+                                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                  : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                              }`}
+                            >
+                              <option value="paid" className="bg-[#111] text-green-400">Paid</option>
+                              <option value="pending" className="bg-[#111] text-yellow-400">Pending</option>
+                              <option value="pending_verification" className="bg-[#111] text-purple-400">Review</option>
+                            </select>
+
+                            {/* Delete Button */}
+                            {configInstallments.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMilestone(idx)}
+                                className="text-[#666] hover:text-red-400 p-1.5 transition-colors cursor-pointer"
+                                title="Remove milestone"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Milestone Balance Validation */}
+                    <div className="mt-3 flex justify-between items-center text-xs">
+                      <span className="text-[#888]">
+                        Milestone Total: <strong className="text-white font-mono">₹{milestonesSum.toLocaleString()}</strong> / Agreed: <strong className="text-white font-mono">₹{currentInputVal.toLocaleString()}</strong>
+                      </span>
+
+                      {!isBalanced && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-400 font-bold">
+                            Difference: ₹{Math.abs(sumDiff).toLocaleString()} {sumDiff > 0 ? 'unallocated' : 'exceeded'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleAutoBalance}
+                            className="bg-[#3428f8]/20 hover:bg-[#3428f8] text-[#3428f8] hover:text-white px-2.5 py-1 rounded-lg font-bold uppercase text-[10px] tracking-wider transition-all cursor-pointer"
+                          >
+                            Auto-Balance
+                          </button>
+                        </div>
+                      )}
+
+                      {isBalanced && (
+                        <span className="text-green-400 font-bold flex items-center gap-1">
+                          <Check size={12} /> Milestones Match 100%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Section 3: Grace Period Config */}
+                  <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4">
+                    <div className="flex justify-between items-center mb-1">
+                      <div>
+                        <span className="text-white font-bold text-xs uppercase tracking-wider block">
+                          3. Overdue Grace Period (Auto-Suspension)
+                        </span>
+                        <p className="text-[#777] text-xs">
+                          Number of days after due date before client dashboard is automatically suspended.
+                        </p>
+                      </div>
+
+                      <select
+                        value={gracePeriodInput}
+                        onChange={(e) => setGracePeriodInput(Number(e.target.value))}
+                        className="bg-[#0a0a0a] border border-[#333] text-white text-xs font-bold p-2.5 rounded-xl outline-none"
+                      >
+                        <option value={1}>1 Day Grace</option>
+                        <option value={2}>2 Days Grace</option>
+                        <option value={3}>3 Days Grace (Standard)</option>
+                        <option value={5}>5 Days Grace</option>
+                        <option value={7}>7 Days Grace (Flexible)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="pt-4 border-t border-[#222] flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => !savingPlan && setConfigModalOrder(null)}
+                    disabled={savingPlan}
+                    className="flex-1 bg-[#1a1a1a] hover:bg-[#252525] text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveConfigPlan}
+                    disabled={savingPlan || !isBalanced}
+                    className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      isBalanced 
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
+                        : 'bg-[#222] text-[#666] cursor-not-allowed'
+                    }`}
+                  >
+                    {savingPlan ? (
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
+                    ) : (
+                      <>
+                        <CheckCircle size={16} />
+                        {isPending ? 'Approve & Activate Retainer' : 'Save Plan & Pricing'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ============================================================== */}
+      {/* 2. QUICK MILESTONE PAYMENT VERIFICATION MODAL */}
+      {/* ============================================================== */}
+      <AnimatePresence>
+        {verifyModalData && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+            onClick={() => !verifyingMilestone && setVerifyModalData(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative"
+            >
+              <button
+                onClick={() => !verifyingMilestone && setVerifyModalData(null)}
+                className="absolute top-6 right-6 text-[#666] hover:text-white p-2 rounded-full bg-[#1a1a1a] transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                  <ShieldCheck size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-serif text-white">Verify Installment Payment</h3>
+                  <p className="text-xs text-[#888]">
+                    Milestone #{verifyModalData.installment.installment_number} • {verifyModalData.order.client?.name}
+                  </p>
+                </div>
+              </div>
+
+              {/* Amount & Due Date Box */}
+              <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4 mb-5">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[#888] text-xs uppercase font-bold tracking-wider">Amount to Confirm</span>
+                  <span className="text-2xl font-serif text-green-400 font-bold">
+                    ₹{Number(verifyModalData.installment.amount).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-xs text-[#666] pt-2 border-t border-[#222] flex justify-between">
+                  <span>Scheduled Due Date:</span>
+                  <span className="text-white font-mono">{verifyModalData.installment.due_date}</span>
+                </div>
+              </div>
+
+              {/* Receipt Preview if uploaded by client */}
+              {verifyModalData.receiptUrl && (
+                <div className="mb-5">
+                  <span className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
+                    Client Uploaded Payment Screenshot
+                  </span>
+                  <div 
+                    onClick={() => setPreviewReceiptUrl(verifyModalData.receiptUrl)}
+                    className="relative rounded-xl overflow-hidden border border-[#333] max-h-48 group cursor-pointer"
+                  >
+                    <img 
+                      src={verifyModalData.receiptUrl} 
+                      alt="Payment Receipt" 
+                      className="w-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-bold">
+                      <Eye size={14} /> Click to Enlarge
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction ID / UTR Input */}
+              <div className="mb-6">
+                <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
+                  Transaction Reference / UTR Number
+                </label>
+                <input 
+                  type="text"
+                  value={verifyModalData.txnId}
+                  onChange={(e) => setVerifyModalData({ ...verifyModalData, txnId: e.target.value })}
+                  placeholder="e.g. 427819284719"
+                  className="w-full bg-[#0a0a0a] border border-[#333] focus:border-purple-500 text-white font-mono text-sm p-3 rounded-xl outline-none transition-colors"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => !verifyingMilestone && setVerifyModalData(null)}
+                  disabled={verifyingMilestone}
+                  className="flex-1 bg-[#1a1a1a] hover:bg-[#252525] text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmVerifyMilestone}
+                  disabled={verifyingMilestone}
+                  className="flex-1 bg-green-500 hover:bg-green-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(34,197,94,0.3)] flex items-center justify-center gap-2 cursor-pointer font-bold"
+                >
+                  {verifyingMilestone ? (
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} /> Confirm & Activate
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ============================================================== */}
+      {/* 3. RECEIPT PREVIEW MODAL */}
+      {/* ============================================================== */}
+      <AnimatePresence>
+        {previewReceiptUrl && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            onClick={() => setPreviewReceiptUrl(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111] border border-[#333] rounded-3xl p-4 max-w-2xl w-full max-h-[90vh] flex flex-col relative"
+            >
+              <div className="flex justify-between items-center pb-3 border-b border-[#222]">
+                <span className="text-white text-xs font-bold uppercase tracking-wider">Payment Receipt Proof</span>
+                <div className="flex items-center gap-2">
+                  <a 
+                    href={previewReceiptUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-[#3428f8] hover:text-white text-xs flex items-center gap-1 font-bold"
+                  >
+                    Open Original <ExternalLink size={12} />
+                  </a>
+                  <button
+                    onClick={() => setPreviewReceiptUrl(null)}
+                    className="text-[#666] hover:text-white p-1 rounded-lg cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-auto flex items-center justify-center p-2 mt-2">
+                <img 
+                  src={previewReceiptUrl} 
+                  alt="Receipt Preview" 
+                  className="max-h-[75vh] w-auto rounded-xl object-contain border border-[#222]" 
+                />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ============================================================== */}
+      {/* 4. LIFETIME TRANSACTION HISTORY MODAL */}
+      {/* ============================================================== */}
       <AnimatePresence>
         {selectedClientHistory && (() => {
           const clientTxns = transactions.filter(t => t.client_id === selectedClientHistory);
           const clientInfo = clientTxns[0]?.client || { name: 'Client', email: '' };
           const approvedSpent = clientTxns
             .filter(t => ['active', 'paused', 'cancelled'].includes(t.status))
-            .reduce((sum, t) => sum + Number(t.amount_paid || 0), 0);
+            .reduce((sum, t) => sum + Number(t.instMetrics?.paidAmount || t.amount_paid || 0), 0);
 
           return (
             <div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
               onClick={() => setSelectedClientHistory(null)}
             >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                transition={{ duration: 0.2 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-[#111] border border-[#2a2a2a] rounded-2xl p-6 max-w-2xl w-full shadow-2xl relative max-h-[85vh] flex flex-col"
+                className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 max-w-2xl w-full shadow-2xl relative max-h-[85vh] flex flex-col"
               >
                 {/* Header */}
                 <div className="flex justify-between items-start pb-4 border-b border-[#222]">
@@ -427,7 +1417,7 @@ export default function AdminFinances() {
                     <button
                       onClick={() => generateLifetimeStatementPDF(clientInfo, clientTxns)}
                       className="inline-flex items-center gap-1.5 bg-[#3428f8] hover:bg-[#2a1fd1] text-white px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md cursor-pointer"
-                      title="Download complete lifetime statement PDF with structured filename"
+                      title="Download complete lifetime statement PDF"
                     >
                       <FileDown size={14} />
                       Statement PDF
@@ -435,7 +1425,7 @@ export default function AdminFinances() {
 
                     <button 
                       onClick={() => setSelectedClientHistory(null)}
-                      className="text-[#666] hover:text-white p-1 rounded-lg hover:bg-[#222] transition-colors"
+                      className="text-[#666] hover:text-white p-1 rounded-lg hover:bg-[#222] transition-colors cursor-pointer"
                       title="Close"
                     >
                       <X size={18} />
@@ -446,7 +1436,7 @@ export default function AdminFinances() {
                 {/* Lifetime Summary */}
                 <div className="grid grid-cols-3 gap-3 my-4">
                   <div className="bg-[#0a0a0a] border border-[#222] p-3 rounded-xl">
-                    <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block mb-1">Total Lifetime Paid</span>
+                    <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block mb-1">Total Verified Paid</span>
                     <span className="text-green-400 font-serif text-xl font-bold">₹{approvedSpent.toLocaleString()}</span>
                   </div>
                   <div className="bg-[#0a0a0a] border border-[#222] p-3 rounded-xl">
@@ -480,26 +1470,18 @@ export default function AdminFinances() {
                       </div>
 
                       <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 border-t sm:border-t-0 pt-2 sm:pt-0 border-[#1a1a1a]">
-                        <span className="text-white font-serif font-bold text-base">₹{Number(t.amount_paid).toLocaleString()}</span>
+                        <span className="text-white font-serif font-bold text-base">
+                          ₹{Number(t.instMetrics?.paidAmount || t.amount_paid || 0).toLocaleString()}
+                        </span>
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => generateSingleInvoicePDF(t, clientInfo)}
                             className="inline-flex items-center gap-1 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-[#3428f8] text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
-                            title="Download PDF invoice for this transaction"
+                            title="Download PDF invoice"
                           >
                             <FileDown size={11} className="text-[#3428f8]" />
                             Invoice
                           </button>
-                          {t.payment_receipt_url && (
-                            <a 
-                              href={t.payment_receipt_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
-                            >
-                              Receipt <ExternalLink size={10} />
-                            </a>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -511,194 +1493,9 @@ export default function AdminFinances() {
                   <button
                     type="button"
                     onClick={() => setSelectedClientHistory(null)}
-                    className="bg-[#1a1a1a] hover:bg-[#252525] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222]"
+                    className="bg-[#1a1a1a] hover:bg-[#252525] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
                   >
                     Close
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          );
-        })()}
-      </AnimatePresence>
-
-      {/* Accept / Set Discounted Price Modal */}
-      <AnimatePresence>
-        {acceptModalOrder && (() => {
-          const stdPrice = acceptModalOrder.standardPrice || getStandardPlanPrice(acceptModalOrder.plan_name);
-          const currentInputVal = Number(finalPriceInput || 0);
-          const discountVal = Math.max(0, stdPrice - currentInputVal);
-          const discountPercent = stdPrice > 0 ? Math.round((discountVal / stdPrice) * 100) : 0;
-          const isPending = acceptModalOrder.status === 'pending';
-
-          const quickPresets = [];
-          if (stdPrice === 3500) {
-            quickPresets.push({ label: '₹3,500 (Full)', price: 3500 });
-            quickPresets.push({ label: '₹3,000 (₹500 off)', price: 3000 });
-            quickPresets.push({ label: '₹2,500 (₹1k off)', price: 2500 });
-            quickPresets.push({ label: '₹2,000 (Special)', price: 2000 });
-          } else if (stdPrice === 6000) {
-            quickPresets.push({ label: '₹6,000 (Full)', price: 6000 });
-            quickPresets.push({ label: '₹5,000 (₹1k off)', price: 5000 });
-            quickPresets.push({ label: '₹4,000 (₹2k off)', price: 4000 });
-            quickPresets.push({ label: '₹3,500 (₹2.5k off)', price: 3500 });
-            quickPresets.push({ label: '₹3,000 (50% off)', price: 3000 });
-          } else if (stdPrice === 11000) {
-            quickPresets.push({ label: '₹11,000 (Full)', price: 11000 });
-            quickPresets.push({ label: '₹10,000 (₹1k off)', price: 10000 });
-            quickPresets.push({ label: '₹8,500 (Discount)', price: 8500 });
-            quickPresets.push({ label: '₹6,000 (No Setup)', price: 6000 });
-          } else {
-            quickPresets.push({ label: `₹${stdPrice.toLocaleString()} (Full)`, price: stdPrice });
-            if (stdPrice > 1000) {
-              quickPresets.push({ label: `₹${(stdPrice - 500).toLocaleString()}`, price: stdPrice - 500 });
-              quickPresets.push({ label: `₹${(stdPrice - 1000).toLocaleString()}`, price: stdPrice - 1000 });
-            }
-          }
-
-          return (
-            <div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-              onClick={() => !updatingOrder && setAcceptModalOrder(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                transition={{ duration: 0.2 }}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative"
-              >
-                <button
-                  onClick={() => !updatingOrder && setAcceptModalOrder(null)}
-                  className="absolute top-6 right-6 text-[#666] hover:text-white p-2 rounded-full bg-[#1a1a1a] transition-colors"
-                >
-                  <X size={18} />
-                </button>
-
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <Tag size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-serif text-white">
-                      {isPending ? 'Accept Order & Set Final Price' : 'Edit Accepted Price / Discount'}
-                    </h3>
-                    <p className="text-xs text-[#888]">
-                      Order ID: <span className="font-mono text-white font-bold">{acceptModalOrder.order_id}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Client & Package Summary */}
-                <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4 mb-6">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="text-white font-medium text-sm">{acceptModalOrder.client?.name}</p>
-                      <p className="text-[#666] text-xs font-mono">{acceptModalOrder.client?.email}</p>
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20">
-                      {acceptModalOrder.plan_name}
-                    </span>
-                  </div>
-                  <div className="pt-2 border-t border-[#222] flex justify-between items-center text-xs">
-                    <span className="text-[#888]">Standard Listed Price:</span>
-                    <span className="text-white font-bold font-mono">₹{stdPrice.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                {/* Final Price Input Form */}
-                <div className="mb-6">
-                  <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
-                    Final Price to Charge Client (₹)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold text-lg">₹</span>
-                    <input 
-                      type="number" 
-                      min="0"
-                      step="100"
-                      value={finalPriceInput}
-                      onChange={(e) => setFinalPriceInput(e.target.value)}
-                      placeholder="e.g. 3000"
-                      className="w-full bg-[#0a0a0a] border border-[#333] focus:border-emerald-500 text-white font-mono text-2xl font-bold p-3.5 pl-9 rounded-xl outline-none transition-colors"
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                {/* Discount Live Calculation Feedback */}
-                <div className="mb-6">
-                  {discountVal > 0 ? (
-                    <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between">
-                      <div>
-                        <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                          <CheckCircle size={14} /> Custom Discount Applied
-                        </p>
-                        <p className="text-[#aaa] text-xs mt-0.5">
-                          Client pays <strong className="text-white">₹{currentInputVal.toLocaleString()}</strong> (saves ₹{discountVal.toLocaleString()} • {discountPercent}% off)
-                        </p>
-                      </div>
-                      <span className="text-emerald-400 font-bold font-mono text-sm bg-emerald-500/20 px-2.5 py-1 rounded-lg">
-                        -{discountPercent}%
-                      </span>
-                    </div>
-                  ) : currentInputVal === stdPrice ? (
-                    <div className="p-3 bg-[#1a1a1a] border border-[#282828] rounded-xl text-center">
-                      <p className="text-[#888] text-xs">Standard Full Package Price (No discount applied)</p>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
-                      <p className="text-amber-400 text-xs font-medium">Custom Price (+₹{(currentInputVal - stdPrice).toLocaleString()} higher than standard package)</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Presets */}
-                <div className="mb-8">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#666] mb-2">Quick Price Presets:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {quickPresets.map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setFinalPriceInput(String(preset.price))}
-                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
-                          Number(finalPriceInput) === preset.price
-                            ? 'bg-emerald-500 text-black border-emerald-400 font-bold'
-                            : 'bg-[#181818] hover:bg-[#222] text-[#ccc] border-[#333]'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => !updatingOrder && setAcceptModalOrder(null)}
-                    disabled={updatingOrder}
-                    className="flex-1 bg-[#1a1a1a] hover:bg-[#252525] text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmAcceptWithPrice}
-                    disabled={updatingOrder}
-                    className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2"
-                  >
-                    {updatingOrder ? (
-                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
-                    ) : (
-                      <>
-                        <CheckCircle size={16} />
-                        {isPending ? 'Accept & Activate' : 'Save Price'}
-                      </>
-                    )}
                   </button>
                 </div>
               </motion.div>

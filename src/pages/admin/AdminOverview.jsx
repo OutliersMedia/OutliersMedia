@@ -5,16 +5,18 @@ import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight
 import { supabase } from '../../utils/supabaseClient';
 
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
+import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState({ mrr: 0, activeRetainers: 0, openTickets: 0, pendingToday: 0 });
+  const [metrics, setMetrics] = useState({ mrr: 0, activeRetainers: 0, pendingAmount: 0, pendingOrdersCount: 0, pendingToday: 0 });
   const [loading, setLoading] = useState(true);
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Top Metrics Details Modal state
-  const [selectedMetric, setSelectedMetric] = useState(null); // 'mrr' | 'retainers' | 'tickets' | 'due'
+  const [selectedMetric, setSelectedMetric] = useState(null); // 'mrr' | 'retainers' | 'pending_payments' | 'due'
+  const [pendingPaymentsList, setPendingPaymentsList] = useState([]);
   const [openTicketsList, setOpenTicketsList] = useState([]);
   const [detailedRetainers, setDetailedRetainers] = useState([]);
 
@@ -181,12 +183,51 @@ export default function AdminOverview() {
       });
     });
 
+    // Calculate Pending Payments (both pending orders and active orders with unpaid installments)
+    let totalPendingAmount = 0;
+    const pendingList = [];
+
+    ordersList.forEach(order => {
+      const clientName = profileMap[order.client_id]?.name || 'Unknown Client';
+      const instMetrics = computeOrderInstallmentMetrics(order);
+
+      if (order.status === 'pending') {
+        totalPendingAmount += instMetrics.totalAgreed;
+        pendingList.push({
+          orderId: order.order_id,
+          clientName,
+          planName: order.plan_name,
+          amountPending: instMetrics.totalAgreed,
+          status: 'New Order Approval Pending',
+          isNewOrder: true,
+          instMetrics,
+          created_at: order.created_at
+        });
+      } else if (instMetrics.balanceDue > 0) {
+        totalPendingAmount += instMetrics.balanceDue;
+        pendingList.push({
+          orderId: order.order_id,
+          clientName,
+          planName: order.plan_name,
+          amountPending: instMetrics.balanceDue,
+          status: instMetrics.isOverdue 
+            ? 'Overdue (Grace Expired)' 
+            : (instMetrics.inGracePeriod ? `Grace Period (${instMetrics.graceDaysLeft}d left)` : 'Installment Scheduled'),
+          isNewOrder: false,
+          instMetrics,
+          created_at: order.created_at
+        });
+      }
+    });
+
+    setPendingPaymentsList(pendingList);
     setCalendarEvents(events);
     setActiveOrders(activeOrds.map(o => ({ ...o, clientName: profileMap[o.client_id]?.name || 'Unknown' })));
     setMetrics({
       mrr: currentMRR,
       activeRetainers: activeOrds.length,
-      openTickets: ticketsCount || 0,
+      pendingAmount: totalPendingAmount,
+      pendingOrdersCount: pendingList.length,
       pendingToday
     });
     setLoading(false);
@@ -236,7 +277,7 @@ export default function AdminOverview() {
   const metricCards = [
     { id: 'mrr', label: 'Monthly Recurring Revenue', value: `₹${metrics.mrr.toLocaleString()}`, icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-400/10' },
     { id: 'retainers', label: 'Active Retainers', value: metrics.activeRetainers, icon: Users, color: 'text-[#3428f8]', bg: 'bg-[#3428f8]/10' },
-    { id: 'tickets', label: 'Open Tickets', value: metrics.openTickets, icon: Ticket, color: 'text-red-400', bg: 'bg-red-400/10' },
+    { id: 'pending_payments', label: 'Pending Payments', value: `₹${metrics.pendingAmount.toLocaleString()}`, subtitle: `${metrics.pendingOrdersCount} Awaiting`, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-400/10' },
     { id: 'due', label: 'Due Today', value: metrics.pendingToday, icon: AlertTriangle, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
   ];
 
@@ -572,38 +613,59 @@ export default function AdminOverview() {
                   </>
                 )}
 
-                {/* 3. OPEN TICKETS MODAL */}
-                {selectedMetric === 'tickets' && (
+                {/* 3. PENDING PAYMENTS MODAL */}
+                {selectedMetric === 'pending_payments' && (
                   <>
                     <div className="bg-[#0a0a0a] border border-[#222] rounded-xl p-4 flex justify-between items-center mb-1">
                       <div>
-                        <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Customer Inquiries</span>
-                        <span className="text-2xl font-serif text-red-400">{metrics.openTickets} Open Ticket{metrics.openTickets === 1 ? '' : 's'}</span>
+                        <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Total Outstanding Balance</span>
+                        <span className="text-2xl font-serif text-amber-400">₹{metrics.pendingAmount.toLocaleString()}</span>
                       </div>
-                      <span className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full font-bold">
-                        Requires Action
-                      </span>
+                      <button 
+                        onClick={() => navigate('/admin/finances?filter=Pending')}
+                        className="text-xs bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-black border border-amber-500/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all"
+                      >
+                        Open in Finances <ArrowRight size={12} />
+                      </button>
                     </div>
 
-                    {openTicketsList.length === 0 ? (
+                    {pendingPaymentsList.length === 0 ? (
                       <div className="text-center py-8">
                         <CheckCircle size={32} className="text-green-500 mx-auto mb-2 opacity-60" />
-                        <p className="text-white text-sm font-medium">All support tickets resolved!</p>
-                        <p className="text-[#666] text-xs">No pending revisions or inquiries from clients.</p>
+                        <p className="text-white text-sm font-medium">All accounts are fully paid!</p>
+                        <p className="text-[#666] text-xs">No pending orders or overdue milestone installments.</p>
                       </div>
                     ) : (
-                      openTicketsList.map((ticket, i) => (
+                      pendingPaymentsList.map((item, i) => (
                         <div key={i} className="bg-[#0e0e0e] border border-[#222] rounded-xl p-3.5 flex flex-col gap-2 hover:border-[#333] transition-colors">
-                          <div className="flex justify-between items-center">
-                            <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                              {ticket.category || 'General Support'}
-                            </span>
-                            <span className="text-[#666] text-[10px] font-mono">
-                              {new Date(ticket.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-white text-sm font-bold block">{item.clientName}</span>
+                              <span className="text-[#888] text-xs">{item.planName} • <span className="font-mono text-[#555]">{item.orderId}</span></span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-amber-400 font-mono font-bold text-sm block">₹{item.amountPending.toLocaleString()}</span>
+                              <span className="text-[10px] text-[#666]">Remaining</span>
+                            </div>
                           </div>
-                          <p className="text-white text-xs line-clamp-2">{ticket.message}</p>
-                          <span className="text-[#555] text-[10px] font-mono">Order ID: {ticket.order_id || 'N/A'}</span>
+
+                          <div className="flex justify-between items-center pt-2 border-t border-[#1a1a1a]">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                              item.status.includes('Overdue') 
+                                ? 'bg-red-500/15 text-red-400 border border-red-500/30' 
+                                : item.status.includes('Grace')
+                                ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                                : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                            }`}>
+                              {item.status}
+                            </span>
+                            <button
+                              onClick={() => navigate('/admin/finances?filter=Pending')}
+                              className="text-[10px] text-[#3428f8] hover:text-white font-bold uppercase flex items-center gap-1"
+                            >
+                              Manage <ArrowRight size={10} />
+                            </button>
+                          </div>
                         </div>
                       ))
                     )}
