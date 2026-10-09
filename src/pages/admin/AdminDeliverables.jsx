@@ -321,7 +321,7 @@ export default function AdminDeliverables() {
             </div>
 
             {/* Client List */}
-            <div className="flex flex-col gap-3 h-[680px] overflow-y-auto pr-2 custom-scrollbar">
+            <div data-lenis-prevent="true" className="flex flex-col gap-3 h-[680px] overflow-y-auto pr-2 custom-scrollbar overscroll-contain">
               {filteredClients.length === 0 ? (
                 <div className="text-[#666] text-sm p-8 text-center bg-[#0a0a0a] rounded-2xl border border-[#222]">
                   No {clientFilter} clients found.
@@ -440,7 +440,7 @@ export default function AdminDeliverables() {
 
                   {/* TAB 1: UPLOAD SCHEDULE */}
                   {activeTab === 'schedule' && (
-                    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar flex flex-col gap-6">
+                    <div data-lenis-prevent="true" className="flex-1 overflow-y-auto p-6 custom-scrollbar overscroll-contain flex flex-col gap-6">
                       
                       {/* Success Toast */}
                       {scheduleSavedSuccess && (
@@ -660,7 +660,7 @@ export default function AdminDeliverables() {
                         </div>
 
                         {/* Schedule List Preview */}
-                        <div className="max-h-64 overflow-y-auto custom-scrollbar border border-[#1f1f1f] rounded-xl bg-[#080808]">
+                        <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto custom-scrollbar overscroll-contain border border-[#1f1f1f] rounded-xl bg-[#080808]">
                           {previewSchedule.length === 0 ? (
                             <div className="p-8 text-center text-[#555] text-xs">
                               Select a First Upload Date and enter weekly values to generate the preview.
@@ -815,7 +815,7 @@ export default function AdminDeliverables() {
                         </div>
 
                         {/* History: Delivery History */}
-                        <div className="w-full md:w-1/2 p-6 overflow-y-auto custom-scrollbar">
+                        <div data-lenis-prevent="true" className="w-full md:w-1/2 p-6 overflow-y-auto custom-scrollbar overscroll-contain">
                           <h4 className="text-white text-sm font-bold uppercase tracking-widest mb-4">Delivery History</h4>
                           
                           <div className="flex flex-col gap-3">

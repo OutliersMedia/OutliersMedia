@@ -70,7 +70,12 @@ function AdminEnforcer({ children }) {
 }
 
 function SmoothScrollWrapper({ children }) {
+  const location = useLocation();
+  const isAdmin = location.pathname.startsWith('/admin');
+
   useEffect(() => {
+    if (isAdmin) return;
+
     const lenis = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), 
@@ -83,12 +88,13 @@ function SmoothScrollWrapper({ children }) {
       infinite: false,
     });
 
+    let animationFrameId;
     function raf(time) {
       lenis.raf(time);
-      requestAnimationFrame(raf);
+      animationFrameId = requestAnimationFrame(raf);
     }
 
-    requestAnimationFrame(raf);
+    animationFrameId = requestAnimationFrame(raf);
 
     const handleScrollToTop = () => {
       lenis.scrollTo(0, { duration: 1.2 });
@@ -96,10 +102,11 @@ function SmoothScrollWrapper({ children }) {
     window.addEventListener('scrollToTop', handleScrollToTop);
 
     return () => {
+      cancelAnimationFrame(animationFrameId);
       window.removeEventListener('scrollToTop', handleScrollToTop);
       lenis.destroy();
     };
-  }, []);
+  }, [isAdmin]);
 
   return <>{children}</>;
 }
