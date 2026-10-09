@@ -10,7 +10,7 @@ import InstallmentPayModal from '../components/dashboard/InstallmentPayModal';
 import { computeOrderInstallmentMetrics } from '../utils/installmentEngine';
 
 export default function Dashboard() {
-  const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete, signOut, updateProfile, loading } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete, signOut, loading } = useAuth();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const isTester = Boolean(authIsTester || checkIsTester(user, profile));
   const navigate = useNavigate();
@@ -26,19 +26,6 @@ export default function Dashboard() {
   const [preSelectedPlanId, setPreSelectedPlanId] = useState(null);
   const [payModalInstallment, setPayModalInstallment] = useState(null);
 
-  const [editName, setEditName] = useState('');
-  const [editBusiness, setEditBusiness] = useState('');
-  const [editInsta, setEditInsta] = useState('');
-  const [updatingProfile, setUpdatingProfile] = useState(false);
-
-  useEffect(() => {
-    if (profile) {
-      setEditName(profile.name || '');
-      setEditBusiness(profile.business_type || '');
-      setEditInsta(profile.instagram_handle || '');
-    }
-  }, [profile]);
-
   // Auto-open PlanModal if user arrived with ?plan=starter/growth/premium
   useEffect(() => {
     const planParam = searchParams.get('plan');
@@ -49,19 +36,6 @@ export default function Dashboard() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, loadingOrder]);
-
-  const handleProfileUpdate = async (e) => {
-    e.preventDefault();
-    setUpdatingProfile(true);
-    await updateProfile({
-      name: editName,
-      phone: profile?.phone, // Keep existing phone
-      business_type: editBusiness,
-      instagram_handle: editInsta
-    });
-    setUpdatingProfile(false);
-    alert('Profile Updated Successfully!');
-  };
 
   useEffect(() => {
     if (loading) return;
@@ -286,74 +260,12 @@ export default function Dashboard() {
             />
           )
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Editable Profile Form */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-glass backdrop-blur-md border border-glass-border p-8 rounded-3xl col-span-1"
-            >
-              <h3 className="text-xl font-serif text-primary mb-6">Complete Your Profile</h3>
-              
-              <form onSubmit={handleProfileUpdate} className="flex flex-col gap-5">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-muted">Full Name</label>
-                  <input 
-                    type="text" 
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="w-full bg-surface dark:bg-raised border border-themeborder p-3 text-primary text-sm focus:border-accent-border focus:shadow-[0_0_0_2px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                    placeholder="Your Name"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-muted">Business Type</label>
-                  <select 
-                    value={editBusiness}
-                    onChange={(e) => setEditBusiness(e.target.value)}
-                    className="w-full bg-surface dark:bg-raised border border-themeborder p-3 text-primary text-sm focus:border-accent-border focus:shadow-[0_0_0_2px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl appearance-none"
-                  >
-                    <option value="" disabled>Select...</option>
-                    <option value="ecommerce">E-Commerce</option>
-                    <option value="restaurant">Restaurant</option>
-                    <option value="influencer">Social Media Influencer</option>
-                    <option value="agency">Agency</option>
-                    <option value="freelancer">Freelancer</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-muted">Social Media (Insta)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted font-bold text-sm">@</span>
-                    <input 
-                      type="text" 
-                      value={editInsta}
-                      onChange={(e) => setEditInsta(e.target.value)}
-                      className="w-full bg-surface dark:bg-raised border border-themeborder p-3 pl-8 text-primary text-sm focus:border-accent-border focus:shadow-[0_0_0_2px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                      placeholder="handle"
-                    />
-                  </div>
-                </div>
-
-                <button 
-                  type="submit"
-                  disabled={updatingProfile}
-                  className="mt-2 w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all duration-300 rounded-xl shadow-[0_0_15px_var(--accent-glow)] flex items-center justify-center"
-                >
-                  {updatingProfile ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span> : 'Save Details'}
-                </button>
-              </form>
-            </motion.div>
-
+          <div className="max-w-2xl mx-auto">
             {/* Empty State / Activation Card */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-surface/30 border border-themeborder border-dashed p-8 rounded-3xl col-span-1 md:col-span-2 flex flex-col items-center justify-center text-center min-h-[300px]"
+              className="bg-surface/30 border border-themeborder border-dashed p-8 md:p-12 rounded-3xl flex flex-col items-center justify-center text-center min-h-[350px]"
             >
               <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mb-6 text-accent shadow-[0_0_20px_var(--accent-glow)]">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
