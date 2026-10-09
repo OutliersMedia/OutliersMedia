@@ -17,7 +17,7 @@ function CopyButton({ text }) {
   );
 }
 
-import { generateUploadSchedule, getNextUpload, TYPE_CONFIG } from '../../utils/scheduleEngine';
+import { generateUploadSchedule, getNextUpload, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
 
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
@@ -69,24 +69,30 @@ export default function AdminClients() {
         // Build intelligent schedule for active clients
         let scheduleInfo = null;
         if (latestOrder && calculatedStatus === 'active') {
+          const scheduleConfig = getClientSchedule(latestOrder);
+          const effectiveStart = scheduleConfig?.firstUploadDate || latestOrder.first_upload_date || latestOrder.created_at;
+
           const orderPosts = postsList.filter(p => p.order_id === latestOrder.order_id);
           const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
           const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
+          const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
           const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
-          const totalDone = staticDone + reelsDone + postersDone;
-          const totalQuota = latestOrder.static_posts_total + latestOrder.reels_total + latestOrder.posters_total;
+          const totalDone = staticDone + reelsDone + storiesDone + postersDone;
+          const storiesQuota = latestOrder.stories_total || scheduleConfig?.totalStories || 0;
+          const totalQuota = (latestOrder.static_posts_total || 0) + (latestOrder.reels_total || 0) + (latestOrder.posters_total || 0) + storiesQuota;
 
           const schedule = generateUploadSchedule(
-            latestOrder.created_at,
+            effectiveStart,
             latestOrder.plan_name,
             latestOrder.static_posts_total,
             latestOrder.reels_total,
-            latestOrder.posters_total
+            latestOrder.posters_total,
+            scheduleConfig
           );
 
-          const nextSlot = getNextUpload(schedule, staticDone, reelsDone, postersDone);
+          const nextSlot = getNextUpload(schedule, staticDone, reelsDone, postersDone, storiesDone);
 
-          const deadline = new Date(latestOrder.created_at);
+          const deadline = new Date(effectiveStart);
           deadline.setDate(deadline.getDate() + 30);
           const daysLeftCycle = Math.max(0, Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24)));
 

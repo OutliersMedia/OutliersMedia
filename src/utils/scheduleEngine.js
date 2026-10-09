@@ -1,40 +1,206 @@
 import { Image as ImageIcon, Video, Layout, Sparkles, BookOpen } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 /**
- * OUTLIERS MEDIA — 7-DAY REPEATING CYCLE SCHEDULE ENGINE
- * Generates an accurate, professional content calendar matching the agency's exact specifications:
- *
- * STARTER (7-Day Repeating Pattern):
- * - Day 1: Post @ 7:00 PM (High engagement window)
- * - Day 3: Post @ 12:30 PM (Lunch break browsing)
- * - Day 5: Reel @ 7:00 PM (Peak video discovery)
- * - Day 7: Post @ 11:00 AM (Weekend leisure time)
- * Quota: 10 Posts, 3 Reels
- *
- * GROWTH & PREMIUM (7-Day Repeating Pattern):
- * - Day 1: Post @ 7:00 PM (High engagement)
- * - Day 2: Stories @ 12:00 PM & 7:00 PM (Mid-week boost)
- * - Day 3: Reel @ 12:30 PM (Peak discovery) + Post @ 7:00 PM (Evening push)
- * - Day 4: Stories @ 11:00 AM & 6:00 PM (Lunch + evening rush)
- * - Day 5: Post @ 12:30 PM (Lunch break) + Reel @ 7:00 PM (Double-day push)
- * - Day 6: Stories @ 10:00 AM & 5:00 PM (Weekend browsing peak)
- * - Day 7: Post @ 11:00 AM (Weekend leisure time)
- * Quota: 15 Posts, 4 Reels, 1 Physical Poster (Day 10 @ 2:00 PM)
- *
- * PREMIUM Add-ons:
- * - Weekly Milestones: Week 1 SEO Blog, Week 2 Influencer, Week 3 Event Promo, Week 4 Recap Video
+ * OUTLIERS MEDIA — 7-DAY REPEATING & CUSTOM INTERVAL SCHEDULE ENGINE
  */
 
 export const TYPE_CONFIG = {
   static:  { label: 'Static Post', shortLabel: 'Post',   icon: ImageIcon, color: 'text-[#3428f8]', bg: 'bg-[#3428f8]', dot: 'bg-[#3428f8]' },
   reel:    { label: 'Reel',        shortLabel: 'Reel',   icon: Video,     color: 'text-pink-500',   bg: 'bg-pink-500',   dot: 'bg-pink-500' },
   poster:  { label: 'Poster',      shortLabel: 'Poster', icon: Layout,    color: 'text-green-500',  bg: 'bg-green-500',  dot: 'bg-green-500' },
-  story:   { label: 'Stories',     shortLabel: 'Story',  icon: Sparkles,  color: 'text-amber-400',  bg: 'bg-amber-400',  dot: 'bg-amber-400' },
+  story:   { label: 'Story',       shortLabel: 'Story',  icon: Sparkles,  color: 'text-amber-400',  bg: 'bg-amber-400',  dot: 'bg-amber-400' },
   special: { label: 'Special',     shortLabel: 'Special',icon: BookOpen,  color: 'text-purple-400', bg: 'bg-purple-400', dot: 'bg-purple-400' },
 };
 
-export function generateUploadSchedule(startDate, planName = 'Starter Plan', staticTotal = 10, reelsTotal = 3, postersTotal = 0) {
+/**
+ * Retrieves custom schedule configuration for an order (with localStorage fallback)
+ */
+export function getClientSchedule(order) {
+  if (!order) return null;
+  
+  // 1. Check if order object has schedule_config attached from database
+  if (order.schedule_config && typeof order.schedule_config === 'object') {
+    return order.schedule_config;
+  }
+  if (typeof order.schedule_config === 'string') {
+    try {
+      return JSON.parse(order.schedule_config);
+    } catch (e) {
+      // ignore JSON parse error
+    }
+  }
+
+  // 2. Check localStorage fallback keyed by order_id
+  if (typeof window !== 'undefined' && order.order_id) {
+    try {
+      const cached = localStorage.getItem(`om_schedule_${order.order_id}`);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      // ignore localStorage errors
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Saves custom schedule configuration for an order to Supabase + localStorage
+ */
+export async function saveClientSchedule(orderId, config) {
+  if (!orderId || !config) return { error: new Error("Missing orderId or config") };
+
+  // 1. Cache to localStorage for instant local reactivity
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`om_schedule_${orderId}`, JSON.stringify(config));
+    } catch (e) {
+      console.warn("Local storage cache error:", e);
+    }
+  }
+
+  // 2. Attempt to update in Supabase orders table
+  try {
+    const updatePayload = {
+      schedule_config: config,
+      static_posts_total: config.totalStatic ?? config.static_posts_total,
+      reels_total: config.totalReels ?? config.reels_total,
+    };
+
+    if (config.firstUploadDate) {
+      updatePayload.first_upload_date = config.firstUploadDate;
+    }
+    if (config.totalStories !== undefined) {
+      updatePayload.stories_total = config.totalStories;
+    }
+
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updatePayload)
+      .eq('order_id', orderId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.warn("Supabase schedule update notice (using cached config):", error.message);
+      return { data: config, error: null };
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    console.warn("Database sync notice:", err);
+    return { data: config, error: null };
+  }
+}
+
+/**
+ * Generates an interval-based schedule customized by the admin
+ */
+export function generateCustomSchedule({
+  startDate,
+  staticPerWeek = 3,
+  staticInterval = 2,
+  reelsPerWeek = 1,
+  reelsInterval = 7,
+  storiesPerWeek = 3,
+  storiesInterval = 2,
+  postersTotal = 0,
+  weeksCount = 4
+}) {
   const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const schedule = [];
+
+  const timePresets = {
+    static: ['7:00 PM', '12:30 PM', '6:30 PM', '11:00 AM', '8:00 PM'],
+    reel:   ['7:30 PM', '1:00 PM', '8:30 PM', '6:00 PM'],
+    story:  ['12:00 PM', '6:00 PM', '10:00 AM', '8:00 PM'],
+  };
+
+  const scheduleFormat = (type, perWeek, intervalDays, formatTimes) => {
+    const countPerWk = Math.max(0, parseInt(perWeek) || 0);
+    const interval = Math.max(1, parseInt(intervalDays) || 1);
+    if (countPerWk === 0) return;
+
+    for (let week = 0; week < weeksCount; week++) {
+      const weekStartOffset = week * 7;
+      
+      for (let itemIdx = 0; itemIdx < countPerWk; itemIdx++) {
+        // Calculate day offset from start of week based on interval
+        const dayInWeek = Math.min(6, itemIdx * interval);
+        const dayOffset = weekStartOffset + dayInWeek;
+
+        const date = new Date(start);
+        date.setDate(date.getDate() + dayOffset);
+
+        const time = formatTimes[itemIdx % formatTimes.length];
+
+        schedule.push({
+          type,
+          time,
+          note: `${TYPE_CONFIG[type]?.label || type} #${itemIdx + 1} of Week ${week + 1}`,
+          date,
+          dayNumber: dayOffset + 1,
+          cycleWeek: week + 1
+        });
+      }
+    }
+  };
+
+  scheduleFormat('static', staticPerWeek, staticInterval, timePresets.static);
+  scheduleFormat('reel', reelsPerWeek, reelsInterval, timePresets.reel);
+  scheduleFormat('story', storiesPerWeek, storiesInterval, timePresets.story);
+
+  // If poster is included in the plan
+  if (postersTotal > 0) {
+    const posterDate = new Date(start);
+    posterDate.setDate(posterDate.getDate() + 9);
+    schedule.push({
+      type: 'poster',
+      time: '2:00 PM',
+      note: 'Print-ready in-store poster design',
+      date: posterDate,
+      dayNumber: 10,
+      cycleWeek: 2
+    });
+  }
+
+  // Sort chronologically
+  schedule.sort((a, b) => a.date - b.date);
+  return schedule;
+}
+
+/**
+ * Master schedule generation function with custom schedule support
+ */
+export function generateUploadSchedule(
+  startDate,
+  planName = 'Starter Plan',
+  staticTotal = 10,
+  reelsTotal = 3,
+  postersTotal = 0,
+  customConfig = null
+) {
+  // If custom schedule configuration is provided, use custom interval engine
+  if (customConfig && (customConfig.staticPerWeek !== undefined || customConfig.firstUploadDate)) {
+    const effectiveStartDate = customConfig.firstUploadDate || startDate;
+    return generateCustomSchedule({
+      startDate: effectiveStartDate,
+      staticPerWeek: customConfig.staticPerWeek ?? 3,
+      staticInterval: customConfig.staticInterval ?? 2,
+      reelsPerWeek: customConfig.reelsPerWeek ?? 1,
+      reelsInterval: customConfig.reelsInterval ?? 7,
+      storiesPerWeek: customConfig.storiesPerWeek ?? 3,
+      storiesInterval: customConfig.storiesInterval ?? 2,
+      postersTotal: postersTotal || (customConfig.postersTotal ?? 0),
+      weeksCount: customConfig.weeksCount ?? 4
+    });
+  }
+
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
   const normalizedPlan = (planName || '').toLowerCase();
   const isStarter = normalizedPlan.includes('starter') || normalizedPlan.includes('basic');
   const isPremium = normalizedPlan.includes('premium');
@@ -54,7 +220,6 @@ export function generateUploadSchedule(startDate, planName = 'Starter Plan', sta
     const maxStatic = staticTotal || 10;
     const maxReels = reelsTotal || 3;
 
-    // Run 5 cycles to comfortably cover the full 30-day month
     for (let cycle = 0; cycle < 5; cycle++) {
       for (const item of starterCycle) {
         if (item.type === 'static' && staticCount >= maxStatic) continue;
@@ -124,16 +289,18 @@ export function generateUploadSchedule(startDate, planName = 'Starter Plan', sta
     }
 
     // Physical Poster Design (Day 10)
-    const posterDate = new Date(start);
-    posterDate.setDate(posterDate.getDate() + 9);
-    schedule.push({
-      type: 'poster',
-      time: '2:00 PM',
-      note: 'Print-ready in-store poster design',
-      date: posterDate,
-      dayNumber: 10,
-      cycleWeek: 2
-    });
+    if (postersTotal > 0 || !isStarter) {
+      const posterDate = new Date(start);
+      posterDate.setDate(posterDate.getDate() + 9);
+      schedule.push({
+        type: 'poster',
+        time: '2:00 PM',
+        note: 'Print-ready in-store poster design',
+        date: posterDate,
+        dayNumber: 10,
+        cycleWeek: 2
+      });
+    }
 
     // Premium Weekly Add-ons
     if (isPremium) {
@@ -163,11 +330,14 @@ export function generateUploadSchedule(startDate, planName = 'Starter Plan', sta
   return schedule;
 }
 
-// Find next deliverable to be uploaded (static, reel, or poster)
-export function getNextUpload(schedule, staticDone = 0, reelsDone = 0, postersDone = 0) {
+// Find next deliverable to be uploaded (static, reel, poster, or story)
+export function getNextUpload(schedule, staticDone = 0, reelsDone = 0, postersDone = 0, storiesDone = 0) {
+  if (!schedule || !Array.isArray(schedule)) return null;
+
   let staticSkipped = 0;
   let reelsSkipped = 0;
   let postersSkipped = 0;
+  let storiesSkipped = 0;
 
   for (const slot of schedule) {
     if (slot.type === 'static') {
@@ -182,6 +352,10 @@ export function getNextUpload(schedule, staticDone = 0, reelsDone = 0, postersDo
       if (postersSkipped < postersDone) { postersSkipped++; continue; }
       return slot;
     }
+    if (slot.type === 'story') {
+      if (storiesSkipped < storiesDone) { storiesSkipped++; continue; }
+      return slot;
+    }
   }
-  return null; // All core deliverables completed
+  return null;
 }

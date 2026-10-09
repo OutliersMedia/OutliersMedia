@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
-import { generateUploadSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
+import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -95,16 +95,20 @@ export default function AdminOverview() {
 
     // Build Detailed Retainers
     const detailed = activeOrds.map(order => {
+      const scheduleConfig = getClientSchedule(order);
+      const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
       const orderPosts = postsList.filter(p => p.order_id === order.order_id);
       const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
       const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
+      const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
       const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
-      const totalDone = staticDone + reelsDone + postersDone;
-      const totalQuota = (order.static_posts_total || 0) + (order.reels_total || 0) + (order.posters_total || 0);
+      const totalDone = staticDone + reelsDone + storiesDone + postersDone;
+      const storiesQuota = order.stories_total || scheduleConfig?.totalStories || 0;
+      const totalQuota = (order.static_posts_total || 0) + (order.reels_total || 0) + (order.posters_total || 0) + storiesQuota;
 
-      const created = new Date(order.created_at);
+      const startD = new Date(effectiveStart);
       const now = new Date();
-      const diffDays = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.floor((now - startD) / (1000 * 60 * 60 * 24));
       const daysLeft = Math.max(0, 30 - diffDays);
 
       return {
@@ -114,6 +118,7 @@ export default function AdminOverview() {
         totalQuota,
         staticDone,
         reelsDone,
+        storiesDone,
         postersDone,
         daysLeft,
         daysActive: diffDays
@@ -129,31 +134,37 @@ export default function AdminOverview() {
 
     activeOrds.forEach(order => {
       const clientName = profileMap[order.client_id]?.name || 'Unknown';
+      const scheduleConfig = getClientSchedule(order);
+      const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
+
       const orderPosts = postsList.filter(p => p.order_id === order.order_id);
       const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
       const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
+      const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
       const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
 
       const schedule = generateUploadSchedule(
-        order.created_at,
+        effectiveStart,
         order.plan_name,
         order.static_posts_total,
         order.reels_total,
-        order.posters_total
+        order.posters_total,
+        scheduleConfig
       );
 
       // Mark delivered vs pending slots
-      let sSkipped = 0, rSkipped = 0, pSkipped = 0;
+      let sSkipped = 0, rSkipped = 0, pSkipped = 0, stSkipped = 0;
       schedule.forEach(slot => {
         let delivered = false;
         if (slot.type === 'static') { if (sSkipped < staticDone) { sSkipped++; delivered = true; } }
         else if (slot.type === 'reel') { if (rSkipped < reelsDone) { rSkipped++; delivered = true; } }
         else if (slot.type === 'poster') { if (pSkipped < postersDone) { pSkipped++; delivered = true; } }
+        else if (slot.type === 'story') { if (stSkipped < storiesDone) { stSkipped++; delivered = true; } }
 
         const slotDate = new Date(slot.date);
         slotDate.setHours(0, 0, 0, 0);
 
-        if (!delivered && slotDate.getTime() === today.getTime() && ['static', 'reel', 'poster'].includes(slot.type)) {
+        if (!delivered && slotDate.getTime() === today.getTime() && ['static', 'reel', 'poster', 'story'].includes(slot.type)) {
           pendingToday++;
         }
 
@@ -165,7 +176,7 @@ export default function AdminOverview() {
           clientName,
           orderId: order.order_id,
           delivered,
-          isOverdue: !delivered && slotDate < today && ['static', 'reel', 'poster'].includes(slot.type)
+          isOverdue: !delivered && slotDate < today && ['static', 'reel', 'poster', 'story'].includes(slot.type)
         });
       });
     });
@@ -392,6 +403,7 @@ export default function AdminOverview() {
               >
                 <option value="static">Static Post</option>
                 <option value="reel">Reel / Short</option>
+                <option value="story">Story</option>
                 <option value="poster">Poster</option>
               </select>
             </div>
