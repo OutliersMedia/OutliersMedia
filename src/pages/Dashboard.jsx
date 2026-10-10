@@ -119,23 +119,36 @@ export default function Dashboard() {
         alert("Failed to submit payment details: " + error.message);
         return false; // Return false so the modal knows it failed
       } else if (data) {
-        // Attempt to lock in original_amount and total_agreed_amount to the pitched price
+        const isStarter = (plan.name || '').toLowerCase().includes('starter');
+        const staticQuota = isStarter ? 12 : 15;
+        const reelsQuota = isStarter ? 8 : 12;
+        const storiesQuota = 15;
+
+        // Attempt to lock in original_amount, total_agreed_amount, and updated plan quotas
         try {
           await supabase
             .from('orders')
             .update({
               original_amount: plan.price,
-              total_agreed_amount: plan.price
+              total_agreed_amount: plan.price,
+              static_posts_total: staticQuota,
+              reels_total: reelsQuota,
+              stories_total: storiesQuota,
+              posters_total: 0
             })
             .eq('id', data.id);
         } catch {
-          // Non-fatal if RLS restricts client direct update; p_amount is already stored in amount_paid
+          // Non-fatal if RLS restricts client direct update
         }
         setActiveOrder({
           ...data,
           original_amount: plan.price,
           total_agreed_amount: plan.price,
-          amount_paid: plan.price
+          amount_paid: plan.price,
+          static_posts_total: staticQuota,
+          reels_total: reelsQuota,
+          stories_total: storiesQuota,
+          posters_total: 0
         });
         setShowPlanModal(false); // Only close on success
         return true;

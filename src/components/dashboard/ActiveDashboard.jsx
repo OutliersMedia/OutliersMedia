@@ -75,18 +75,22 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
   const planName = order.plan_name || order.plan || 'Starter Plan';
   const scheduleConfig = getClientSchedule(order);
 
-  // Calculate Progress based on plan quotas stored in database or plan defaults
-  const targetStatic = order.static_posts_total ?? (planName === 'Starter Plan' ? 10 : 15);
-  const targetReels = order.reels_total ?? (planName === 'Starter Plan' ? 3 : 4);
-  const targetPosters = order.posters_total ?? (planName === 'Starter Plan' ? 0 : 1);
+  // Calculate Progress based on plan quotas stored in database or updated plan defaults
+  const isStarterPlan = planName.toLowerCase().includes('starter');
+  const defaultStaticForPlan = isStarterPlan ? 12 : 15;
+  const defaultReelsForPlan = isStarterPlan ? 8 : 12;
+
+  const targetStatic = (order.static_posts_total && order.static_posts_total !== 10)
+    ? order.static_posts_total
+    : defaultStaticForPlan;
+  const targetReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+    ? order.reels_total
+    : defaultReelsForPlan;
+  const targetPosters = 0; // Physical poster removed
   
   let targetStories = order.stories_total || scheduleConfig?.totalStories;
-  if (!targetStories) {
-    if (planName.toLowerCase().includes('growth') || planName.toLowerCase().includes('premium')) {
-      targetStories = 32;
-    } else {
-      targetStories = 0;
-    }
+  if (!targetStories || targetStories === 32) {
+    targetStories = 15;
   }
 
   const hasWebsite = order.has_website || planName.toLowerCase().includes('premium');

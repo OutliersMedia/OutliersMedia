@@ -66,26 +66,19 @@ export default function Services() {
             </thead>
             <tbody>
               {[
-                "Instagram Page Setup",
-                "Monthly Static Posts",
-                "Monthly Reels",
-                "Gamified Stories",
-                "Google Maps Optimization",
-                "WhatsApp Content",
-                "Custom Website",
-              ].map((feature, idx) => (
+                { label: "Instagram Page Setup", starter: "Included", growth: "Included", premium: "Included" },
+                { label: "Monthly Static Posts", starter: "12 / month", growth: "15 / month", premium: "15 / month" },
+                { label: "Monthly Reels", starter: "8 / month", growth: "12 / month", premium: "12 / month" },
+                { label: "Monthly Stories", starter: "15 / month", growth: "15 / month", premium: "15 / month" },
+                { label: "Google Maps Optimization", starter: "Included", growth: "Daily Optimization", premium: "Daily + Local SEO" },
+                { label: "Offline Events", starter: null, growth: "1–2 Events / month", premium: "1–2 Events / month" },
+                { label: "Custom 5-Page Website", starter: null, growth: null, premium: "Included" },
+              ].map((row, idx) => (
                 <tr key={idx} className="border-b border-themeborder hover:bg-white/[0.02] transition-colors duration-300">
-                  <td className="p-6 px-8 text-primary font-medium bg-transparent select-none">{feature}</td>
+                  <td className="p-6 px-8 text-primary font-medium bg-transparent select-none">{row.label}</td>
                   {packages.map((pkg) => {
                     const isSelected = pkg.id === selectedPlanId;
-                    let isIncluded = false;
-                    if (pkg.id === 'Starter') {
-                      isIncluded = idx === 0 || idx === 1 || idx === 2 || idx === 4;
-                    } else if (pkg.id === 'Growth') {
-                      isIncluded = idx !== 6;
-                    } else if (pkg.id === 'Premium') {
-                      isIncluded = true;
-                    }
+                    const value = pkg.id === 'Starter' ? row.starter : pkg.id === 'Growth' ? row.growth : row.premium;
 
                     return (
                       <td 
@@ -98,8 +91,8 @@ export default function Services() {
                         }`}
                       >
                         <div className={`transition-all duration-500 ease-out origin-center ${isSelected ? 'scale-110 font-bold' : 'scale-100'}`}>
-                          {isIncluded ? (
-                            <span className={isSelected ? 'text-white' : 'text-accent'}>Included</span>
+                          {value ? (
+                            <span className={isSelected ? 'text-white' : 'text-accent'}>{value}</span>
                           ) : (
                             <span className="text-muted opacity-30 select-none">—</span>
                           )}

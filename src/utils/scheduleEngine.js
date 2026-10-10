@@ -178,8 +178,8 @@ export function generateCustomSchedule({
 export function generateUploadSchedule(
   startDate,
   planName = 'Starter Plan',
-  staticTotal = 10,
-  reelsTotal = 3,
+  staticTotal = 12,
+  reelsTotal = 8,
   postersTotal = 0,
   customConfig = null
 ) {
@@ -190,11 +190,11 @@ export function generateUploadSchedule(
       startDate: effectiveStartDate,
       staticPerWeek: customConfig.staticPerWeek ?? 3,
       staticInterval: customConfig.staticInterval ?? 2,
-      reelsPerWeek: customConfig.reelsPerWeek ?? 1,
-      reelsInterval: customConfig.reelsInterval ?? 7,
-      storiesPerWeek: customConfig.storiesPerWeek ?? 3,
+      reelsPerWeek: customConfig.reelsPerWeek ?? 2,
+      reelsInterval: customConfig.reelsInterval ?? 3,
+      storiesPerWeek: customConfig.storiesPerWeek ?? 4,
       storiesInterval: customConfig.storiesInterval ?? 2,
-      postersTotal: postersTotal || (customConfig.postersTotal ?? 0),
+      postersTotal: 0,
       weeksCount: customConfig.weeksCount ?? 4
     });
   }
@@ -207,23 +207,31 @@ export function generateUploadSchedule(
   const schedule = [];
 
   if (isStarter) {
-    // STARTER 7-Day Cycle
+    // STARTER 7-Day Cycle (12 posts/mo, 8 reels/mo, 15 stories/mo)
     const starterCycle = [
       { dayOffset: 0, type: 'static', time: '7:00 PM', note: 'High engagement window' },
-      { dayOffset: 2, type: 'static', time: '12:30 PM', note: 'Lunch break browsing' },
-      { dayOffset: 4, type: 'reel',   time: '7:00 PM', note: 'Peak video discovery' },
+      { dayOffset: 1, type: 'story',  time: '12:00 PM', note: 'Interactive story boost' },
+      { dayOffset: 2, type: 'reel',   time: '7:00 PM', note: 'Peak video discovery' },
+      { dayOffset: 3, type: 'static', time: '12:30 PM', note: 'Lunch break browsing' },
+      { dayOffset: 3, type: 'story',  time: '6:00 PM',  note: 'Evening rush story' },
+      { dayOffset: 4, type: 'story',  time: '1:00 PM',  note: 'Mid-week story engagement' },
+      { dayOffset: 5, type: 'reel',   time: '7:00 PM', note: 'Weekend discovery reel' },
       { dayOffset: 6, type: 'static', time: '11:00 AM', note: 'Weekend leisure time' },
+      { dayOffset: 6, type: 'story',  time: '5:00 PM',  note: 'Weekend story highlight' },
     ];
 
     let staticCount = 0;
     let reelsCount = 0;
-    const maxStatic = staticTotal || 10;
-    const maxReels = reelsTotal || 3;
+    let storiesCount = 0;
+    const maxStatic = (staticTotal && staticTotal !== 10) ? staticTotal : 12;
+    const maxReels = (reelsTotal && reelsTotal !== 3) ? reelsTotal : 8;
+    const maxStories = 15;
 
     for (let cycle = 0; cycle < 5; cycle++) {
       for (const item of starterCycle) {
         if (item.type === 'static' && staticCount >= maxStatic) continue;
         if (item.type === 'reel' && reelsCount >= maxReels) continue;
+        if (item.type === 'story' && storiesCount >= maxStories) continue;
 
         const dayNum = cycle * 7 + item.dayOffset;
         if (dayNum >= 30) continue;
@@ -233,6 +241,7 @@ export function generateUploadSchedule(
 
         if (item.type === 'static') staticCount++;
         if (item.type === 'reel') reelsCount++;
+        if (item.type === 'story') storiesCount++;
 
         schedule.push({
           type: item.type,
@@ -245,28 +254,33 @@ export function generateUploadSchedule(
       }
     }
   } else {
-    // GROWTH & PREMIUM 7-Day Cycle
+    // GROWTH & PREMIUM 7-Day Cycle (15 posts/mo, 12 reels/mo, 15 stories/mo, 0 posters)
     const growthCycle = [
       { dayOffset: 0, type: 'static', time: '7:00 PM', note: 'High engagement window' },
-      { dayOffset: 1, type: 'story',  time: '12:00 PM & 7:00 PM', note: '2–3 stories mid-week boost' },
-      { dayOffset: 2, type: 'reel',   time: '12:30 PM', note: 'Peak video discovery' },
+      { dayOffset: 0, type: 'reel',   time: '12:30 PM', note: 'Week kickoff reel' },
+      { dayOffset: 1, type: 'story',  time: '12:00 PM', note: 'Interactive story boost' },
       { dayOffset: 2, type: 'static', time: '7:00 PM', note: 'Evening feed push' },
-      { dayOffset: 3, type: 'story',  time: '11:00 AM & 6:00 PM', note: 'Lunch + evening rush stories' },
+      { dayOffset: 2, type: 'reel',   time: '1:00 PM',  note: 'Peak video discovery' },
+      { dayOffset: 3, type: 'story',  time: '6:00 PM',  note: 'Evening rush story' },
       { dayOffset: 4, type: 'static', time: '12:30 PM', note: 'Lunch break browsing' },
-      { dayOffset: 4, type: 'reel',   time: '7:00 PM', note: 'Double-day video push' },
-      { dayOffset: 5, type: 'story',  time: '10:00 AM & 5:00 PM', note: 'Weekend browsing peak' },
+      { dayOffset: 4, type: 'reel',   time: '7:00 PM',  note: 'Weekend preview reel' },
+      { dayOffset: 5, type: 'story',  time: '11:00 AM', note: 'Weekend browsing story' },
       { dayOffset: 6, type: 'static', time: '11:00 AM', note: 'Weekend leisure time' },
+      { dayOffset: 6, type: 'story',  time: '5:00 PM',  note: 'Sunday evening story' },
     ];
 
     let staticCount = 0;
     let reelsCount = 0;
+    let storiesCount = 0;
     const maxStatic = staticTotal || 15;
-    const maxReels = reelsTotal || 4;
+    const maxReels = (reelsTotal && reelsTotal !== 4) ? reelsTotal : 12;
+    const maxStories = 15;
 
     for (let cycle = 0; cycle < 5; cycle++) {
       for (const item of growthCycle) {
         if (item.type === 'static' && staticCount >= maxStatic) continue;
         if (item.type === 'reel' && reelsCount >= maxReels) continue;
+        if (item.type === 'story' && storiesCount >= maxStories) continue;
 
         const dayNum = cycle * 7 + item.dayOffset;
         if (dayNum >= 30) continue;
@@ -276,6 +290,7 @@ export function generateUploadSchedule(
 
         if (item.type === 'static') staticCount++;
         if (item.type === 'reel') reelsCount++;
+        if (item.type === 'story') storiesCount++;
 
         schedule.push({
           type: item.type,
@@ -286,20 +301,6 @@ export function generateUploadSchedule(
           cycleWeek: cycle + 1
         });
       }
-    }
-
-    // Physical Poster Design (Day 10)
-    if (postersTotal > 0 || !isStarter) {
-      const posterDate = new Date(start);
-      posterDate.setDate(posterDate.getDate() + 9);
-      schedule.push({
-        type: 'poster',
-        time: '2:00 PM',
-        note: 'Print-ready in-store poster design',
-        date: posterDate,
-        dayNumber: 10,
-        cycleWeek: 2
-      });
     }
 
     // Premium Weekly Add-ons

@@ -140,16 +140,24 @@ export default function AdminOverview() {
 
     // Build Detailed Retainers
     const detailed = activeOrds.map(order => {
+      const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
+      const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
+        ? order.static_posts_total
+        : (isStarterOrd ? 12 : 15);
+      const normReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+        ? order.reels_total
+        : (isStarterOrd ? 8 : 12);
+
       const scheduleConfig = getClientSchedule(order);
       const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
       const orderPosts = postsList.filter(p => p.order_id === order.order_id);
       const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
       const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
       const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
-      const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
-      const totalDone = staticDone + reelsDone + storiesDone + postersDone;
-      const storiesQuota = order.stories_total || scheduleConfig?.totalStories || 0;
-      const totalQuota = (order.static_posts_total || 0) + (order.reels_total || 0) + (order.posters_total || 0) + storiesQuota;
+      const postersDone = 0;
+      const totalDone = staticDone + reelsDone + storiesDone;
+      const storiesQuota = order.stories_total || scheduleConfig?.totalStories || 15;
+      const totalQuota = normStatic + normReels + storiesQuota;
 
       const startD = new Date(effectiveStart);
       const now = new Date();
@@ -158,6 +166,10 @@ export default function AdminOverview() {
 
       return {
         ...order,
+        static_posts_total: normStatic,
+        reels_total: normReels,
+        stories_total: storiesQuota,
+        posters_total: 0,
         clientName: profileMap[order.client_id]?.name || 'Unknown',
         totalDone,
         totalQuota,
@@ -178,6 +190,14 @@ export default function AdminOverview() {
     today.setHours(0, 0, 0, 0);
 
     activeOrds.forEach(order => {
+      const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
+      const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
+        ? order.static_posts_total
+        : (isStarterOrd ? 12 : 15);
+      const normReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+        ? order.reels_total
+        : (isStarterOrd ? 8 : 12);
+
       const clientName = profileMap[order.client_id]?.name || 'Unknown';
       const scheduleConfig = getClientSchedule(order);
       const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
@@ -191,9 +211,9 @@ export default function AdminOverview() {
       const schedule = generateUploadSchedule(
         effectiveStart,
         order.plan_name,
-        order.static_posts_total,
-        order.reels_total,
-        order.posters_total,
+        normStatic,
+        normReels,
+        0,
         scheduleConfig
       );
 

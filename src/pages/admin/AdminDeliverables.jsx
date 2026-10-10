@@ -95,15 +95,15 @@ export default function AdminDeliverables() {
       }
 
       const isStarter = selectedClient.latestOrder.plan_name?.toLowerCase().includes('starter');
-      setStaticPerWeek(cfg?.staticPerWeek ?? (isStarter ? 2 : 3));
+      setStaticPerWeek(cfg?.staticPerWeek ?? (isStarter ? 3 : 4));
       setStaticInterval(cfg?.staticInterval ?? 2);
-      setReelsPerWeek(cfg?.reelsPerWeek ?? 1);
-      setReelsInterval(cfg?.reelsInterval ?? 7);
-      setStoriesPerWeek(cfg?.storiesPerWeek ?? (isStarter ? 0 : 3));
+      setReelsPerWeek(cfg?.reelsPerWeek ?? (isStarter ? 2 : 3));
+      setReelsInterval(cfg?.reelsInterval ?? 3);
+      setStoriesPerWeek(cfg?.storiesPerWeek ?? 4);
       setStoriesInterval(cfg?.storiesInterval ?? 2);
       setScheduleSavedSuccess(false);
 
-      if (postType === 'poster' && selectedClient.latestOrder.posters_total === 0) {
+      if (postType === 'poster') {
         setPostType('static');
       }
     }
@@ -135,11 +135,30 @@ export default function AdminDeliverables() {
       const enrichedClients = profiles.map(profile => {
         const clientOrders = orders ? orders.filter(o => o.client_id === profile.auth_id) : [];
         const activeOrPending = clientOrders.find(o => ['active', 'pending', 'paused'].includes(o.status));
-        const latestOrder = activeOrPending || clientOrders[0] || null;
+        let latestOrder = activeOrPending || clientOrders[0] || null;
 
         let calculatedStatus = 'lead';
 
         if (latestOrder) {
+          const isStarterOrd = (latestOrder.plan_name || '').toLowerCase().includes('starter');
+          const normStatic = (latestOrder.static_posts_total && latestOrder.static_posts_total !== 10)
+            ? latestOrder.static_posts_total
+            : (isStarterOrd ? 12 : 15);
+          const normReels = (latestOrder.reels_total && latestOrder.reels_total !== 3 && latestOrder.reels_total !== 4)
+            ? latestOrder.reels_total
+            : (isStarterOrd ? 8 : 12);
+          const normStories = (latestOrder.stories_total && latestOrder.stories_total !== 32)
+            ? latestOrder.stories_total
+            : 15;
+
+          latestOrder = {
+            ...latestOrder,
+            static_posts_total: normStatic,
+            reels_total: normReels,
+            stories_total: normStories,
+            posters_total: 0
+          };
+
           calculatedStatus = latestOrder.status;
 
           if (calculatedStatus === 'active' && latestOrder.created_at) {
@@ -167,10 +186,9 @@ export default function AdminDeliverables() {
           const storiesDelivered = clientPosts.filter(p => p.post_type === 'story').length;
           const postersDelivered = clientPosts.filter(p => p.post_type === 'poster').length;
 
-          const storiesQuota = latestOrder.stories_total || scheduleConfig?.totalStories || 0;
+          const storiesQuota = latestOrder.stories_total || scheduleConfig?.totalStories || 15;
           const totalQuota = (latestOrder.static_posts_total || 0) + 
                              (latestOrder.reels_total || 0) + 
-                             (latestOrder.posters_total || 0) + 
                              storiesQuota;
 
           progress = {
@@ -178,7 +196,7 @@ export default function AdminDeliverables() {
             reels: reelsDelivered,
             stories: storiesDelivered,
             posters: postersDelivered,
-            total_delivered: staticDelivered + reelsDelivered + storiesDelivered + postersDelivered,
+            total_delivered: staticDelivered + reelsDelivered + storiesDelivered,
             total_quota: totalQuota
           };
         }

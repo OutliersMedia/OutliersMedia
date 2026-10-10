@@ -436,8 +436,9 @@ export function PricingProvider({ children }) {
         price: effectivePrices.starter,
         period: 'mo',
         features: [
-          '10 Static Posts',
-          '3 Reels',
+          '12 Static Posts / Month',
+          '8 Reels / Month',
+          '15 Stories / Month',
           'Instagram Setup + Profile Optimization',
           'Google Business Profile Setup',
           'Content Calendar + Captions',
@@ -451,11 +452,11 @@ export function PricingProvider({ children }) {
         price: effectivePrices.growth,
         period: 'mo',
         features: [
-          '15 Static Posts',
-          '4 Reels',
-          '8–10 Stories/week',
+          '15 Static Posts / Month',
+          '12 Reels / Month',
+          '15 Stories / Month',
+          '1–2 Offline Events / Month',
           'Google Maps Daily Optimization',
-          '1 Physical Poster Design',
           'Weekly Interactive Games',
           'Monthly Performance Summary'
         ],
