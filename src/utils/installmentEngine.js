@@ -6,7 +6,7 @@
 
 export const getStandardPlanPrice = (planName) => {
   const p = (planName || '').toLowerCase();
-  if (p.includes('premium')) return 11000;
+  if (p.includes('premium')) return 15000;
   if (p.includes('growth')) return 6000;
   if (p.includes('starter') || p.includes('basic')) return 3500;
   return 3500;

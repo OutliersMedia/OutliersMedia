@@ -5,13 +5,13 @@ import { packages as defaultPackages } from '../utils/data';
 
 const PricingContext = createContext();
 
-const STORAGE_KEY = 'outliers_live_pricing_v1';
+const STORAGE_KEY = 'outliers_live_pricing_v2';
 
 export const DEFAULT_PRICING_STATE = {
   starter: 3500,
   growth: 6000,
-  premium: 6000,
-  websiteAddon: 5000,
+  premium: 8000,
+  websiteAddon: 7000,
   activePitchClient: '',
   updatedAt: new Date().toISOString(),
   pitchHistory: [
@@ -102,14 +102,19 @@ export function PricingProvider({ children }) {
           if (res.ok) {
             const cloudConfig = await res.json();
             if (cloudConfig && typeof cloudConfig.starter === 'number') {
+              const normalizedCloud = {
+                ...cloudConfig,
+                premium: (cloudConfig.premium === 6000 && cloudConfig.websiteAddon === 5000) ? 8000 : (cloudConfig.premium || 8000),
+                websiteAddon: (cloudConfig.premium === 6000 && cloudConfig.websiteAddon === 5000) ? 7000 : (cloudConfig.websiteAddon || 7000)
+              };
               setLivePricing(prev => {
                 // Only overwrite if cloud is newer or has data
                 const merged = {
                   ...DEFAULT_PRICING_STATE,
                   ...prev,
-                  ...cloudConfig,
-                  pitchHistory: Array.isArray(cloudConfig.pitchHistory) && cloudConfig.pitchHistory.length > 0
-                    ? cloudConfig.pitchHistory
+                  ...normalizedCloud,
+                  pitchHistory: Array.isArray(normalizedCloud.pitchHistory) && normalizedCloud.pitchHistory.length > 0
+                    ? normalizedCloud.pitchHistory
                     : prev.pitchHistory
                 };
                 cachePricingLocally(merged);
@@ -288,7 +293,7 @@ export function PricingProvider({ children }) {
       planName: entry.planName || 'Starter Plan',
       planId: entry.planId || (pLower.includes('growth') ? 'growth' : pLower.includes('premium') ? 'premium' : 'starter'),
       pitchedPrice: numericPrice,
-      standardPrice: entry.standardPrice || (pLower.includes('growth') ? 6000 : pLower.includes('premium') ? 11000 : 3500),
+      standardPrice: entry.standardPrice || (pLower.includes('growth') ? 6000 : pLower.includes('premium') ? 15000 : 3500),
       status: entry.status || 'pitched',
       date: entry.date || new Date().toISOString(),
       notes: entry.notes || ''
@@ -302,7 +307,7 @@ export function PricingProvider({ children }) {
       } else if (pLower.includes('growth')) {
         livePatch.growth = numericPrice;
       } else if (pLower.includes('premium')) {
-        livePatch.premium = Math.max(1000, numericPrice - Number(livePricing.websiteAddon || 5000));
+        livePatch.premium = Math.max(1000, numericPrice - Number(livePricing.websiteAddon || 7000));
       }
     }
 
@@ -342,8 +347,8 @@ export function PricingProvider({ children }) {
   const effectivePrices = useMemo(() => {
     let starter = Number(livePricing.starter || 3500);
     let growth = Number(livePricing.growth || 6000);
-    let premium = Number(livePricing.premium || 6000);
-    let websiteAddon = Number(livePricing.websiteAddon || 5000);
+    let premium = Number(livePricing.premium || 8000);
+    let websiteAddon = Number(livePricing.websiteAddon || 7000);
 
     // If a regular client is logged in, protect their view with their own agreed/pitched price
     if (user && !isAdmin && !isTester) {
@@ -473,7 +478,6 @@ export function PricingProvider({ children }) {
           'Everything in Growth',
           '5-Page Website',
           'Local SEO Optimization',
-          'Influencer Collaboration (3–5)',
           'Monthly Analytics Video Report',
           'Monthly In-Store Event Planning'
         ],

@@ -307,7 +307,7 @@ export function generateUploadSchedule(
     if (isPremium) {
       const pMilestones = [
         { day: 3, note: 'Week 1: Blog post + Website SEO update' },
-        { day: 10, note: 'Week 2: 3–5 Micro-influencer collaboration brief' },
+        { day: 10, note: 'Week 2: Custom 5-page website design & local SEO milestone' },
         { day: 17, note: 'Week 3: In-store event announcement & promo' },
         { day: 24, note: 'Week 4: Monthly analytics video report' },
       ];

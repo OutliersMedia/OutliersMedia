@@ -37,14 +37,13 @@ export const packages = [
   {
     id: "Premium",
     name: "Premium",
-    price: "₹6,000",
-    frequency: "/month + ₹5,000 (only once for website)",
+    price: "₹8,000",
+    frequency: "/month + ₹7,000 (only once for website)",
     features: [
       "Everything in Growth",
       "5-page website (Home, About, Menu/Services, Contact, Offers)",
       "Google Maps embed + local SEO optimization",
       "SEO optimization & local ranking improvements",
-      "Collaboration outreach (3–5 micro-influencers)",
       "Monthly analytics video report",
       "Monthly in-store event planning (Sunday specials, lucky draws, themed nights)",
     ],

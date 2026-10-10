@@ -78,8 +78,8 @@ export default function AdminFinances() {
   useEffect(() => {
     setCustomStarterInput(String(livePricing.starter || 3500));
     setCustomGrowthInput(String(livePricing.growth || 6000));
-    setCustomPremiumInput(String(livePricing.premium || 6000));
-    setCustomAddonInput(String(livePricing.websiteAddon || 5000));
+    setCustomPremiumInput(String(livePricing.premium || 8000));
+    setCustomAddonInput(String(livePricing.websiteAddon || 7000));
   }, [livePricing.starter, livePricing.growth, livePricing.premium, livePricing.websiteAddon]);
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function AdminFinances() {
     } else if (pitchPlanName === 'Growth Plan') {
       setPitchPriceInput(String(livePricing.growth || 6000));
     } else {
-      setPitchPriceInput(String((livePricing.premium || 6000) + (livePricing.websiteAddon || 5000)));
+      setPitchPriceInput(String((livePricing.premium || 8000) + (livePricing.websiteAddon || 7000)));
     }
   }, [pitchPlanName, livePricing.starter, livePricing.growth, livePricing.premium, livePricing.websiteAddon]);
 
@@ -117,7 +117,7 @@ export default function AdminFinances() {
       websiteAddon: DEFAULT_LIVE_PRICING.websiteAddon,
       activePitchClient: ''
     });
-    triggerLiveToast('⚡ Reset all website plan prices to standard defaults (₹3,500 / ₹6,000 / ₹11,000).');
+    triggerLiveToast('⚡ Reset all website plan prices to standard defaults (₹3,500 / ₹6,000 / ₹8,000 + ₹7,000 Website).');
   };
 
   const handleLogAndApplyPitch = async (e) => {
@@ -1030,7 +1030,7 @@ export default function AdminFinances() {
                   <div className="text-right">
                     <span className="text-[10px] uppercase tracking-widest text-[#777] block font-bold">1st Month Total</span>
                     <span className="text-2xl font-serif font-bold text-white">
-                      ₹{(Number(livePricing.premium || 6000) + Number(livePricing.websiteAddon || 5000)).toLocaleString()}
+                      ₹{(Number(livePricing.premium || 8000) + Number(livePricing.websiteAddon || 7000)).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1038,7 +1038,7 @@ export default function AdminFinances() {
                 <div className="space-y-2.5">
                   <div>
                     <label className="text-[10px] text-[#777] font-bold uppercase tracking-wider block mb-1">
-                      Monthly Retainer (₹{Number(livePricing.premium || 6000).toLocaleString()}/mo)
+                      Monthly Retainer (₹{Number(livePricing.premium || 8000).toLocaleString()}/mo)
                     </label>
                     <div className="flex items-center gap-2">
                       <input
@@ -1060,7 +1060,7 @@ export default function AdminFinances() {
 
                   <div>
                     <label className="text-[10px] text-[#777] font-bold uppercase tracking-wider block mb-1">
-                      One-Time Website Setup (+₹{Number(livePricing.websiteAddon || 5000).toLocaleString()})
+                      One-Time Website Setup (+₹{Number(livePricing.websiteAddon || 7000).toLocaleString()})
                     </label>
                     <div className="flex items-center gap-2">
                       <input
