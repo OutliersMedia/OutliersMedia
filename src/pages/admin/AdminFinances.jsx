@@ -818,32 +818,27 @@ export default function AdminFinances() {
         </div>
       </div>
 
-      {/* ⚡ LIVE WEBSITE PRICING & PITCH MEMORY MANAGER */}
-      <div className="mb-8 bg-gradient-to-br from-[#0c0c14] via-[#0a0a0a] to-[#0f0c1b] border border-[#3428f8]/40 rounded-3xl p-6 md:p-7 shadow-[0_0_40px_rgba(52,40,248,0.12)] relative overflow-hidden">
+      {/* LIVE WEBSITE PRICING & PITCH MEMORY MANAGER */}
+      <div className="mb-8 bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 md:p-7 relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#222]">
-          <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-[#3428f8]/20 border border-[#3428f8]/40 flex items-center justify-center text-[#3428f8] shrink-0 mt-0.5 shadow-[0_0_20px_rgba(52,40,248,0.3)]">
-              <Zap size={22} />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h3 className="text-xl md:text-2xl font-serif text-white">
-                  Live Website Pricing & Pitch Memory
-                </h3>
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Live Sync Active
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h3 className="text-xl md:text-2xl font-serif text-white">
+                Live Website Pricing & Pitch Memory
+              </h3>
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Live Sync Active
+              </span>
+              {livePricing.activePitchClient && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest bg-[#1a1a1a] text-[#ccc] border border-[#333] px-2.5 py-1 rounded-full">
+                  Pitching: {livePricing.activePitchClient}
                 </span>
-                {livePricing.activePitchClient && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest bg-[#3428f8]/20 text-[#9aaeff] border border-[#3428f8]/40 px-2.5 py-1 rounded-full">
-                    <Sparkles size={11} /> Pitching: {livePricing.activePitchClient}
-                  </span>
-                )}
-              </div>
-              <p className="text-[#888] text-xs md:text-sm mt-1">
-                Instantly change plan prices on the Home Page, Services Page & Dashboard before showing a client. Existing logged-in clients remain protected and see their own deal price.
-              </p>
+              )}
             </div>
+            <p className="text-[#888] text-xs md:text-sm mt-1">
+              Instantly change plan prices on the Home Page, Services Page & Dashboard before showing a client. Existing logged-in clients remain protected and see their own deal price.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -852,14 +847,14 @@ export default function AdminFinances() {
               onClick={handleResetDefaultPrices}
               disabled={savingPricing}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-[#aaa] hover:text-white border border-[#2a2a2a] transition-all cursor-pointer"
-              title="Reset website prices to standard ₹3,500 / ₹6,000 / ₹11,000"
+              title="Reset website prices to standard ₹3,500 / ₹6,000 / ₹8,000 + ₹7,000 Website"
             >
               <RotateCcw size={13} /> Reset Defaults
             </button>
             <button
               type="button"
               onClick={() => setShowPitchPanel(!showPitchPanel)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#3428f8]/15 hover:bg-[#3428f8]/25 text-[#9aaeff] border border-[#3428f8]/30 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-white border border-[#2a2a2a] transition-all cursor-pointer"
             >
               {showPitchPanel ? 'Hide Controls' : 'Open Pitch Controls'}
             </button>
@@ -891,10 +886,10 @@ export default function AdminFinances() {
             {/* 3 Plan Instant Price Switcher Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
               {/* 1. STARTER PLAN CARD (Most Pitched) */}
-              <div className="bg-[#0a0a0a] border border-[#3428f8]/50 rounded-2xl p-5 relative shadow-[0_0_25px_rgba(52,40,248,0.08)]">
+              <div className="bg-[#111] border border-[#222] rounded-2xl p-5 relative">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#9aaeff] bg-[#3428f8]/20 border border-[#3428f8]/30 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#aaa] bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-0.5 rounded">
                       Most Pitched
                     </span>
                     <h4 className="text-white font-serif text-lg mt-1">Starter Plan</h4>
@@ -1158,9 +1153,9 @@ export default function AdminFinances() {
                   <button
                     type="submit"
                     disabled={savingPricing}
-                    className="w-full bg-[#3428f8] hover:bg-[#463bfa] text-white py-2.5 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full bg-[#3428f8] hover:bg-[#463bfa] text-white py-2.5 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <Zap size={14} /> Set Live & Save Client
+                    Set Live & Save Client
                   </button>
                 </div>
               </div>
