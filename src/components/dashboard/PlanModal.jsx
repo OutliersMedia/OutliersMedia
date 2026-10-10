@@ -2,59 +2,10 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, QrCode, UploadCloud } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
-
-const plans = [
-  {
-    id: 'starter',
-    name: 'Starter Plan',
-    price: 3500,
-    period: 'mo',
-    features: [
-      '10 Static Posts',
-      '3 Reels',
-      'Instagram Setup + Profile Optimization',
-      'Google Business Profile Setup',
-      'Content Calendar + Captions',
-      'Basic Hashtag Research'
-    ],
-    highlight: false
-  },
-  {
-    id: 'growth',
-    name: 'Growth Plan',
-    price: 6000,
-    period: 'mo',
-    features: [
-      '15 Static Posts',
-      '4 Reels',
-      '8–10 Stories/week',
-      'Google Maps Daily Optimization',
-      '1 Physical Poster Design',
-      'Weekly Interactive Games',
-      'Monthly Performance Summary'
-    ],
-    highlight: true,
-    badge: 'MOST SELECTED'
-  },
-  {
-    id: 'premium',
-    name: 'Premium Plan',
-    price: 11000,
-    period: 'first mo',
-    subtext: '(₹6,000/mo + ₹5,000 Setup only once for website)',
-    features: [
-      'Everything in Growth',
-      '5-Page Website',
-      'Local SEO Optimization',
-      'Influencer Collaboration (3–5)',
-      'Monthly Analytics Video Report',
-      'Monthly In-Store Event Planning'
-    ],
-    highlight: false
-  }
-];
+import { usePricing } from '../../context/PricingContext';
 
 export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPlanId }) {
+  const { dynamicModalPlans: plans } = usePricing();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);

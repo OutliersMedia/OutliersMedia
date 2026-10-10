@@ -19,6 +19,7 @@ import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import { AuthProvider, useAuth, checkIsAdmin, checkIsTester } from './context/AuthContext';
+import { PricingProvider } from './context/PricingContext';
 
 export const ThemeContext = createContext();
 export const SplashContext = createContext();
@@ -144,54 +145,56 @@ function App() {
     <ThemeContext.Provider value={{ theme, setTheme }}>
       <SplashContext.Provider value={{ isSplashActive }}>
         <AuthProvider>
-          <LayoutGroup>
-            <SplashScreen onStartExit={() => setIsSplashActive(false)} />
-            <Router>
-              <GlobalOnboardingGuard>
-                <ScrollToTop />
-                <SmoothScrollWrapper>
-                  <AdminEnforcer>
-                    <Routes>
-                      {/* Admin Routes (No standard Navbar/Footer) */}
-                      <Route path="/admin" element={<AdminLayout />}>
-                        <Route index element={<AdminOverview />} />
-                        <Route path="clients" element={<AdminClients />} />
-                        <Route path="deliverables" element={<AdminDeliverables />} />
-                        <Route path="finances" element={<AdminFinances />} />
-                        <Route path="tickets" element={<AdminTickets />} />
-                        <Route path="notifications" element={<AdminNotifications />} />
-                        <Route path="email" element={<Navigate to="/admin/notifications" replace />} />
-                      </Route>
+          <PricingProvider>
+            <LayoutGroup>
+              <SplashScreen onStartExit={() => setIsSplashActive(false)} />
+              <Router>
+                <GlobalOnboardingGuard>
+                  <ScrollToTop />
+                  <SmoothScrollWrapper>
+                    <AdminEnforcer>
+                      <Routes>
+                        {/* Admin Routes (No standard Navbar/Footer) */}
+                        <Route path="/admin" element={<AdminLayout />}>
+                          <Route index element={<AdminOverview />} />
+                          <Route path="clients" element={<AdminClients />} />
+                          <Route path="deliverables" element={<AdminDeliverables />} />
+                          <Route path="finances" element={<AdminFinances />} />
+                          <Route path="tickets" element={<AdminTickets />} />
+                          <Route path="notifications" element={<AdminNotifications />} />
+                          <Route path="email" element={<Navigate to="/admin/notifications" replace />} />
+                        </Route>
 
-                      {/* Standard Marketing & App Routes */}
-                      <Route
-                        path="*"
-                        element={
-                          <div className="flex flex-col min-h-screen">
-                            <Navbar />
-                            <main className="flex-grow">
-                              <Routes>
-                                <Route path="/" element={<Home />} />
-                                <Route path="/services" element={<Services />} />
-                                <Route path="/work" element={<Work />} />
-                                <Route path="/contact" element={<Contact />} />
-                                
-                                <Route path="/auth" element={<Auth />} />
-                                <Route path="/onboarding" element={<Onboarding />} />
-                                <Route path="/dashboard" element={<Dashboard />} />
-                              </Routes>
-                            </main>
-                            <Footer />
-                            <BackToTop />
-                          </div>
-                        }
-                      />
-                    </Routes>
-                  </AdminEnforcer>
-                </SmoothScrollWrapper>
-              </GlobalOnboardingGuard>
-            </Router>
-          </LayoutGroup>
+                        {/* Standard Marketing & App Routes */}
+                        <Route
+                          path="*"
+                          element={
+                            <div className="flex flex-col min-h-screen">
+                              <Navbar />
+                              <main className="flex-grow">
+                                <Routes>
+                                  <Route path="/" element={<Home />} />
+                                  <Route path="/services" element={<Services />} />
+                                  <Route path="/work" element={<Work />} />
+                                  <Route path="/contact" element={<Contact />} />
+                                  
+                                  <Route path="/auth" element={<Auth />} />
+                                  <Route path="/onboarding" element={<Onboarding />} />
+                                  <Route path="/dashboard" element={<Dashboard />} />
+                                </Routes>
+                              </main>
+                              <Footer />
+                              <BackToTop />
+                            </div>
+                          }
+                        />
+                      </Routes>
+                    </AdminEnforcer>
+                  </SmoothScrollWrapper>
+                </GlobalOnboardingGuard>
+              </Router>
+            </LayoutGroup>
+          </PricingProvider>
         </AuthProvider>
       </SplashContext.Provider>
     </ThemeContext.Provider>

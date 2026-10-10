@@ -54,7 +54,9 @@ export function computeOrderInstallmentMetrics(order) {
     };
   }
 
-  const standardPrice = Number(order.original_amount || getStandardPlanPrice(order.plan_name));
+  const basePlanPrice = Number(order.original_amount || getStandardPlanPrice(order.plan_name));
+  const pitchedOrPaidPrice = Math.max(Number(order.total_agreed_amount || 0), Number(order.amount_paid || 0));
+  const standardPrice = Math.max(basePlanPrice, pitchedOrPaidPrice);
   const rawInstallments = Array.isArray(order.installments) 
     ? order.installments 
     : (order.schedule_config?.installments || []);

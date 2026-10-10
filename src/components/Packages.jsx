@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
+import { usePricing } from '../context/PricingContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { packages } from '../utils/data';
 import FadeSection from './FadeSection';
 
 export default function Packages() {
   const [selectedPlanId, setSelectedPlanId] = useState("Growth");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester } = useAuth();
+  const { dynamicPackages: packages } = usePricing();
   const isAdmin = Boolean(authIsAdmin || checkIsAdmin(user, profile));
   const isTester = Boolean(authIsTester || checkIsTester(user, profile));
   const navigate = useNavigate();

@@ -6,7 +6,8 @@ import {
   IndianRupee, TrendingUp, Clock, Search, ExternalLink, CheckCircle, 
   PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3, 
   AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, Calendar, 
-  Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight
+  Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight,
+  Zap, Globe, RotateCcw, Sparkles, UserCheck
 } from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
 import { 
@@ -15,12 +16,36 @@ import {
   getStandardPlanPrice,
   isCravoryOrder
 } from '../../utils/installmentEngine';
+import { usePricing, DEFAULT_LIVE_PRICING } from '../../context/PricingContext';
 
 export { getStandardPlanPrice };
 
 export default function AdminFinances() {
   const [searchParams] = useSearchParams();
   const initialFilterParam = searchParams.get('filter');
+
+  const {
+    livePricing,
+    savingPricing,
+    updateLivePricing,
+    addPitchMemoryEntry,
+    updatePitchEntryStatus,
+    deletePitchEntry
+  } = usePricing();
+
+  // Live Pricing & Pitch Manager local inputs
+  const [customStarterInput, setCustomStarterInput] = useState('');
+  const [customGrowthInput, setCustomGrowthInput] = useState('');
+  const [customPremiumInput, setCustomPremiumInput] = useState('');
+  const [customAddonInput, setCustomAddonInput] = useState('');
+  const [pitchClientName, setPitchClientName] = useState('');
+  const [pitchPlanName, setPitchPlanName] = useState('Starter Plan');
+  const [pitchPriceInput, setPitchPriceInput] = useState('');
+  const [pitchStatusInput, setPitchStatusInput] = useState('pitched');
+  const [pitchNotesInput, setPitchNotesInput] = useState('');
+  const [pitchSearch, setPitchSearch] = useState('');
+  const [liveToast, setLiveToast] = useState(null);
+  const [showPitchPanel, setShowPitchPanel] = useState(true);
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +74,78 @@ export default function AdminFinances() {
   // Quick Milestone Verification State
   const [verifyModalData, setVerifyModalData] = useState(null);
   const [verifyingMilestone, setVerifyingMilestone] = useState(false);
+
+  useEffect(() => {
+    setCustomStarterInput(String(livePricing.starter || 3500));
+    setCustomGrowthInput(String(livePricing.growth || 6000));
+    setCustomPremiumInput(String(livePricing.premium || 6000));
+    setCustomAddonInput(String(livePricing.websiteAddon || 5000));
+  }, [livePricing.starter, livePricing.growth, livePricing.premium, livePricing.websiteAddon]);
+
+  useEffect(() => {
+    if (pitchPlanName === 'Starter Plan') {
+      setPitchPriceInput(String(livePricing.starter || 3500));
+    } else if (pitchPlanName === 'Growth Plan') {
+      setPitchPriceInput(String(livePricing.growth || 6000));
+    } else {
+      setPitchPriceInput(String((livePricing.premium || 6000) + (livePricing.websiteAddon || 5000)));
+    }
+  }, [pitchPlanName, livePricing.starter, livePricing.growth, livePricing.premium, livePricing.websiteAddon]);
+
+  const triggerLiveToast = (msg) => {
+    setLiveToast(msg);
+    setTimeout(() => {
+      setLiveToast((prev) => (prev === msg ? null : prev));
+    }, 4000);
+  };
+
+  const handleInstantPriceChange = async (field, value, label) => {
+    const numeric = Number(value);
+    if (!numeric || numeric <= 0) {
+      alert('Please enter a valid positive price in ₹.');
+      return;
+    }
+    await updateLivePricing({ [field]: numeric });
+    triggerLiveToast(`⚡ ${label} is now LIVE at ₹${numeric.toLocaleString()} across the entire website!`);
+  };
+
+  const handleResetDefaultPrices = async () => {
+    await updateLivePricing({
+      starter: DEFAULT_LIVE_PRICING.starter,
+      growth: DEFAULT_LIVE_PRICING.growth,
+      premium: DEFAULT_LIVE_PRICING.premium,
+      websiteAddon: DEFAULT_LIVE_PRICING.websiteAddon,
+      activePitchClient: ''
+    });
+    triggerLiveToast('⚡ Reset all website plan prices to standard defaults (₹3,500 / ₹6,000 / ₹11,000).');
+  };
+
+  const handleLogAndApplyPitch = async (e) => {
+    e.preventDefault();
+    const cleanName = pitchClientName.trim();
+    const numericPrice = Number(pitchPriceInput);
+    if (!cleanName) {
+      alert('Please enter the Client or Business Name you are pitching.');
+      return;
+    }
+    if (!numericPrice || numericPrice <= 0) {
+      alert('Please enter a valid pitched price.');
+      return;
+    }
+
+    await addPitchMemoryEntry({
+      clientName: cleanName,
+      planName: pitchPlanName,
+      pitchedPrice: numericPrice,
+      status: pitchStatusInput,
+      notes: pitchNotesInput.trim() || `Pitched ${pitchPlanName} at ₹${numericPrice.toLocaleString()}`,
+      alsoSetLive: true
+    });
+
+    setPitchClientName('');
+    setPitchNotesInput('');
+    triggerLiveToast(`🚀 Set ${pitchPlanName} live to ₹${numericPrice.toLocaleString()} & saved "${cleanName}" in Pitch Memory!`);
+  };
 
   useEffect(() => {
     if (initialFilterParam) {
@@ -565,6 +662,51 @@ export default function AdminFinances() {
     return true;
   });
 
+  // Combine manual pitch memory entries with actual database client orders so you ALWAYS remember who was pitched/sold at what price
+  const hasRealCravoryOrder = transactions.some(t => isCravoryOrder(t));
+  const manualPitchRows = (livePricing.pitchHistory || [])
+    .filter(item => !((item.id === 'pitch-cravory-default' || item.id === 'pitch_cravory_init') && hasRealCravoryOrder))
+    .map(item => ({
+      id: item.id,
+      clientName: item.clientName || 'Prospect',
+      planName: item.planName || 'Starter Plan',
+      price: Number(item.pitchedPrice || 3500),
+      standardBase: getStandardPlanPrice(item.planName),
+      status: (item.status || '').toLowerCase().includes('sold') ? 'sold' : 'pitched',
+      notes: item.notes || 'Logged from Pitch Manager',
+      date: item.date || item.pitchedAt || new Date().toISOString(),
+      isOrder: false,
+      orderId: null
+    }));
+
+  const orderMemoryRows = transactions.map(t => ({
+    id: `order-${t.id}`,
+    clientName: t.client?.name || 'Client',
+    planName: t.plan_name || 'Starter Plan',
+    price: Number(t.totalAgreed || t.instMetrics?.totalAgreed || t.amount_paid || 3500),
+    standardBase: getStandardPlanPrice(t.plan_name),
+    status: t.status === 'pending' ? 'pending_order' : 'sold',
+    notes: t.instMetrics?.hasInstallments && t.instMetrics.installments.length > 1
+      ? `Order #${t.order_id} • ${t.instMetrics.installments.length}-Split EMI (₹${t.instMetrics.paidAmount.toLocaleString()} Paid)`
+      : `Order #${t.order_id} • Official Client Order`,
+    date: t.created_at,
+    isOrder: true,
+    orderId: t.order_id,
+    clientEmail: t.client?.email
+  }));
+
+  const allPitchMemoryRows = [...manualPitchRows, ...orderMemoryRows].filter(row => {
+    if (!pitchSearch.trim()) return true;
+    const q = pitchSearch.toLowerCase();
+    return (
+      row.clientName?.toLowerCase().includes(q) ||
+      row.planName?.toLowerCase().includes(q) ||
+      String(row.price).includes(q) ||
+      row.notes?.toLowerCase().includes(q) ||
+      row.orderId?.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="bg-[#111] border border-[#222] rounded-3xl p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl">
       {/* Header */}
@@ -674,6 +816,532 @@ export default function AdminFinances() {
             Click to view client plans <ArrowRight size={10} />
           </p>
         </div>
+      </div>
+
+      {/* ⚡ LIVE WEBSITE PRICING & PITCH MEMORY MANAGER */}
+      <div className="mb-8 bg-gradient-to-br from-[#0c0c14] via-[#0a0a0a] to-[#0f0c1b] border border-[#3428f8]/40 rounded-3xl p-6 md:p-7 shadow-[0_0_40px_rgba(52,40,248,0.12)] relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#222]">
+          <div className="flex items-start gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-[#3428f8]/20 border border-[#3428f8]/40 flex items-center justify-center text-[#3428f8] shrink-0 mt-0.5 shadow-[0_0_20px_rgba(52,40,248,0.3)]">
+              <Zap size={22} />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h3 className="text-xl md:text-2xl font-serif text-white">
+                  Live Website Pricing & Pitch Memory
+                </h3>
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Live Sync Active
+                </span>
+                {livePricing.activePitchClient && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest bg-[#3428f8]/20 text-[#9aaeff] border border-[#3428f8]/40 px-2.5 py-1 rounded-full">
+                    <Sparkles size={11} /> Pitching: {livePricing.activePitchClient}
+                  </span>
+                )}
+              </div>
+              <p className="text-[#888] text-xs md:text-sm mt-1">
+                Instantly change plan prices on the Home Page, Services Page & Dashboard before showing a client. Existing logged-in clients remain protected and see their own deal price.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleResetDefaultPrices}
+              disabled={savingPricing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-[#aaa] hover:text-white border border-[#2a2a2a] transition-all cursor-pointer"
+              title="Reset website prices to standard ₹3,500 / ₹6,000 / ₹11,000"
+            >
+              <RotateCcw size={13} /> Reset Defaults
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPitchPanel(!showPitchPanel)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#3428f8]/15 hover:bg-[#3428f8]/25 text-[#9aaeff] border border-[#3428f8]/30 transition-all cursor-pointer"
+            >
+              {showPitchPanel ? 'Hide Controls' : 'Open Pitch Controls'}
+            </button>
+          </div>
+        </div>
+
+        {/* Live Toast Confirmation */}
+        <AnimatePresence>
+          {liveToast && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-4 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2"
+            >
+              <span className="flex items-center gap-2">
+                <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+                {liveToast}
+              </span>
+              <button onClick={() => setLiveToast(null)} className="text-emerald-400 hover:text-white">
+                <X size={14} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {showPitchPanel && (
+          <div className="mt-6 space-y-6">
+            {/* 3 Plan Instant Price Switcher Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* 1. STARTER PLAN CARD (Most Pitched) */}
+              <div className="bg-[#0a0a0a] border border-[#3428f8]/50 rounded-2xl p-5 relative shadow-[0_0_25px_rgba(52,40,248,0.08)]">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#9aaeff] bg-[#3428f8]/20 border border-[#3428f8]/30 px-2 py-0.5 rounded">
+                      Most Pitched
+                    </span>
+                    <h4 className="text-white font-serif text-lg mt-1">Starter Plan</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase tracking-widest text-[#777] block font-bold">Live on Site</span>
+                    <span className="text-2xl font-serif font-bold text-emerald-400">
+                      ₹{Number(livePricing.starter || 3500).toLocaleString()}
+                      <span className="text-xs text-[#666] font-sans font-normal">/mo</span>
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[#777] font-bold uppercase tracking-wider mb-2">
+                  1-Tap Instant Pitch Presets:
+                </p>
+                <div className="grid grid-cols-5 gap-1.5 mb-3.5">
+                  {[3000, 3500, 4000, 4500, 5000].map(preset => {
+                    const isActive = Number(livePricing.starter) === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        disabled={savingPricing}
+                        onClick={() => handleInstantPriceChange('starter', preset, 'Starter Plan')}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                          isActive
+                            ? 'bg-[#3428f8] text-white border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.4)]'
+                            : 'bg-[#141414] text-[#bbb] border-[#262626] hover:border-[#3428f8]/50 hover:text-white'
+                        }`}
+                      >
+                        ₹{preset.toLocaleString()}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] text-xs font-bold">₹</span>
+                    <input
+                      type="number"
+                      value={customStarterInput}
+                      onChange={(e) => setCustomStarterInput(e.target.value)}
+                      placeholder="Custom ₹"
+                      className="w-full bg-[#141414] border border-[#262626] rounded-xl py-2 pl-7 pr-3 text-white text-xs font-mono focus:border-[#3428f8] outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={savingPricing}
+                    onClick={() => handleInstantPriceChange('starter', customStarterInput, 'Starter Plan')}
+                    className="px-4 py-2 rounded-xl bg-white text-black hover:bg-[#ddd] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                  >
+                    Set Live
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. GROWTH PLAN CARD */}
+              <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-5 relative">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                      Most Popular Badge
+                    </span>
+                    <h4 className="text-white font-serif text-lg mt-1">Growth Plan</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase tracking-widest text-[#777] block font-bold">Live on Site</span>
+                    <span className="text-2xl font-serif font-bold text-white">
+                      ₹{Number(livePricing.growth || 6000).toLocaleString()}
+                      <span className="text-xs text-[#666] font-sans font-normal">/mo</span>
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[#777] font-bold uppercase tracking-wider mb-2">
+                  1-Tap Instant Pitch Presets:
+                </p>
+                <div className="grid grid-cols-4 gap-1.5 mb-3.5">
+                  {[5000, 6000, 7000, 8000].map(preset => {
+                    const isActive = Number(livePricing.growth) === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        disabled={savingPricing}
+                        onClick={() => handleInstantPriceChange('growth', preset, 'Growth Plan')}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                          isActive
+                            ? 'bg-[#3428f8] text-white border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.4)]'
+                            : 'bg-[#141414] text-[#bbb] border-[#262626] hover:border-[#3428f8]/50 hover:text-white'
+                        }`}
+                      >
+                        ₹{preset.toLocaleString()}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] text-xs font-bold">₹</span>
+                    <input
+                      type="number"
+                      value={customGrowthInput}
+                      onChange={(e) => setCustomGrowthInput(e.target.value)}
+                      placeholder="Custom ₹"
+                      className="w-full bg-[#141414] border border-[#262626] rounded-xl py-2 pl-7 pr-3 text-white text-xs font-mono focus:border-[#3428f8] outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={savingPricing}
+                    onClick={() => handleInstantPriceChange('growth', customGrowthInput, 'Growth Plan')}
+                    className="px-4 py-2 rounded-xl bg-white text-black hover:bg-[#ddd] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                  >
+                    Set Live
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. PREMIUM PLAN + WEBSITE SETUP CARD */}
+              <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-5 relative">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                      Full Stack + Website
+                    </span>
+                    <h4 className="text-white font-serif text-lg mt-1">Premium Plan</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase tracking-widest text-[#777] block font-bold">1st Month Total</span>
+                    <span className="text-2xl font-serif font-bold text-white">
+                      ₹{(Number(livePricing.premium || 6000) + Number(livePricing.websiteAddon || 5000)).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="text-[10px] text-[#777] font-bold uppercase tracking-wider block mb-1">
+                      Monthly Retainer (₹{Number(livePricing.premium || 6000).toLocaleString()}/mo)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={customPremiumInput}
+                        onChange={(e) => setCustomPremiumInput(e.target.value)}
+                        className="w-full bg-[#141414] border border-[#262626] rounded-xl py-1.5 px-3 text-white text-xs font-mono focus:border-[#3428f8] outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={savingPricing}
+                        onClick={() => handleInstantPriceChange('premium', customPremiumInput, 'Premium Monthly')}
+                        className="px-3 py-1.5 rounded-xl bg-[#222] hover:bg-[#3428f8] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                      >
+                        Update
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#777] font-bold uppercase tracking-wider block mb-1">
+                      One-Time Website Setup (+₹{Number(livePricing.websiteAddon || 5000).toLocaleString()})
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={customAddonInput}
+                        onChange={(e) => setCustomAddonInput(e.target.value)}
+                        className="w-full bg-[#141414] border border-[#262626] rounded-xl py-1.5 px-3 text-white text-xs font-mono focus:border-[#3428f8] outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={savingPricing}
+                        onClick={() => handleInstantPriceChange('websiteAddon', customAddonInput, 'Website Setup Add-on')}
+                        className="px-3 py-1.5 rounded-xl bg-[#222] hover:bg-[#3428f8] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                      >
+                        Update
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PITCH LOGGER FORM: Remember to whom you pitched or sold at what price */}
+            <form
+              onSubmit={handleLogAndApplyPitch}
+              className="bg-[#0a0a0a] border border-[#262626] rounded-2xl p-5"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                  <UserCheck size={16} className="text-[#3428f8]" />
+                  Pitch & Deal Logger — Lock Price for a Specific Client
+                </h4>
+                <span className="text-[11px] text-[#777]">
+                  Sets the price live on the website AND remembers what you quoted this client
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                <div className="md:col-span-3">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#777] block mb-1">
+                    Client / Business Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={pitchClientName}
+                    onChange={(e) => setPitchClientName(e.target.value)}
+                    placeholder="e.g. Cravory, Royal Cafe..."
+                    className="w-full bg-[#141414] border border-[#262626] rounded-xl p-2.5 text-white text-xs focus:border-[#3428f8] outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#777] block mb-1">
+                    Plan Pitched
+                  </label>
+                  <select
+                    value={pitchPlanName}
+                    onChange={(e) => setPitchPlanName(e.target.value)}
+                    className="w-full bg-[#141414] border border-[#262626] rounded-xl p-2.5 text-white text-xs focus:border-[#3428f8] outline-none"
+                  >
+                    <option value="Starter Plan">Starter Plan</option>
+                    <option value="Growth Plan">Growth Plan</option>
+                    <option value="Premium Plan">Premium Plan</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#777] block mb-1">
+                    Quoted Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    value={pitchPriceInput}
+                    onChange={(e) => setPitchPriceInput(e.target.value)}
+                    placeholder="4000"
+                    className="w-full bg-[#141414] border border-[#262626] rounded-xl p-2.5 text-white text-xs font-mono font-bold focus:border-[#3428f8] outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#777] block mb-1">
+                    Deal Status
+                  </label>
+                  <select
+                    value={pitchStatusInput}
+                    onChange={(e) => setPitchStatusInput(e.target.value)}
+                    className="w-full bg-[#141414] border border-[#262626] rounded-xl p-2.5 text-white text-xs focus:border-[#3428f8] outline-none"
+                  >
+                    <option value="pitched">Pitched (Showing Site)</option>
+                    <option value="sold">Agreed / Sold</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-3 flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={savingPricing}
+                    className="w-full bg-[#3428f8] hover:bg-[#463bfa] text-white py-2.5 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Zap size={14} /> Set Live & Save Client
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* PITCH & SOLD PRICE MEMORY TABLE */}
+            <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl overflow-hidden">
+              <div className="p-4 border-b border-[#222] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                    <History size={15} className="text-emerald-400" />
+                    Client Pitch & Sold Price Memory ({allPitchMemoryRows.length})
+                  </h4>
+                  <p className="text-[11px] text-[#777]">
+                    Permanent record of every client, what plan & price you pitched or sold them, and 1-click reload to the website.
+                  </p>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
+                  <input
+                    type="text"
+                    value={pitchSearch}
+                    onChange={(e) => setPitchSearch(e.target.value)}
+                    placeholder="Filter client name or price..."
+                    className="w-full bg-[#141414] border border-[#262626] rounded-xl py-1.5 pl-8 pr-3 text-white text-xs focus:border-[#3428f8] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                <table className="w-full text-left border-collapse min-w-[750px]">
+                  <thead>
+                    <tr className="bg-[#111] border-b border-[#222] text-[10px] font-bold uppercase tracking-widest text-[#666]">
+                      <th className="py-3 px-4">Client / Prospect</th>
+                      <th className="py-3 px-4">Plan</th>
+                      <th className="py-3 px-4">Pitched / Sold Price</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Notes & Date</th>
+                      <th className="py-3 px-4 text-right">Quick Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPitchMemoryRows.map((row) => {
+                      const diff = row.price - row.standardBase;
+                      const pLower = row.planName.toLowerCase();
+                      const isCurrentlyLive =
+                        (pLower.includes('starter') && Number(livePricing.starter) === row.price) ||
+                        (pLower.includes('growth') && Number(livePricing.growth) === row.price) ||
+                        (pLower.includes('premium') && (Number(livePricing.premium) + Number(livePricing.websiteAddon)) === row.price);
+
+                      return (
+                        <tr key={row.id} className="border-b border-[#1a1a1a] hover:bg-[#141414] transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-white text-sm flex items-center gap-2">
+                              {row.clientName}
+                              {row.isOrder && (
+                                <span className="text-[9px] bg-[#3428f8]/15 text-[#9aaeff] border border-[#3428f8]/30 px-1.5 py-0.5 rounded uppercase font-bold">
+                                  Registered Client
+                                </span>
+                              )}
+                            </div>
+                            {row.clientEmail && (
+                              <p className="text-[11px] text-[#666]">{row.clientEmail}</p>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <span className="text-xs font-medium text-[#ccc] bg-[#181818] border border-[#2a2a2a] px-2.5 py-1 rounded-lg">
+                              {row.planName}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base font-mono font-bold text-white">
+                                ₹{row.price.toLocaleString()}
+                              </span>
+                              {diff > 0 && (
+                                <span className="text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                                  +₹{diff.toLocaleString()} Upsell
+                                </span>
+                              )}
+                              {diff < 0 && (
+                                <span className="text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                                  -₹{Math.abs(diff).toLocaleString()} Discount
+                                </span>
+                              )}
+                              {diff === 0 && (
+                                <span className="text-[10px] text-[#666] font-medium">
+                                  Base Price
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {row.isOrder ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                                <CheckCircle size={11} /> {row.status === 'pending_order' ? 'Order Pending' : 'Sold & Locked'}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updatePitchEntryStatus(
+                                    row.id,
+                                    row.status === 'sold' ? 'pitched' : 'sold'
+                                  )
+                                }
+                                title="Click to toggle between Pitched and Agreed/Sold"
+                                className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border cursor-pointer transition-all ${
+                                  row.status === 'sold'
+                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                                }`}
+                              >
+                                {row.status === 'sold' ? (
+                                  <>
+                                    <CheckCircle size={11} /> Agreed / Sold
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock size={11} /> Pitched (Click if Sold)
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <p className="text-xs text-[#aaa] line-clamp-1">{row.notes}</p>
+                            <p className="text-[10px] text-[#666]">
+                              {row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                            </p>
+                          </td>
+
+                          <td className="py-3 px-4 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const patch = { activePitchClient: row.clientName };
+                                  if (pLower.includes('starter')) patch.starter = row.price;
+                                  else if (pLower.includes('growth')) patch.growth = row.price;
+                                  else if (pLower.includes('premium')) {
+                                    patch.premium = Math.max(1000, row.price - Number(livePricing.websiteAddon || 5000));
+                                  }
+                                  await updateLivePricing(patch);
+                                  triggerLiveToast(`🎯 Loaded ${row.clientName}'s price (₹${row.price.toLocaleString()}) LIVE onto the website!`);
+                                }}
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
+                                  isCurrentlyLive
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                    : 'bg-[#1a1a1a] hover:bg-[#3428f8] text-[#ccc] hover:text-white border-[#2a2a2a]'
+                                }`}
+                              >
+                                {isCurrentlyLive ? '✓ Live Now' : '🎯 Set Price Live'}
+                              </button>
+
+                              {!row.isOrder && (
+                                <button
+                                  type="button"
+                                  onClick={() => deletePitchEntry(row.id)}
+                                  className="p-1.5 rounded-lg text-[#666] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                  title="Delete pitch log entry"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filter Tabs */}

@@ -119,7 +119,24 @@ export default function Dashboard() {
         alert("Failed to submit payment details: " + error.message);
         return false; // Return false so the modal knows it failed
       } else if (data) {
-        setActiveOrder(data);
+        // Attempt to lock in original_amount and total_agreed_amount to the pitched price
+        try {
+          await supabase
+            .from('orders')
+            .update({
+              original_amount: plan.price,
+              total_agreed_amount: plan.price
+            })
+            .eq('id', data.id);
+        } catch {
+          // Non-fatal if RLS restricts client direct update; p_amount is already stored in amount_paid
+        }
+        setActiveOrder({
+          ...data,
+          original_amount: plan.price,
+          total_agreed_amount: plan.price,
+          amount_paid: plan.price
+        });
         setShowPlanModal(false); // Only close on success
         return true;
       }

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { packages, faqs } from '../utils/data';
+import { faqs } from '../utils/data';
+import { usePricing } from '../context/PricingContext';
 
 export default function Services() {
   const [openFaq, setOpenFaq] = useState(0);
   const [selectedPlanId, setSelectedPlanId] = useState('Growth');
+  const { dynamicPackages: packages, effectivePrices } = usePricing();
 
   const toggleFaq = (idx) => {
     setOpenFaq(openFaq === idx ? null : idx);
@@ -54,7 +56,7 @@ export default function Services() {
                           {pkg.name}
                         </div>
                         <div className={`text-xs font-bold uppercase tracking-widest mt-2 transition-colors duration-500 ${isSelected ? 'text-blue-400' : 'text-accent'}`}>
-                          {pkg.id === 'Premium' ? '₹6,000 + ₹5,000 (only once for website)' : pkg.price}
+                          {pkg.id === 'Premium' ? `${pkg.price} + ₹${effectivePrices.websiteAddon.toLocaleString('en-IN')} (only once for website)` : pkg.price}
                         </div>
                       </div>
                     </th>
