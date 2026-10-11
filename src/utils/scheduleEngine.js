@@ -331,6 +331,98 @@ export function generateUploadSchedule(
   return schedule;
 }
 
+// Format a Date or ISO timestamp into local YYYY-MM-DD
+export function toLocalDateKey(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Matches logged posts (from posts_log) to generated schedule slots.
+ * Pass 1: Exact calendar date (YYYY-MM-DD) + deliverable type match.
+ * Pass 2: Chronological fallback for legacy logs that didn't store the target slot date.
+ */
+export function matchPostsToScheduleSlots(schedule, orderPosts = []) {
+  if (!Array.isArray(schedule)) return [];
+  const sortedPosts = [...(orderPosts || [])].sort(
+    (a, b) => new Date(a.published_at || a.created_at || 0) - new Date(b.published_at || b.created_at || 0)
+  );
+
+  const usedPostIds = new Set();
+  const slotsWithMeta = schedule.map((slot, index) => ({
+    ...slot,
+    _slotIndex: index,
+    _dateKey: toLocalDateKey(slot.date),
+    delivered: false,
+    matchedPost: null,
+    postLogId: null,
+    deliveredTitle: null
+  }));
+
+  // Pass 1: Exact Date + Type Match
+  for (const slot of slotsWithMeta) {
+    const exactPost = sortedPosts.find(
+      p =>
+        !usedPostIds.has(p.id) &&
+        (p.post_type || 'static') === slot.type &&
+        toLocalDateKey(p.published_at) === slot._dateKey
+    );
+    if (exactPost) {
+      usedPostIds.add(exactPost.id);
+      slot.delivered = true;
+      slot.matchedPost = exactPost;
+      slot.postLogId = exactPost.id;
+      slot.deliveredTitle = exactPost.title;
+    }
+  }
+
+  // Pass 2: Fallback for legacy posts whose published_at didn't match an exact slot date
+  for (const post of sortedPosts) {
+    if (usedPostIds.has(post.id)) continue;
+    const pType = post.post_type || 'static';
+    const candidateSlot = slotsWithMeta.find(
+      s => !s.delivered && s.type === pType
+    );
+    if (candidateSlot) {
+      usedPostIds.add(post.id);
+      candidateSlot.delivered = true;
+      candidateSlot.matchedPost = post;
+      candidateSlot.postLogId = post.id;
+      candidateSlot.deliveredTitle = post.title;
+    }
+  }
+
+  return slotsWithMeta;
+}
+
+// Broadcast live deliverable changes so Client Dashboard updates in real time
+let deliverablesSyncChannel = null;
+export async function broadcastDeliverablesSync(payload = {}) {
+  try {
+    if (!deliverablesSyncChannel) {
+      deliverablesSyncChannel = supabase.channel('outliers-deliverables-live', {
+        config: { broadcast: { self: true } }
+      });
+      await deliverablesSyncChannel.subscribe();
+    }
+    await deliverablesSyncChannel.send({
+      type: 'broadcast',
+      event: 'deliverables-updated',
+      payload: {
+        ...payload,
+        timestamp: Date.now()
+      }
+    });
+  } catch (err) {
+    console.warn('Deliverables live broadcast notice:', err);
+  }
+}
+
 // Find next deliverable to be uploaded (static, reel, poster, or story)
 export function getNextUpload(schedule, staticDone = 0, reelsDone = 0, postersDone = 0, storiesDone = 0) {
   if (!schedule || !Array.isArray(schedule)) return null;

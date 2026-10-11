@@ -19,7 +19,8 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!order) return;
+    if (!order?.order_id) return;
+    let isMounted = true;
     
     // Fetch Posts
     const fetchPosts = async () => {
@@ -28,7 +29,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
         .select('*')
         .eq('order_id', order.order_id)
         .order('published_at', { ascending: true });
-      if (data) {
+      if (data && isMounted) {
         setPosts(data);
 
         // Offline Catch-up Notification: fires if a post was uploaded while user was offline/closed
@@ -65,12 +66,60 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
         .select('*')
         .eq('order_id', order.order_id)
         .order('created_at', { ascending: false });
-      if (data) setTickets(data);
+      if (data && isMounted) setTickets(data);
     };
 
     fetchPosts();
     fetchTickets();
-  }, [order]);
+
+    // 1. Real-time broadcast channel (instant submit & revert updates from Admin)
+    const broadcastChannel = supabase
+      .channel('outliers-deliverables-live')
+      .on('broadcast', { event: 'deliverables_sync' }, (payload) => {
+        const msg = payload?.payload || {};
+        if (!msg.orderId || msg.orderId === order.order_id) {
+          fetchPosts();
+          if (onRefreshOrder) onRefreshOrder();
+        }
+      })
+      .subscribe();
+
+    // 2. Real-time postgres_changes on posts_log table (INSERT, UPDATE, DELETE)
+    const dbChannel = supabase
+      .channel(`client-posts-log-${order.order_id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'posts_log' },
+        () => {
+          fetchPosts();
+        }
+      )
+      .subscribe();
+
+    // 3. Background interval & visibility refresh for rock-solid live updates
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchPosts();
+      }
+    }, 5000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPosts();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      supabase.removeChannel(broadcastChannel);
+      supabase.removeChannel(dbChannel);
+    };
+  }, [order?.order_id]);
 
   const planName = order.plan_name || order.plan || 'Starter Plan';
   const scheduleConfig = getClientSchedule(order);
@@ -270,9 +319,15 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
           >
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-serif text-primary">Deliverables Tracker</h3>
-              <span className="text-xs text-muted font-mono uppercase tracking-wider">
-                Monthly Retainer Quota
-              </span>
+              <div className="flex items-center gap-2.5">
+                <span className="bg-green-500/10 text-green-400 border border-green-500/25 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                  Live Sync
+                </span>
+                <span className="text-xs text-muted font-mono uppercase tracking-wider hidden sm:inline">
+                  Monthly Retainer Quota
+                </span>
+              </div>
             </div>
 
             <div className="flex flex-col gap-4">
@@ -336,6 +391,50 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                 </div>
               )}
             </div>
+
+            {/* Live Delivered Content Feed */}
+            {posts.length > 0 && (
+              <div className="mt-6 pt-5 border-t border-[#1e1e1e] flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold uppercase tracking-widest text-[#888]">
+                    Recent Delivered Content
+                  </span>
+                  <span className="text-[10px] font-mono text-[#666]">
+                    {posts.length} Total Delivered
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[210px] overflow-y-auto pr-1 custom-scrollbar">
+                  {[...posts].reverse().map((item) => {
+                    const typeBadge = item.post_type === 'reel'
+                      ? { label: 'Reel', color: 'text-pink-400 bg-pink-500/15 border-pink-500/25' }
+                      : item.post_type === 'story'
+                      ? { label: 'Story', color: 'text-amber-400 bg-amber-400/15 border-amber-400/25' }
+                      : { label: 'Static Post', color: 'text-[#6c63ff] bg-[#3428f8]/15 border-[#3428f8]/30' };
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-[#0e0e0e] border border-[#222] rounded-xl p-3 flex items-center justify-between gap-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[9px] px-2 py-0.5 rounded border font-bold uppercase tracking-wider ${typeBadge.color}`}>
+                              {typeBadge.label}
+                            </span>
+                            <span className="text-[10px] text-[#666] font-mono">
+                              {item.published_at
+                                ? new Date(item.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                                : ''}
+                            </span>
+                          </div>
+                          <p className="text-xs text-white font-medium truncate">{item.title}</p>
+                        </div>
+                        <CheckCircle size={15} className="text-green-400 shrink-0" />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </motion.div>
 
           {/* Activity Graph: Stacked Bars with exact Admin Colors */}

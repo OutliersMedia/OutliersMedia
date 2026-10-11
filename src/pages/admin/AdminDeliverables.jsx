@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import { 
   Search, Image as ImageIcon, Video, Layout, Plus, CheckCircle, Clock, 
-  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle
+  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw
 } from 'lucide-react';
 import { 
-  getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG 
+  getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG, broadcastDeliverablesSync
 } from '../../utils/scheduleEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 
@@ -32,6 +32,7 @@ export default function AdminDeliverables() {
   const [postType, setPostType] = useState('static');
   const [postTitle, setPostTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [revertingId, setRevertingId] = useState(null);
 
   // Dedicated refs for right panel scrolling isolation
   const rightPanelContainerRef = useRef(null);
@@ -322,11 +323,63 @@ export default function AdminDeliverables() {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
       }
 
+      try {
+        await broadcastDeliverablesSync({
+          action: 'submit',
+          orderId: selectedClient.latestOrder.order_id,
+          postType,
+          title: deliverableTitle
+        });
+      } catch (e) {
+        console.warn("Realtime broadcast error:", e);
+      }
+
       setPostTitle('');
       await fetchData();
     }
 
     setIsSubmitting(false);
+  };
+
+  const handleRevertDeliverable = async (post) => {
+    if (!post?.id) return;
+    setRevertingId(post.id);
+
+    const { error } = await supabase
+      .from('posts_log')
+      .delete()
+      .eq('id', post.id);
+
+    if (error) {
+      alert("Error reverting deliverable: " + error.message);
+      setRevertingId(null);
+      return;
+    }
+
+    if (post.title) {
+      try {
+        await supabase
+          .from('notifications')
+          .delete()
+          .eq('title', post.title);
+      } catch (e) {
+        // Non-fatal
+      }
+    }
+
+    try {
+      await broadcastDeliverablesSync({
+        action: 'revert',
+        orderId: post.order_id,
+        postLogId: post.id,
+        title: post.title
+      });
+    } catch (e) {
+      console.warn("Realtime broadcast error:", e);
+    }
+
+    await fetchData();
+    setRevertingId(null);
   };
 
   // Filter clients for the left panel
@@ -917,7 +970,7 @@ export default function AdminDeliverables() {
                                 const Icon = cfg.icon;
 
                                 return (
-                                  <div key={post.id} className="bg-[#111] border border-[#222] p-3 rounded-xl flex items-start gap-3">
+                                  <div key={post.id} className="bg-[#111] border border-[#222] hover:border-[#333] p-3 rounded-xl flex items-center gap-3 transition-colors">
                                     <div className={`p-2 rounded-lg ${cfg.bg}/15 ${cfg.color}`}>
                                       <Icon size={16} />
                                     </div>
@@ -926,10 +979,23 @@ export default function AdminDeliverables() {
                                       <div className="flex items-center gap-2 mt-1">
                                         <span className="text-[#666] text-[9px] font-bold uppercase tracking-widest">{post.post_type}</span>
                                         <span className="text-[#444] text-[9px] flex items-center gap-1">
-                                          <Clock size={10} /> {new Date(post.published_at).toLocaleDateString()}
+                                          <Clock size={10} /> {new Date(post.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                         </span>
                                       </div>
                                     </div>
+                                    <button
+                                      type="button"
+                                      disabled={revertingId === post.id}
+                                      onClick={() => handleRevertDeliverable(post)}
+                                      className="shrink-0 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 text-red-400 border border-red-500/25 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all"
+                                      title="Revert this submission and update client live"
+                                    >
+                                      {revertingId === post.id ? (
+                                        <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
+                                      ) : (
+                                        <><RotateCcw size={11} /> Revert</>
+                                      )}
+                                    </button>
                                   </div>
                                 );
                               })

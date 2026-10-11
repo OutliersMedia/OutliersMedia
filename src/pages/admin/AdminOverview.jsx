@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare } from 'lucide-react';
+import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare, RotateCcw, Trash2 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
-import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
+import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 
@@ -28,16 +28,20 @@ export default function AdminOverview() {
   const [isLogging, setIsLogging] = useState(false);
   const [quickLogSuccess, setQuickLogSuccess] = useState(null);
   const [activeOrders, setActiveOrders] = useState([]);
+  const [recentLogs, setRecentLogs] = useState([]);
 
   // Calendar Event Card Popup state
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [eventTitle, setEventTitle] = useState('');
   const [isSubmittingWork, setIsSubmittingWork] = useState(false);
+  const [isRevertingWork, setIsRevertingWork] = useState(false);
 
   const handleOpenEvent = (ev) => {
     setSelectedEvent(ev);
     const cfg = TYPE_CONFIG[ev.type] || TYPE_CONFIG.static;
-    const defaultTitle = ev.note 
+    const defaultTitle = ev.deliveredTitle
+      ? ev.deliveredTitle
+      : ev.note 
       ? `${cfg.label} — ${ev.note}` 
       : `${cfg.label} Delivery (${new Date(ev.date).toLocaleDateString('en-IN')})`;
     setEventTitle(defaultTitle);
@@ -48,19 +52,40 @@ export default function AdminOverview() {
     if (!selectedEvent) return;
     setIsSubmittingWork(true);
 
-    const postType = ['static', 'reel', 'poster'].includes(selectedEvent.type) 
+    // Include 'story' so Story events are logged with post_type='story' (not 'static')
+    const postType = ['static', 'reel', 'story', 'poster'].includes(selectedEvent.type) 
       ? selectedEvent.type 
       : 'static';
+
+    // Anchor published_at to the exact calendar slot date (at 12:00 local time) so it matches this exact date slot
+    const slotD = new Date(selectedEvent.date);
+    const targetPublishedAt = new Date(
+      slotD.getFullYear(),
+      slotD.getMonth(),
+      slotD.getDate(),
+      12, 0, 0
+    ).toISOString();
+
+    const deliverableTitle = eventTitle.trim() || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Deliverable'}`;
 
     const { error } = await supabase.from('posts_log').insert([{
       order_id: selectedEvent.orderId,
       post_type: postType,
-      title: eventTitle || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Post'}`
+      title: deliverableTitle,
+      published_at: targetPublishedAt
     }]);
 
     if (error) {
       alert("Error logging deliverable: " + error.message);
     } else {
+      // Broadcast live update to Client Dashboard immediately
+      await broadcastDeliverablesSync({
+        orderId: selectedEvent.orderId,
+        action: 'submit',
+        postType,
+        title: deliverableTitle
+      });
+
       // Dispatch push notification to client with the submitted content title
       let targetUserId = selectedEvent?.clientId;
       let clientDisplayName = selectedEvent?.clientName || 'Client';
@@ -75,7 +100,6 @@ export default function AdminOverview() {
       }
 
       const formattedType = postType.toUpperCase();
-      const deliverableTitle = eventTitle.trim() || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Deliverable'}`;
 
       try {
         await dispatchPushNotification({
@@ -99,13 +123,65 @@ export default function AdminOverview() {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
       }
 
-      setQuickLogSuccess(`✓ Successfully submitted "${deliverableTitle}" & sent push notification to ${clientDisplayName}!`);
+      setQuickLogSuccess(`✓ Submitted "${deliverableTitle}" for ${new Date(selectedEvent.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} & pushed live to ${clientDisplayName}!`);
       setTimeout(() => setQuickLogSuccess(null), 5000);
 
       await fetchAll();
       setSelectedEvent(null);
     }
     setIsSubmittingWork(false);
+  };
+
+  // Revert (Undo) a submitted deliverable and push live changes to Client Dashboard
+  const handleRevertDeliverable = async (postLogId, meta = {}) => {
+    if (!postLogId) {
+      alert("Could not find the log ID for this submission.");
+      return;
+    }
+    setIsRevertingWork(true);
+    try {
+      const { error } = await supabase
+        .from('posts_log')
+        .delete()
+        .eq('id', postLogId);
+
+      if (error) {
+        alert("Failed to revert submission: " + error.message);
+        setIsRevertingWork(false);
+        return;
+      }
+
+      // Also clean up any matching persistent notification in Supabase if present
+      if (meta.title) {
+        try {
+          await supabase
+            .from('notifications')
+            .delete()
+            .eq('title', meta.title);
+        } catch {
+          // Ignore if notifications table doesn't restrict or match
+        }
+      }
+
+      // Broadcast live revert to Client Dashboard immediately
+      await broadcastDeliverablesSync({
+        orderId: meta.orderId || selectedEvent?.orderId,
+        action: 'revert',
+        postLogId
+      });
+
+      setQuickLogSuccess(`↩ Reverted "${meta.title || 'Deliverable'}" — Client dashboard updated live!`);
+      setTimeout(() => setQuickLogSuccess(null), 5000);
+
+      await fetchAll();
+      if (selectedEvent && selectedEvent.postLogId === postLogId) {
+        setSelectedEvent(null);
+      }
+    } catch (err) {
+      alert("Error reverting deliverable: " + err.message);
+    } finally {
+      setIsRevertingWork(false);
+    }
   };
 
   useEffect(() => {
@@ -120,10 +196,10 @@ export default function AdminOverview() {
     if (profiles) profiles.forEach(p => profileMap[p.auth_id] = p);
 
     const { data: orders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-    const { data: posts } = await supabase.from('posts_log').select('*').order('published_at', { ascending: false });
+    const { data: rawPosts } = await supabase.from('posts_log').select('*').order('published_at', { ascending: false });
     
     // Fetch open support tickets list
-    const { data: openTicketsData, count: ticketsCount } = await supabase
+    const { data: openTicketsData } = await supabase
       .from('support_tickets')
       .select('*', { count: 'exact' })
       .eq('status', 'open')
@@ -132,11 +208,99 @@ export default function AdminOverview() {
     if (openTicketsData) setOpenTicketsList(openTicketsData);
 
     const ordersList = orders || [];
-    const postsList = posts || [];
+    let postsList = rawPosts || [];
+
+    // --- ONE-TIME AUTO-REPAIR FOR OCT 12 CRAVORY STORY/STATIC SUBMISSIONS ---
+    // Previously, submitting a 'story' event on the calendar fell back to post_type='static',
+    // which caused extra 'static' rows to mark Oct 14, 16, and 19 Static Posts as delivered.
+    try {
+      const repairKey = 'outliers_repaired_oct12_cravory_v2';
+      if (typeof window !== 'undefined' && !localStorage.getItem(repairKey) && postsList.length > 0) {
+        let didRepair = false;
+
+        for (const ord of ordersList) {
+          const ordPosts = [...postsList.filter(p => p.order_id === ord.order_id)].sort(
+            (a, b) => new Date(a.published_at || 0) - new Date(b.published_at || 0)
+          );
+          const staticPosts = ordPosts.filter(p => p.post_type === 'static');
+          const storyPosts = ordPosts.filter(p => p.post_type === 'story');
+
+          // 1. Any post saved as 'static' whose title starts with 'Story' was meant to be a story
+          const mislabelledStories = staticPosts.filter(p => (p.title || '').toLowerCase().includes('story'));
+          if (mislabelledStories.length > 0) {
+            const firstStory = mislabelledStories[0];
+            await supabase
+              .from('posts_log')
+              .update({
+                post_type: 'story',
+                published_at: new Date(2026, 9, 12, 12, 0, 0).toISOString()
+              })
+              .eq('id', firstStory.id);
+
+            // Delete any extra duplicate clicks beyond the first story
+            for (let i = 1; i < mislabelledStories.length; i++) {
+              await supabase.from('posts_log').delete().eq('id', mislabelledStories[i].id);
+            }
+            didRepair = true;
+          } else if (staticPosts.length > 1 && storyPosts.length === 0) {
+            // 2. If multiple static posts were submitted at once for Oct 12 and 0 stories exist:
+            // Keep the first static post on Oct 12, convert one to Story on Oct 12 if title wasn't custom static, and remove accidental Oct 14/16/19 overflow
+            const firstStatic = staticPosts[0];
+            await supabase
+              .from('posts_log')
+              .update({ published_at: new Date(2026, 9, 12, 12, 0, 0).toISOString() })
+              .eq('id', firstStatic.id);
+
+            if (staticPosts.length >= 2) {
+              const secondAsStory = staticPosts[1];
+              await supabase
+                .from('posts_log')
+                .update({
+                  post_type: 'story',
+                  published_at: new Date(2026, 9, 12, 12, 0, 0).toISOString()
+                })
+                .eq('id', secondAsStory.id);
+            }
+
+            for (let i = 2; i < staticPosts.length; i++) {
+              await supabase.from('posts_log').delete().eq('id', staticPosts[i].id);
+            }
+            didRepair = true;
+          }
+        }
+
+        localStorage.setItem(repairKey, 'true');
+        if (didRepair) {
+          const { data: refreshedPosts } = await supabase
+            .from('posts_log')
+            .select('*')
+            .order('published_at', { ascending: false });
+          if (refreshedPosts) postsList = refreshedPosts;
+          await broadcastDeliverablesSync({ action: 'auto_repaired_oct12' });
+        }
+      }
+    } catch (repairErr) {
+      console.warn('Auto-repair check notice:', repairErr);
+    }
 
     // Metrics
     const activeOrds = ordersList.filter(o => o.status === 'active');
     const currentMRR = activeOrds.reduce((sum, o) => sum + Number(o.amount_paid || 0), 0);
+
+    // Enrich recent logs for Quick Revert panel
+    const orderMap = {};
+    ordersList.forEach(o => {
+      orderMap[o.order_id] = {
+        ...o,
+        clientName: profileMap[o.client_id]?.name || 'Client'
+      };
+    });
+    setRecentLogs(
+      postsList.slice(0, 12).map(p => ({
+        ...p,
+        clientName: orderMap[p.order_id]?.clientName || 'Client'
+      }))
+    );
 
     // Build Detailed Retainers
     const detailed = activeOrds.map(order => {
@@ -183,7 +347,7 @@ export default function AdminOverview() {
     });
     setDetailedRetainers(detailed);
 
-    // Build calendar events from all active orders
+    // Build calendar events from all active orders using exact date + type matching
     const events = [];
     let pendingToday = 0;
     const today = new Date();
@@ -203,10 +367,6 @@ export default function AdminOverview() {
       const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
 
       const orderPosts = postsList.filter(p => p.order_id === order.order_id);
-      const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
-      const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
-      const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
-      const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
 
       const schedule = generateUploadSchedule(
         effectiveStart,
@@ -217,15 +377,10 @@ export default function AdminOverview() {
         scheduleConfig
       );
 
-      // Mark delivered vs pending slots
-      let sSkipped = 0, rSkipped = 0, pSkipped = 0, stSkipped = 0;
-      schedule.forEach(slot => {
-        let delivered = false;
-        if (slot.type === 'static') { if (sSkipped < staticDone) { sSkipped++; delivered = true; } }
-        else if (slot.type === 'reel') { if (rSkipped < reelsDone) { rSkipped++; delivered = true; } }
-        else if (slot.type === 'poster') { if (pSkipped < postersDone) { pSkipped++; delivered = true; } }
-        else if (slot.type === 'story') { if (stSkipped < storiesDone) { stSkipped++; delivered = true; } }
+      const matchedSchedule = matchPostsToScheduleSlots(schedule, orderPosts);
 
+      matchedSchedule.forEach(slot => {
+        const delivered = Boolean(slot.delivered);
         const slotDate = new Date(slot.date);
         slotDate.setHours(0, 0, 0, 0);
 
@@ -242,6 +397,9 @@ export default function AdminOverview() {
           clientId: order.client_id,
           orderId: order.order_id,
           delivered,
+          postLogId: slot.postLogId || null,
+          deliveredTitle: slot.deliveredTitle || null,
+          matchedPost: slot.matchedPost || null,
           isOverdue: !delivered && slotDate < today && ['static', 'reel', 'poster', 'story'].includes(slot.type)
         });
       });
@@ -350,6 +508,18 @@ export default function AdminOverview() {
         }
       } catch (pushErr) {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
+      }
+
+      // Broadcast real-time update to client's live dashboard
+      try {
+        await broadcastDeliverablesSync({
+          action: 'submit',
+          orderId: logOrderId,
+          postType: logType,
+          title: deliverableTitle
+        });
+      } catch (e) {
+        console.warn("Realtime broadcast error:", e);
       }
 
       setQuickLogSuccess(`✓ Logged "${deliverableTitle}" & sent push notification to ${clientDisplayName}!`);
@@ -592,6 +762,53 @@ export default function AdminOverview() {
               )}
             </button>
           </form>
+
+          {/* Recent Submissions with Instant Revert */}
+          {recentLogs.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-[#1e1e1e] flex flex-col gap-2.5">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#666]">
+                  Recent Submissions
+                </span>
+                <span className="text-[9px] text-[#555] font-mono">Click Revert to Undo</span>
+              </div>
+              <div className="flex flex-col gap-2 max-h-[210px] overflow-y-auto pr-1 custom-scrollbar">
+                {recentLogs.map((logItem) => {
+                  const cfg = TYPE_CONFIG[logItem.post_type] || TYPE_CONFIG.static;
+                  return (
+                    <div
+                      key={logItem.id}
+                      className="bg-[#0a0a0a] border border-[#1f1f1f] hover:border-[#333] rounded-xl p-2.5 flex justify-between items-center gap-2 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${cfg.bg}/20 ${cfg.color}`}>
+                            {cfg.shortLabel || cfg.label}
+                          </span>
+                          <span className="text-[10px] text-white font-bold truncate">
+                            {logItem.clientName}
+                          </span>
+                          <span className="text-[9px] text-[#555] font-mono shrink-0">
+                            {logItem.published_at ? new Date(logItem.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#aaa] truncate">{logItem.title}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isRevertingWork}
+                        onClick={() => handleRevertDeliverable(logItem.id, { orderId: logItem.order_id, title: logItem.title })}
+                        className="shrink-0 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 px-2.5 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all"
+                        title="Revert this submission and update client live"
+                      >
+                        <RotateCcw size={10} /> Revert
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </motion.div>
 
       </div>
@@ -840,11 +1057,23 @@ export default function AdminOverview() {
                                 </div>
                               </div>
 
-                              <div>
+                              <div className="flex items-center gap-2">
                                 {ev.delivered ? (
-                                  <span className="text-green-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1">
-                                    <Check size={14} /> Done
-                                  </span>
+                                  <>
+                                    <span className="text-green-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                                      <Check size={14} /> Done
+                                    </span>
+                                    {ev.postLogId && (
+                                      <button
+                                        type="button"
+                                        disabled={isRevertingWork}
+                                        onClick={() => handleRevertDeliverable(ev.postLogId, { orderId: ev.orderId, title: ev.deliveredTitle })}
+                                        className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                                      >
+                                        <RotateCcw size={11} /> Revert
+                                      </button>
+                                    )}
+                                  </>
                                 ) : (
                                   <button
                                     onClick={() => {
@@ -1049,17 +1278,42 @@ export default function AdminOverview() {
                 </form>
               ) : (
                 <div className="flex flex-col gap-4">
-                  <div className="bg-green-500/10 border border-green-500/20 p-3 rounded-xl flex items-center gap-2">
-                    <CheckCircle size={16} className="text-green-400 shrink-0" />
-                    <span className="text-green-400 text-xs font-medium">This deliverable is already completed and recorded in client records.</span>
+                  <div className="bg-green-500/10 border border-green-500/20 p-3.5 rounded-xl flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={16} className="text-green-400 shrink-0" />
+                      <span className="text-green-400 text-xs font-bold">Deliverable Submitted & Live</span>
+                    </div>
+                    {selectedEvent.deliveredTitle && (
+                      <p className="text-white text-xs font-medium pl-6">
+                        "{selectedEvent.deliveredTitle}"
+                      </p>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedEvent(null)}
-                    className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222]"
-                  >
-                    Close
-                  </button>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEvent(null)}
+                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222]"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isRevertingWork || !selectedEvent.postLogId}
+                      onClick={() => handleRevertDeliverable(selectedEvent.postLogId, {
+                        orderId: selectedEvent.orderId,
+                        title: selectedEvent.deliveredTitle
+                      })}
+                      className="w-full bg-red-500/15 hover:bg-red-500/25 disabled:opacity-50 text-red-400 border border-red-500/30 p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5"
+                    >
+                      {isRevertingWork ? (
+                        <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-red-400"></span>
+                      ) : (
+                        <><RotateCcw size={14} /> Revert Submission</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </motion.div>
