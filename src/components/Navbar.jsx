@@ -141,15 +141,24 @@ export default function Navbar() {
             }
           </motion.div>
 
-          {/* Mobile Hamburger (Text Based) */}
+          {/* Mobile Hamburger (Three-Line Icon) */}
           <motion.button
-            className="md:hidden z-50 text-primary font-semibold text-sm uppercase tracking-wide hover:text-accent transition-colors flex items-center justify-center"
+            className="md:hidden z-50 text-primary hover:text-accent p-2 rounded-xl transition-colors flex items-center justify-center"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle Menu"
             initial={{ opacity: 0 }}
             animate={{ opacity: isSplashActive ? 0 : 1 }}
             transition={{ delay: 1, duration: 0.8 }}
           >
-            {mobileMenuOpen ? <CloseIcon /> : 'Menu'}
+            {mobileMenuOpen ? (
+              <CloseIcon />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            )}
           </motion.button>
         </div>
       </nav>

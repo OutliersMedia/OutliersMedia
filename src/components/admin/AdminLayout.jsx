@@ -1,7 +1,7 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../../context/AuthContext';
-import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare, Menu, X, Globe } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 
@@ -12,6 +12,12 @@ export default function AdminLayout() {
   const canAccessAdmin = isAdmin || isTester;
   const location = useLocation();
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close mobile menu automatically when navigating
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (canAccessAdmin) {
@@ -63,13 +69,13 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-[#050505] text-[#f8f9fa] flex flex-col font-sans selection:bg-[#3428f8] selection:text-white">
       {/* Admin Navbar */}
-      <header className="fixed top-0 left-0 right-0 h-20 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-[#1f1f1f] z-40 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-8">
-          <Link to="/admin" className="flex items-center gap-3 group">
-            <img src="/icon.png" alt="Outliers Media" className="h-8 w-8 object-contain transition-transform group-hover:scale-110" />
-            <span className="font-serif text-xl tracking-wide">COMMAND CENTER</span>
+      <header className="fixed top-0 left-0 right-0 h-16 sm:h-20 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[#1f1f1f] z-50 px-4 sm:px-6 flex items-center justify-between">
+        <div className="flex items-center gap-4 lg:gap-8 min-w-0">
+          <Link to="/admin" className="flex items-center gap-2.5 sm:gap-3 group min-w-0">
+            <img src="/icon.png" alt="Outliers Media" className="h-7 w-7 sm:h-8 sm:w-8 object-contain transition-transform group-hover:scale-110 shrink-0" />
+            <span className="font-serif text-base sm:text-xl tracking-wide truncate">COMMAND CENTER</span>
             {isTester && (
-              <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+              <span className="hidden sm:flex text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider items-center gap-1.5 shadow-sm shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                 Tester Mode
               </span>
@@ -97,26 +103,115 @@ export default function AdminLayout() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <Link to="/" className="hidden sm:flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#888] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors" title="View Live Website">
+            <Globe size={15} />
+            <span className="hidden xl:inline">Live Site</span>
+          </Link>
+
           <Link to="/admin/tickets" className="relative p-2 text-[#888] hover:text-white transition-colors">
             <MessageSquare size={20} />
             {openTicketsCount > 0 && (
               <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border border-[#0a0a0a]"></span>
             )}
           </Link>
-          <div className="h-6 w-px bg-[#1f1f1f]"></div>
+
+          <div className="hidden lg:block h-6 w-px bg-[#1f1f1f]"></div>
+
           <button 
             onClick={() => signOut()}
-            className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#888] hover:text-red-500 transition-colors"
+            className="hidden lg:flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#888] hover:text-red-500 transition-colors"
           >
             <LogOut size={14} />
             Sign Out
           </button>
+
+          {/* Three-Line Hamburger Menu Button for Phone & Tablet */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            aria-label="Toggle navigation menu"
+            className="lg:hidden p-2.5 rounded-xl bg-[#141414] border border-[#262626] text-white hover:border-[#3428f8] transition-colors flex items-center justify-center"
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
       </header>
 
+      {/* Mobile Navigation Drawer */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 bg-black/75 backdrop-blur-sm z-40 lg:hidden"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-16 sm:top-20 left-0 right-0 bg-[#0d0d0d] border-b border-[#222] z-40 lg:hidden px-4 py-5 shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
+            >
+              <div className="flex flex-col gap-2">
+                {navItems.map((item) => {
+                  const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.path}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex items-center justify-between px-4 py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                        isActive
+                          ? 'bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30'
+                          : 'text-[#aaa] hover:text-white hover:bg-[#181818] border border-transparent'
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <item.icon size={16} />
+                        {item.name}
+                      </span>
+                      {item.name === 'TICKETS' && openTicketsCount > 0 && (
+                        <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-2 py-0.5 rounded-full font-mono">
+                          {openTicketsCount} Open
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-[#1f1f1f] flex items-center justify-between gap-3">
+                <Link
+                  to="/"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#161616] border border-[#262626] text-xs font-bold uppercase tracking-widest text-white hover:border-[#3428f8] transition-colors"
+                >
+                  <Globe size={14} />
+                  Live Website
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signOut();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/25 text-xs font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/20 transition-colors"
+                >
+                  <LogOut size={14} />
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Main Content Area */}
-      <main className="flex-grow pt-28 pb-12 px-6">
+      <main className="flex-grow pt-24 sm:pt-28 pb-12 px-4 sm:px-6">
         {isTester && (
           <div className="mb-6 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between text-amber-400 text-xs">
             <div className="flex items-center gap-2">
