@@ -560,9 +560,9 @@ export default function AdminOverview() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-8">
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="max-w-7xl mx-auto flex flex-col gap-5 sm:gap-8">
+      {/* Metrics Row: 2x2 grid on mobile, 4 columns on desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         {metricCards.map((card, idx) => (
           <motion.div
             key={idx}
@@ -570,20 +570,20 @@ export default function AdminOverview() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.1 }}
             onClick={() => setSelectedMetric(card.id)}
-            className="bg-[#111] border border-[#222] p-6 rounded-2xl flex flex-col gap-4 relative overflow-hidden group hover:border-[#444] cursor-pointer hover:shadow-[0_0_25px_rgba(255,255,255,0.03)] active:scale-[0.99] transition-all"
+            className="bg-[#111] border border-[#222] p-3.5 sm:p-6 rounded-2xl flex flex-col justify-between gap-2.5 sm:gap-4 relative overflow-hidden group hover:border-[#444] cursor-pointer hover:shadow-[0_0_25px_rgba(255,255,255,0.03)] active:scale-[0.99] transition-all"
           >
             <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 ${card.bg} blur-2xl transition-all group-hover:scale-150`}></div>
-            <div className="flex justify-between items-start relative z-10">
-              <span className="text-[#888] text-xs font-bold uppercase tracking-widest">{card.label}</span>
-              <div className={`${card.bg} ${card.color} p-2 rounded-lg`}>
-                <card.icon size={18} />
+            <div className="flex justify-between items-start gap-2 relative z-10">
+              <span className="text-[#888] text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest leading-tight">{card.label}</span>
+              <div className={`${card.bg} ${card.color} p-1.5 sm:p-2 rounded-lg shrink-0`}>
+                <card.icon size={16} />
               </div>
             </div>
             <div className="flex justify-between items-end relative z-10">
-              <div className="text-3xl font-serif text-white">
-                {loading ? <span className="animate-pulse bg-[#222] h-8 w-24 rounded block"></span> : card.value}
+              <div className="text-xl sm:text-3xl font-serif text-white truncate">
+                {loading ? <span className="animate-pulse bg-[#222] h-7 sm:h-8 w-20 sm:w-24 rounded block"></span> : card.value}
               </div>
-              <span className="text-[10px] text-[#555] group-hover:text-white font-bold uppercase tracking-wider flex items-center gap-1 transition-colors">
+              <span className="text-[9px] sm:text-[10px] text-[#555] group-hover:text-white font-bold uppercase tracking-wider flex items-center gap-0.5 sm:gap-1 transition-colors shrink-0">
                 View <ArrowRight size={10} />
               </span>
             </div>
@@ -591,34 +591,33 @@ export default function AdminOverview() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-8">
 
         {/* Master Calendar */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="lg:col-span-2 bg-[#111] border border-[#222] rounded-2xl p-6 md:p-8 flex flex-col"
+          className="lg:col-span-2 bg-[#111] border border-[#222] rounded-2xl p-3.5 sm:p-6 md:p-8 flex flex-col"
         >
           {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-serif text-white">Agency Master Calendar</h2>
-            <div className="flex flex-wrap items-center gap-3 text-[11px] font-bold uppercase tracking-wider text-[#888]">
-              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#3428f8]"></div> Static</span>
-              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Reel</span>
-              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div> Poster</span>
-              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-400"></div> Stories</span>
-              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-purple-400"></div> Special</span>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 sm:gap-4 mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-serif text-white">Agency Master Calendar</h2>
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#888]">
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#3428f8]"></div> Static</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Reel</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400"></div> Stories</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400"></div> Special</span>
             </div>
           </div>
 
           {/* Month Navigation */}
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="p-2 rounded-lg hover:bg-[#222] transition-colors text-[#888] hover:text-white">
+          <div className="flex items-center justify-between mb-3 sm:mb-4 bg-[#0b0b0b] border border-[#1d1d1d] rounded-xl p-1.5 sm:p-2">
+            <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="p-1.5 sm:p-2 rounded-lg hover:bg-[#222] transition-colors text-[#888] hover:text-white">
               <ChevronLeft size={18} />
             </button>
-            <h3 className="text-white text-sm font-bold uppercase tracking-widest">{monthName}</h3>
-            <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="p-2 rounded-lg hover:bg-[#222] transition-colors text-[#888] hover:text-white">
+            <h3 className="text-white text-xs sm:text-sm font-bold uppercase tracking-widest">{monthName}</h3>
+            <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="p-1.5 sm:p-2 rounded-lg hover:bg-[#222] transition-colors text-[#888] hover:text-white">
               <ChevronRight size={18} />
             </button>
           </div>
@@ -626,14 +625,14 @@ export default function AdminOverview() {
           {/* Day Headers */}
           <div className="grid grid-cols-7 gap-1 mb-1">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-              <div key={d} className="text-center text-[10px] font-bold uppercase tracking-widest text-[#555] py-2">{d}</div>
+              <div key={d} className="text-center text-[9px] sm:text-[10px] font-bold uppercase tracking-wider sm:tracking-widest text-[#555] py-1.5 sm:py-2">{d}</div>
             ))}
           </div>
 
           {/* Calendar Grid */}
           <div className="grid grid-cols-7 gap-1 flex-1">
             {calendarDays.map((day, idx) => {
-              if (day === null) return <div key={`empty-${idx}`} className="min-h-[85px]"></div>;
+              if (day === null) return <div key={`empty-${idx}`} className="min-h-[68px] sm:min-h-[85px]"></div>;
 
               const dayEvents = getEventsForDay(day);
               const isToday = todayDate.getFullYear() === year && todayDate.getMonth() === month && todayDate.getDate() === day;
@@ -641,7 +640,7 @@ export default function AdminOverview() {
               return (
                 <div
                   key={day}
-                  className={`min-h-[85px] p-1.5 rounded-lg border transition-colors ${isToday ? 'border-[#3428f8] bg-[#3428f8]/5' : 'border-[#1a1a1a] hover:border-[#333]'}`}
+                  className={`min-h-[68px] sm:min-h-[85px] p-1 sm:p-1.5 rounded-lg border transition-colors ${isToday ? 'border-[#3428f8] bg-[#3428f8]/5' : 'border-[#1a1a1a] hover:border-[#333]'}`}
                 >
                   <div className={`text-[10px] font-bold mb-1 ${isToday ? 'text-[#3428f8]' : 'text-[#666]'}`}>{day}</div>
                   <div className="flex flex-col gap-0.5">
@@ -656,7 +655,7 @@ export default function AdminOverview() {
                             handleOpenEvent(ev);
                           }}
                           title={`${ev.clientName} — ${cfg.label} @ ${ev.time || 'N/A'}${ev.note ? `\n🎯 ${ev.note}` : ''}${ev.delivered ? '\n✓ DELIVERED' : ev.isOverdue ? '\n⚠ OVERDUE' : ''}\n(Click to view details & submit)`}
-                          className={`text-[8px] px-1 py-0.5 rounded truncate font-bold uppercase tracking-wider cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
+                          className={`text-[8px] px-1 py-0.5 rounded truncate font-bold uppercase tracking-tight sm:tracking-wider cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
                             ev.delivered
                               ? 'bg-[#222] text-[#555] line-through'
                               : ev.isOverdue
@@ -664,7 +663,9 @@ export default function AdminOverview() {
                               : `${cfg.bg}/20 ${cfg.color} hover:ring-1 hover:ring-[#3428f8]/40`
                           }`}
                         >
-                          {ev.clientName.split(' ')[0]}: {cfg.shortLabel || cfg.label}{timeSnippet}
+                          <span className="hidden sm:inline">{ev.clientName.split(' ')[0]}: </span>
+                          {cfg.shortLabel || cfg.label}
+                          <span className="hidden md:inline">{timeSnippet}</span>
                         </div>
                       );
                     })}
@@ -691,9 +692,9 @@ export default function AdminOverview() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="lg:col-span-1 bg-[#111] border border-[#222] rounded-2xl p-6 md:p-8 flex flex-col"
+          className="lg:col-span-1 bg-[#111] border border-[#222] rounded-2xl p-4 sm:p-6 md:p-8 flex flex-col"
         >
-          <h2 className="text-xl font-serif text-white mb-6">Quick Post Logger</h2>
+          <h2 className="text-lg sm:text-xl font-serif text-white mb-4 sm:mb-6">Quick Post Logger</h2>
 
           {quickLogSuccess && (
             <motion.div 

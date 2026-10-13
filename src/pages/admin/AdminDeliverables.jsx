@@ -45,6 +45,7 @@ export default function AdminDeliverables() {
     if (!container) return;
 
     const handleWheel = (e) => {
+      if (window.innerWidth < 1024) return;
       // Prevent the wheel event from ever scrolling the outer Deliverables page / window
       e.preventDefault();
       e.stopPropagation();
@@ -398,12 +399,12 @@ export default function AdminDeliverables() {
   });
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-3xl p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col">
+    <div className="bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 sm:mb-8 gap-3 sm:gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-white mb-2">Deliverables & Content Pipeline</h2>
-          <p className="text-[#888] text-sm">Configure launch dates, customize weekly upload intervals, and track delivered assets.</p>
+          <h2 className="text-2xl sm:text-3xl font-serif text-white mb-1 sm:mb-2">Deliverables & Content Pipeline</h2>
+          <p className="text-[#888] text-xs sm:text-sm">Configure launch dates, customize weekly upload intervals, and track delivered assets.</p>
         </div>
 
         <div className="relative w-full md:w-64">
@@ -423,7 +424,7 @@ export default function AdminDeliverables() {
           <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3428f8]"></span>
         </div>
       ) : (
-        <div className="flex flex-col lg:flex-row gap-6 flex-1">
+        <div className="flex flex-col lg:flex-row gap-5 sm:gap-6 flex-1">
           
           {/* Left Panel: Active & Pending Clients Sidebar */}
           <div className="w-full lg:w-1/3 flex flex-col gap-3">
@@ -461,8 +462,8 @@ export default function AdminDeliverables() {
               </button>
             </div>
 
-            {/* Client List */}
-            <div data-lenis-prevent="true" className="flex flex-col gap-3 h-[680px] overflow-y-auto pr-2 custom-scrollbar overscroll-contain">
+            {/* Client List: Compact max-height on mobile so workspace is immediately visible below */}
+            <div data-lenis-prevent="true" className="flex flex-col gap-2.5 sm:gap-3 max-h-[240px] lg:max-h-none lg:h-[680px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar overscroll-contain">
               {filteredClients.length === 0 ? (
                 <div className="text-[#666] text-sm p-8 text-center bg-[#0a0a0a] rounded-2xl border border-[#222]">
                   No {clientFilter} clients found.
@@ -478,7 +479,7 @@ export default function AdminDeliverables() {
                     <button
                       key={client.auth_id}
                       onClick={() => setSelectedClient(client)}
-                      className={`text-left p-4 rounded-2xl border transition-all ${
+                      className={`text-left p-3.5 sm:p-4 rounded-2xl border transition-all ${
                         selectedClient?.auth_id === client.auth_id 
                           ? 'bg-[#3428f8]/10 border-[#3428f8] shadow-[0_0_20px_rgba(52,40,248,0.25)]' 
                           : 'bg-[#0a0a0a] border-[#222] hover:border-[#333]'
@@ -536,52 +537,52 @@ export default function AdminDeliverables() {
           </div>
 
           {/* Right Panel: Tabbed Workspace */}
-          <div ref={rightPanelContainerRef} className="w-full lg:w-2/3 bg-[#0a0a0a] border border-[#222] rounded-2xl flex flex-col h-[740px] overflow-hidden">
+          <div ref={rightPanelContainerRef} className="w-full lg:w-2/3 bg-[#0a0a0a] border border-[#222] rounded-2xl flex flex-col h-auto lg:h-[740px] overflow-visible lg:overflow-hidden">
             {selectedClient ? (
               selectedClient.latestOrder ? (
                 <>
                   {/* Client Summary Header */}
-                  <div className="p-6 border-b border-[#222] bg-[#0c0c0c] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-serif text-white">{selectedClient.name}</h3>
-                        <span className="text-xs bg-[#1f1f1f] text-[#3428f8] border border-[#333] px-2.5 py-0.5 rounded-full font-bold">
+                  <div className="p-4 sm:p-6 border-b border-[#222] bg-[#0c0c0c] flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4">
+                    <div className="min-w-0 w-full md:w-auto">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <h3 className="text-lg sm:text-xl font-serif text-white truncate">{selectedClient.name}</h3>
+                        <span className="text-[11px] sm:text-xs bg-[#1f1f1f] text-[#3428f8] border border-[#333] px-2.5 py-0.5 rounded-full font-bold">
                           {selectedClient.latestOrder.plan_name}
                         </span>
                       </div>
-                      <p className="text-[#888] text-xs font-mono mt-1">
-                        Order {selectedClient.latestOrder.order_id} • {selectedClient.email} • {selectedClient.phone || 'No phone'}
+                      <p className="text-[#888] text-[11px] sm:text-xs font-mono mt-1 truncate">
+                        Order {selectedClient.latestOrder.order_id} • {selectedClient.email}
                       </p>
                     </div>
 
                     {/* Tab Buttons */}
-                    <div className="flex bg-[#161616] p-1 rounded-xl border border-[#2a2a2a]">
+                    <div className="flex w-full md:w-auto bg-[#161616] p-1 rounded-xl border border-[#2a2a2a]">
                       <button
                         onClick={() => setActiveTab('schedule')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                        className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all ${
                           activeTab === 'schedule'
                             ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
                             : 'text-[#888] hover:text-white'
                         }`}
                       >
-                        <CalendarIcon size={14} /> Upload Schedule
+                        <CalendarIcon size={14} /> Schedule
                       </button>
                       <button
                         onClick={() => setActiveTab('logging')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                        className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all ${
                           activeTab === 'logging'
                             ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
                             : 'text-[#888] hover:text-white'
                         }`}
                       >
-                        <Plus size={14} /> Deliverables & Logging
+                        <Plus size={14} /> Log & History
                       </button>
                     </div>
                   </div>
 
                   {/* TAB 1: UPLOAD SCHEDULE */}
                   {activeTab === 'schedule' && (
-                    <div ref={scheduleScrollRef} data-lenis-prevent="true" className="flex-1 min-h-0 overflow-y-auto p-6 custom-scrollbar overscroll-contain flex flex-col gap-6">
+                    <div ref={scheduleScrollRef} data-lenis-prevent="true" className="flex-1 min-h-0 lg:overflow-y-auto p-4 sm:p-6 custom-scrollbar overscroll-contain flex flex-col gap-5 sm:gap-6">
                       
                       {/* Success Toast */}
                       {scheduleSavedSuccess && (
@@ -594,7 +595,7 @@ export default function AdminDeliverables() {
                       )}
 
                       {/* Section 1: Set First Upload Date */}
-                      <div className="bg-[#111] border border-[#222] p-6 rounded-2xl">
+                      <div className="bg-[#111] border border-[#222] p-4 sm:p-6 rounded-2xl">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
@@ -606,12 +607,12 @@ export default function AdminDeliverables() {
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full md:w-auto">
                             <input 
                               type="date"
                               value={firstUploadDate}
                               onChange={(e) => setFirstUploadDate(e.target.value)}
-                              className="bg-[#0a0a0a] border border-[#333] text-white px-4 py-2.5 rounded-xl text-sm font-mono focus:border-[#3428f8] outline-none shadow-inner"
+                              className="w-full sm:w-auto bg-[#0a0a0a] border border-[#333] text-white px-4 py-2.5 rounded-xl text-sm font-mono focus:border-[#3428f8] outline-none shadow-inner"
                             />
                             {firstUploadDate && (
                               <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-2 rounded-xl font-medium">
@@ -849,57 +850,57 @@ export default function AdminDeliverables() {
 
                   {/* TAB 2: DELIVERABLES & LOGGING (KEEP OLD FEATURES + STORIES) */}
                   {activeTab === 'logging' && (
-                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    <div className="flex-1 min-h-0 flex flex-col lg:overflow-hidden">
                       {/* Quota Progress Summary Cards */}
-                      <div className="p-6 border-b border-[#222]">
-                        <div className={`grid gap-4 ${selectedClient.latestOrder.posters_total > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                      <div className="p-4 sm:p-6 border-b border-[#222]">
+                        <div className={`grid gap-2.5 sm:gap-4 ${selectedClient.latestOrder.posters_total > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
                           
                           {/* Static Posts Progress */}
-                          <div className="bg-[#111] p-4 rounded-xl border border-[#222]">
-                            <div className="flex items-center gap-2 mb-2">
-                              <ImageIcon size={14} className="text-[#3428f8]" />
-                              <span className="text-[#888] text-[10px] font-bold uppercase tracking-widest">Static Posts</span>
+                          <div className="bg-[#111] p-3 sm:p-4 rounded-xl border border-[#222]">
+                            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                              <ImageIcon size={13} className="text-[#3428f8] shrink-0" />
+                              <span className="text-[#888] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider sm:tracking-widest truncate">Posts</span>
                             </div>
-                            <div className="flex items-end gap-2">
-                              <span className="text-2xl font-serif text-white">{selectedClient.progress.static}</span>
-                              <span className="text-[#555] text-sm mb-1">/ {selectedClient.latestOrder.static_posts_total}</span>
+                            <div className="flex items-end gap-1 sm:gap-2">
+                              <span className="text-xl sm:text-2xl font-serif text-white">{selectedClient.progress.static}</span>
+                              <span className="text-[#555] text-xs sm:text-sm mb-0.5 sm:mb-1">/ {selectedClient.latestOrder.static_posts_total}</span>
                             </div>
                           </div>
                           
                           {/* Reels Progress */}
-                          <div className="bg-[#111] p-4 rounded-xl border border-[#222]">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Video size={14} className="text-pink-500" />
-                              <span className="text-[#888] text-[10px] font-bold uppercase tracking-widest">Reels</span>
+                          <div className="bg-[#111] p-3 sm:p-4 rounded-xl border border-[#222]">
+                            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                              <Video size={13} className="text-pink-500 shrink-0" />
+                              <span className="text-[#888] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider sm:tracking-widest truncate">Reels</span>
                             </div>
-                            <div className="flex items-end gap-2">
-                              <span className="text-2xl font-serif text-white">{selectedClient.progress.reels}</span>
-                              <span className="text-[#555] text-sm mb-1">/ {selectedClient.latestOrder.reels_total}</span>
+                            <div className="flex items-end gap-1 sm:gap-2">
+                              <span className="text-xl sm:text-2xl font-serif text-white">{selectedClient.progress.reels}</span>
+                              <span className="text-[#555] text-xs sm:text-sm mb-0.5 sm:mb-1">/ {selectedClient.latestOrder.reels_total}</span>
                             </div>
                           </div>
 
                           {/* Stories Progress */}
-                          <div className="bg-[#111] p-4 rounded-xl border border-[#222]">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Sparkles size={14} className="text-amber-400" />
-                              <span className="text-[#888] text-[10px] font-bold uppercase tracking-widest">Stories</span>
+                          <div className="bg-[#111] p-3 sm:p-4 rounded-xl border border-[#222]">
+                            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                              <Sparkles size={13} className="text-amber-400 shrink-0" />
+                              <span className="text-[#888] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider sm:tracking-widest truncate">Stories</span>
                             </div>
-                            <div className="flex items-end gap-2">
-                              <span className="text-2xl font-serif text-white">{selectedClient.progress.stories}</span>
-                              <span className="text-[#555] text-sm mb-1">/ {selectedClient.latestOrder.stories_total || selectedClient.scheduleConfig?.totalStories || 0}</span>
+                            <div className="flex items-end gap-1 sm:gap-2">
+                              <span className="text-xl sm:text-2xl font-serif text-white">{selectedClient.progress.stories}</span>
+                              <span className="text-[#555] text-xs sm:text-sm mb-0.5 sm:mb-1">/ {selectedClient.latestOrder.stories_total || selectedClient.scheduleConfig?.totalStories || 0}</span>
                             </div>
                           </div>
                           
                           {/* Posters Progress (if applicable) */}
                           {selectedClient.latestOrder.posters_total > 0 && (
-                            <div className="bg-[#111] p-4 rounded-xl border border-[#222]">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Layout size={14} className="text-green-500" />
-                                <span className="text-[#888] text-[10px] font-bold uppercase tracking-widest">Posters</span>
+                            <div className="bg-[#111] p-3 sm:p-4 rounded-xl border border-[#222]">
+                              <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                                <Layout size={13} className="text-green-500 shrink-0" />
+                                <span className="text-[#888] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider sm:tracking-widest truncate">Posters</span>
                               </div>
-                              <div className="flex items-end gap-2">
-                                <span className="text-2xl font-serif text-white">{selectedClient.progress.posters}</span>
-                                <span className="text-[#555] text-sm mb-1">/ {selectedClient.latestOrder.posters_total}</span>
+                              <div className="flex items-end gap-1 sm:gap-2">
+                                <span className="text-xl sm:text-2xl font-serif text-white">{selectedClient.progress.posters}</span>
+                                <span className="text-[#555] text-xs sm:text-sm mb-0.5 sm:mb-1">/ {selectedClient.latestOrder.posters_total}</span>
                               </div>
                             </div>
                           )}
@@ -907,9 +908,9 @@ export default function AdminDeliverables() {
                         </div>
                       </div>
 
-                      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
+                      <div className="flex-1 min-h-0 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-[#222] lg:overflow-hidden">
                         {/* Form: Log New Delivery */}
-                        <div className="w-full md:w-1/2 p-6 border-r border-[#222] flex flex-col">
+                        <div className="w-full md:w-1/2 p-4 sm:p-6 flex flex-col">
                           <h4 className="text-white text-sm font-bold uppercase tracking-widest mb-4">Log New Delivery</h4>
                           
                           <form onSubmit={handleAddDeliverable} className="flex flex-col gap-4 flex-1">
@@ -956,7 +957,7 @@ export default function AdminDeliverables() {
                         </div>
 
                         {/* History: Delivery History */}
-                        <div ref={historyScrollRef} data-lenis-prevent="true" className="w-full md:w-1/2 p-6 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain">
+                        <div ref={historyScrollRef} data-lenis-prevent="true" className="w-full md:w-1/2 p-4 sm:p-6 min-h-0 max-h-[380px] lg:max-h-none overflow-y-auto custom-scrollbar overscroll-contain">
                           <h4 className="text-white text-sm font-bold uppercase tracking-widest mb-4">Delivery History</h4>
                           
                           <div className="flex flex-col gap-3">

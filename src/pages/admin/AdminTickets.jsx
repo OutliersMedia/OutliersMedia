@@ -140,17 +140,17 @@ export default function AdminTickets() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-140px)] bg-[#111] border border-[#222] rounded-3xl overflow-hidden shadow-2xl">
+    <div className="flex h-[calc(100dvh-165px)] md:h-[calc(100vh-140px)] bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl">
       
       {/* Left Pane: Queue */}
       <div className={`w-full md:w-1/3 bg-[#0a0a0a] border-r border-[#222] flex flex-col ${selectedThread ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-6 border-b border-[#222]">
+        <div className="p-4 sm:p-6 border-b border-[#222]">
           <h2 className="text-xl font-serif text-white mb-4 flex items-center justify-between">
             Ticket Queue
             <span className="bg-[#3428f8] text-white text-xs px-2 py-1 rounded-md">{tickets.filter(t => t.status === 'open').length}</span>
           </h2>
           
-          <div className="flex gap-2 bg-[#111] p-1 rounded-xl mb-4">
+          <div className="flex gap-1.5 sm:gap-2 bg-[#111] p-1 rounded-xl mb-4">
             {['All', 'Open', 'Snoozed', 'Closed'].map(f => (
               <button 
                 key={f}
@@ -172,14 +172,14 @@ export default function AdminTickets() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col gap-3 custom-scrollbar">
           {filteredTickets.map(thread => {
             const lastMsg = thread.messages[thread.messages.length - 1];
             return (
               <div 
                 key={thread.id} 
                 onClick={() => setSelectedThread(thread)}
-                className={`p-4 rounded-2xl cursor-pointer transition-all border ${selectedThread?.id === thread.id ? 'bg-[#3428f8]/10 border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.1)]' : 'bg-[#151515] border-[#222] hover:border-[#444]'}`}
+                className={`p-3.5 sm:p-4 rounded-2xl cursor-pointer transition-all border ${selectedThread?.id === thread.id ? 'bg-[#3428f8]/10 border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.1)]' : 'bg-[#151515] border-[#222] hover:border-[#444]'}`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <span className="text-xs font-bold text-white bg-[#222] px-2 py-1 rounded-md uppercase tracking-wider">{thread.order_id}</span>
@@ -213,19 +213,19 @@ export default function AdminTickets() {
       <div className={`w-full md:w-2/3 flex-col bg-[#0a0a0a] ${selectedThread ? 'flex' : 'hidden md:flex'}`}>
         {selectedThread ? (
           <>
-            <div className="p-6 border-b border-[#222] bg-[#111] flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <button onClick={() => setSelectedThread(null)} className="md:hidden text-[#888] hover:text-white">
-                  <ArrowLeft size={20} />
+            <div className="p-4 sm:p-6 border-b border-[#222] bg-[#111] flex justify-between items-center gap-2">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <button onClick={() => setSelectedThread(null)} className="md:hidden text-[#888] hover:text-white p-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] shrink-0">
+                  <ArrowLeft size={18} />
                 </button>
-                <div>
-                  <h3 className="text-lg font-serif text-white">{selectedThread.category}</h3>
-                  <p className="text-xs text-[#888] font-bold uppercase tracking-widest mt-1">
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-serif text-white truncate">{selectedThread.category}</h3>
+                  <p className="text-[11px] sm:text-xs text-[#888] font-bold uppercase tracking-widest mt-0.5 truncate">
                     {selectedThread.order_id} • {selectedThread.client?.name}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {selectedThread.status !== 'resolved' && (
                   <>
                     <button onClick={() => handleStatusChange('snoozed')} className="p-2 bg-[#222] hover:bg-[#333] text-[#888] hover:text-yellow-400 rounded-lg transition-colors tooltip" title="Snooze">
@@ -244,32 +244,32 @@ export default function AdminTickets() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 custom-scrollbar bg-[#050505]">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-4 sm:gap-6 custom-scrollbar bg-[#050505]">
               {selectedThread.messages.map(msg => (
-                <div key={msg.id} className={`flex flex-col max-w-[80%] ${msg.sender === 'admin' ? 'self-end items-end' : 'self-start items-start'}`}>
+                <div key={msg.id} className={`flex flex-col max-w-[85%] sm:max-w-[80%] ${msg.sender === 'admin' ? 'self-end items-end' : 'self-start items-start'}`}>
                   <span className="text-[10px] text-[#666] font-bold uppercase tracking-widest mb-1 mx-1">
                     {msg.sender === 'admin' ? 'You' : 'Client'} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                   </span>
-                  <div className={`p-4 rounded-2xl text-sm ${msg.sender === 'admin' ? 'bg-[#3428f8] text-white rounded-tr-sm' : 'bg-[#1a1a1a] border border-[#222] text-[#ddd] rounded-tl-sm'}`}>
+                  <div className={`p-3.5 sm:p-4 rounded-2xl text-sm ${msg.sender === 'admin' ? 'bg-[#3428f8] text-white rounded-tr-sm' : 'bg-[#1a1a1a] border border-[#222] text-[#ddd] rounded-tl-sm'}`}>
                     {msg.message}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="p-4 border-t border-[#222] bg-[#111]">
-              <form onSubmit={handleReply} className="flex gap-3">
+            <div className="p-3 sm:p-4 border-t border-[#222] bg-[#111]">
+              <form onSubmit={handleReply} className="flex gap-2 sm:gap-3">
                 <input 
                   type="text" 
                   value={replyMessage}
                   onChange={(e) => setReplyMessage(e.target.value)}
                   placeholder={selectedThread.status === 'resolved' ? "Ticket resolved. Type to re-open..." : "Type your reply..."}
-                  className="flex-1 bg-[#0a0a0a] border border-[#222] p-4 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                  className="flex-1 bg-[#0a0a0a] border border-[#222] p-3 sm:p-4 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
                 />
                 <button 
                   type="submit" 
                   disabled={replying || !replyMessage.trim()}
-                  className="bg-[#3428f8] text-white p-4 rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+                  className="bg-[#3428f8] text-white p-3.5 sm:p-4 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shrink-0"
                 >
                   {replying ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white inline-block"></span> : <Send size={20} />}
                 </button>

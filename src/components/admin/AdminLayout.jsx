@@ -211,19 +211,51 @@ export default function AdminLayout() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-grow pt-24 sm:pt-28 pb-12 px-4 sm:px-6">
+      <main className="flex-grow pt-20 sm:pt-28 pb-24 lg:pb-12 px-3 sm:px-6 overflow-x-hidden">
         {isTester && (
-          <div className="mb-6 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between text-amber-400 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-              <span className="font-bold uppercase tracking-wider">Tester Access:</span>
-              <span>You are viewing Command Center with a Tester account. Use this environment to test admin and operational workflows.</span>
+          <div className="mb-4 sm:mb-6 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-amber-400 text-xs">
+            <div className="flex items-start sm:items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping mt-1 sm:mt-0 shrink-0"></span>
+              <div>
+                <span className="font-bold uppercase tracking-wider mr-1">Tester Access:</span>
+                <span>You are viewing Command Center with a Tester account.</span>
+              </div>
             </div>
-            <span className="font-mono text-[10px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 uppercase">Role: Tester</span>
+            <span className="self-start sm:self-auto font-mono text-[10px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 uppercase shrink-0">Role: Tester</span>
           </div>
         )}
         <Outlet />
       </main>
+
+      {/* Mobile Bottom Navigation Bar for 1-Tap Tab Switching on Phones */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1.5 py-1.5 grid grid-cols-6 gap-1">
+        {navItems.map((item) => {
+          const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
+          const shortLabel =
+            item.name === 'DELIVERABLES' ? 'Work' :
+            item.name === 'NOTIFICATIONS' ? 'Alerts' :
+            item.name.charAt(0) + item.name.slice(1).toLowerCase();
+          return (
+            <Link
+              key={item.name}
+              to={item.path}
+              className={`relative flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all ${
+                isActive
+                  ? 'bg-[#3428f8]/15 text-[#3428f8]'
+                  : 'text-[#777] hover:text-white'
+              }`}
+            >
+              <item.icon size={16} />
+              <span className="text-[9px] font-bold tracking-tight mt-0.5 truncate max-w-full">
+                {shortLabel}
+              </span>
+              {item.name === 'TICKETS' && openTicketsCount > 0 && (
+                <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

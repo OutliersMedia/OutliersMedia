@@ -708,12 +708,12 @@ export default function AdminFinances() {
   });
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-3xl p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl">
+    <div className="bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl">
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 sm:mb-8 gap-3 sm:gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-white mb-2">Financial Command Center</h2>
-          <p className="text-[#888] text-sm">
+          <h2 className="text-2xl sm:text-3xl font-serif text-white mb-1 sm:mb-2">Financial Command Center</h2>
+          <p className="text-[#888] text-xs sm:text-sm">
             Manage custom client pricing, multi-installment EMI schedules, automated suspensions, and official invoices.
           </p>
         </div>
@@ -732,98 +732,98 @@ export default function AdminFinances() {
         </div>
       </div>
 
-      {/* Top 4 Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      {/* Top 4 Stat Cards: 2x2 grid on mobile, 4 columns on desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-6 sm:mb-8">
         {/* Verified Collected Revenue */}
-        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-green-500 transition-opacity">
+        <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-3.5 sm:p-6 relative overflow-hidden group hover:border-[#333] transition-colors">
+          <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-green-500 transition-opacity">
             <TrendingUp size={64} />
           </div>
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-2">Verified Revenue Collected</p>
-          <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
-            <IndianRupee size={24} className="text-green-500" />
-            {metrics.totalRevenue.toLocaleString()}
+          <p className="text-[#888] text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest mb-1.5 sm:mb-2 leading-tight">Verified Revenue</p>
+          <h3 className="text-xl sm:text-3xl font-serif text-white flex items-center gap-1">
+            <IndianRupee size={18} className="text-green-500 shrink-0" />
+            <span className="truncate">{metrics.totalRevenue.toLocaleString()}</span>
           </h3>
-          <p className="text-[#666] text-xs mt-2">Cash flow received to date</p>
+          <p className="text-[#666] text-[10px] sm:text-xs mt-1.5 sm:mt-2 truncate">Cash flow received</p>
         </div>
 
         {/* Pending Payments & Balances */}
         <div 
           onClick={() => setFilter(filter === 'Pending' ? 'All' : 'Pending')}
-          className="bg-[#0a0a0a] border border-[#222] hover:border-yellow-500/40 rounded-2xl p-6 relative overflow-hidden cursor-pointer transition-all group"
+          className="bg-[#0a0a0a] border border-[#222] hover:border-yellow-500/40 rounded-2xl p-3.5 sm:p-6 relative overflow-hidden cursor-pointer transition-all group"
         >
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-yellow-500 transition-opacity">
+          <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 text-yellow-500 transition-opacity">
             <Clock size={64} />
           </div>
-          <p className="text-yellow-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5">
-            Pending Balances & EMIs
+          <p className="text-yellow-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest mb-1.5 sm:mb-2 leading-tight">
+            Pending & EMIs
           </p>
-          <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
-            <IndianRupee size={24} className="text-yellow-400" />
-            {metrics.pendingRevenue.toLocaleString()}
+          <h3 className="text-xl sm:text-3xl font-serif text-white flex items-center gap-1">
+            <IndianRupee size={18} className="text-yellow-400 shrink-0" />
+            <span className="truncate">{metrics.pendingRevenue.toLocaleString()}</span>
           </h3>
-          <p className="text-[#777] text-xs mt-2 group-hover:text-yellow-400/80 transition-colors flex items-center gap-1">
-            Click to view pending items <ArrowRight size={10} />
+          <p className="text-[#777] text-[10px] sm:text-xs mt-1.5 sm:mt-2 group-hover:text-yellow-400/80 transition-colors flex items-center gap-1">
+            View pending <ArrowRight size={10} />
           </p>
         </div>
 
         {/* Total Discounts Granted */}
         <div 
           onClick={() => setPopupType('discount')}
-          className="bg-[#0a0a0a] border border-[#222] hover:border-emerald-500/40 rounded-2xl p-6 relative overflow-hidden cursor-pointer transition-all group"
+          className="bg-[#0a0a0a] border border-[#222] hover:border-emerald-500/40 rounded-2xl p-3.5 sm:p-6 relative overflow-hidden cursor-pointer transition-all group"
         >
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-15 text-emerald-500 transition-opacity">
+          <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-15 text-emerald-500 transition-opacity">
             <Tag size={64} />
           </div>
-          <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center justify-between">
-            <span>Special Discounts Granted</span>
-            <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold">
-              {transactions.filter(t => (t.instMetrics?.discountAmount || t.discountAmount || 0) > 0).length} Clients
+          <p className="text-emerald-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest mb-1.5 sm:mb-2 flex items-center justify-between gap-1 leading-tight">
+            <span className="truncate">Discounts</span>
+            <span className="text-[9px] sm:text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-1.5 sm:px-2 py-0.5 rounded-full font-bold shrink-0">
+              {transactions.filter(t => (t.instMetrics?.discountAmount || t.discountAmount || 0) > 0).length}
             </span>
           </p>
-          <h3 className="text-3xl font-serif text-white flex items-center gap-1.5">
-            <IndianRupee size={24} className="text-emerald-400" />
-            {metrics.totalDiscounts.toLocaleString()}
+          <h3 className="text-xl sm:text-3xl font-serif text-white flex items-center gap-1">
+            <IndianRupee size={18} className="text-emerald-400 shrink-0" />
+            <span className="truncate">{metrics.totalDiscounts.toLocaleString()}</span>
           </h3>
-          <p className="text-[#777] text-xs mt-2 group-hover:text-emerald-400 transition-colors flex items-center gap-1">
-            Click to view discount breakdown <ArrowRight size={10} />
+          <p className="text-[#777] text-[10px] sm:text-xs mt-1.5 sm:mt-2 group-hover:text-emerald-400 transition-colors flex items-center gap-1">
+            View breakdown <ArrowRight size={10} />
           </p>
         </div>
 
         {/* Retainers & Active EMI Deals */}
         <div 
           onClick={() => setPopupType('retainer')}
-          className="bg-[#0a0a0a] border border-[#222] hover:border-[#3428f8]/50 rounded-2xl p-6 relative overflow-hidden cursor-pointer transition-all group"
+          className="bg-[#0a0a0a] border border-[#222] hover:border-[#3428f8]/50 rounded-2xl p-3.5 sm:p-6 relative overflow-hidden cursor-pointer transition-all group"
         >
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-15 text-[#3428f8] transition-opacity">
+          <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-15 text-[#3428f8] transition-opacity">
             <Layers size={64} />
           </div>
-          <p className="text-[#3428f8] text-xs font-bold uppercase tracking-widest mb-2 flex items-center justify-between">
-            <span>Retainers & Plans</span>
-            <span className="text-[10px] bg-[#3428f8]/15 border border-[#3428f8]/30 px-2 py-0.5 rounded-full font-bold">
-              {metrics.totalTransactions} Total
+          <p className="text-[#3428f8] text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest mb-1.5 sm:mb-2 flex items-center justify-between gap-1 leading-tight">
+            <span className="truncate">Retainers</span>
+            <span className="text-[9px] sm:text-[10px] bg-[#3428f8]/15 border border-[#3428f8]/30 px-1.5 sm:px-2 py-0.5 rounded-full font-bold shrink-0">
+              {metrics.totalTransactions}
             </span>
           </p>
-          <div className="flex items-baseline gap-3">
-            <h3 className="text-3xl font-serif text-white">{metrics.totalTransactions}</h3>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-xl sm:text-3xl font-serif text-white">{metrics.totalTransactions}</h3>
             {metrics.activeEmis > 0 && (
-              <span className="text-xs bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-2 py-0.5 rounded-full font-bold">
-                {metrics.activeEmis} on EMI
+              <span className="text-[10px] sm:text-xs bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-1.5 sm:px-2 py-0.5 rounded-full font-bold truncate">
+                {metrics.activeEmis} EMI
               </span>
             )}
           </div>
-          <p className="text-[#777] text-xs mt-2 group-hover:text-[#3428f8] transition-colors flex items-center gap-1">
-            Click to view client plans <ArrowRight size={10} />
+          <p className="text-[#777] text-[10px] sm:text-xs mt-1.5 sm:mt-2 group-hover:text-[#3428f8] transition-colors flex items-center gap-1">
+            View plans <ArrowRight size={10} />
           </p>
         </div>
       </div>
 
       {/* LIVE WEBSITE PRICING & PITCH MEMORY MANAGER */}
-      <div className="mb-8 bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 md:p-7 relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#222]">
+      <div className="mb-6 sm:mb-8 bg-[#0a0a0a] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-[#222]">
           <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h3 className="text-xl md:text-2xl font-serif text-white">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg sm:text-xl md:text-2xl font-serif text-white">
                 Live Website Pricing & Pitch Memory
               </h3>
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
@@ -841,12 +841,12 @@ export default function AdminFinances() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={handleResetDefaultPrices}
               disabled={savingPricing}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-[#aaa] hover:text-white border border-[#2a2a2a] transition-all cursor-pointer"
+              className="flex-1 sm:flex-initial justify-center inline-flex items-center gap-1.5 px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-[#aaa] hover:text-white border border-[#2a2a2a] transition-all cursor-pointer"
               title="Reset website prices to standard ₹3,500 / ₹6,000 / ₹8,000 + ₹7,000 Website"
             >
               <RotateCcw size={13} /> Reset Defaults
@@ -854,7 +854,7 @@ export default function AdminFinances() {
             <button
               type="button"
               onClick={() => setShowPitchPanel(!showPitchPanel)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-white border border-[#2a2a2a] transition-all cursor-pointer"
+              className="flex-1 sm:flex-initial justify-center inline-flex items-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#222] text-white border border-[#2a2a2a] transition-all cursor-pointer"
             >
               {showPitchPanel ? 'Hide Controls' : 'Open Pitch Controls'}
             </button>
@@ -882,11 +882,11 @@ export default function AdminFinances() {
         </AnimatePresence>
 
         {showPitchPanel && (
-          <div className="mt-6 space-y-6">
+          <div className="mt-5 sm:mt-6 space-y-5 sm:space-y-6">
             {/* 3 Plan Instant Price Switcher Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
               {/* 1. STARTER PLAN CARD (Most Pitched) */}
-              <div className="bg-[#111] border border-[#222] rounded-2xl p-5 relative">
+              <div className="bg-[#111] border border-[#222] rounded-2xl p-4 sm:p-5 relative">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-[#aaa] bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-0.5 rounded">
@@ -906,7 +906,7 @@ export default function AdminFinances() {
                 <p className="text-[11px] text-[#777] font-bold uppercase tracking-wider mb-2">
                   1-Tap Instant Pitch Presets:
                 </p>
-                <div className="grid grid-cols-5 gap-1.5 mb-3.5">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 mb-3.5">
                   {[3000, 3500, 4000, 4500, 5000].map(preset => {
                     const isActive = Number(livePricing.starter) === preset;
                     return (
@@ -950,7 +950,7 @@ export default function AdminFinances() {
               </div>
 
               {/* 2. GROWTH PLAN CARD */}
-              <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-5 relative">
+              <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-4 sm:p-5 relative">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
@@ -970,7 +970,7 @@ export default function AdminFinances() {
                 <p className="text-[11px] text-[#777] font-bold uppercase tracking-wider mb-2">
                   1-Tap Instant Pitch Presets:
                 </p>
-                <div className="grid grid-cols-4 gap-1.5 mb-3.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-3.5">
                   {[5000, 6000, 7000, 8000].map(preset => {
                     const isActive = Number(livePricing.growth) === preset;
                     return (
@@ -1186,7 +1186,110 @@ export default function AdminFinances() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto max-h-72 overflow-y-auto">
+              {/* Mobile Pitch Memory Cards (Phone & Small Screens) */}
+              <div className="md:hidden divide-y divide-[#1a1a1a] max-h-80 overflow-y-auto">
+                {allPitchMemoryRows.map((row) => {
+                  const diff = row.price - row.standardBase;
+                  const pLower = row.planName.toLowerCase();
+                  const isCurrentlyLive =
+                    (pLower.includes('starter') && Number(livePricing.starter) === row.price) ||
+                    (pLower.includes('growth') && Number(livePricing.growth) === row.price) ||
+                    (pLower.includes('premium') && (Number(livePricing.premium) + Number(livePricing.websiteAddon)) === row.price);
+
+                  return (
+                    <div key={row.id} className="p-3.5 flex flex-col gap-2.5 bg-[#0e0e0e]">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-bold text-white text-sm flex flex-wrap items-center gap-1.5">
+                            <span>{row.clientName}</span>
+                            {row.isOrder && (
+                              <span className="text-[9px] bg-[#3428f8]/15 text-[#9aaeff] border border-[#3428f8]/30 px-1.5 py-0.5 rounded uppercase font-bold">
+                                Client
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-[#888]">{row.planName}</span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-base font-mono font-bold text-white block">
+                            ₹{row.price.toLocaleString()}
+                          </span>
+                          {diff > 0 && (
+                            <span className="text-[9px] font-bold text-amber-400">
+                              +₹{diff.toLocaleString()} Upsell
+                            </span>
+                          )}
+                          {diff < 0 && (
+                            <span className="text-[9px] font-bold text-emerald-400">
+                              -₹{Math.abs(diff).toLocaleString()} Off
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        {row.isOrder ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded-full">
+                            <CheckCircle size={10} /> {row.status === 'pending_order' ? 'Pending' : 'Sold & Locked'}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updatePitchEntryStatus(
+                                row.id,
+                                row.status === 'sold' ? 'pitched' : 'sold'
+                              )
+                            }
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
+                              row.status === 'sold'
+                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                            }`}
+                          >
+                            {row.status === 'sold' ? '✓ Agreed / Sold' : 'Pitched (Tap if Sold)'}
+                          </button>
+                        )}
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const patch = { activePitchClient: row.clientName };
+                              if (pLower.includes('starter')) patch.starter = row.price;
+                              else if (pLower.includes('growth')) patch.growth = row.price;
+                              else if (pLower.includes('premium')) {
+                                patch.premium = Math.max(1000, row.price - Number(livePricing.websiteAddon || 5000));
+                              }
+                              await updateLivePricing(patch);
+                              triggerLiveToast(`🎯 Loaded ${row.clientName}'s price (₹${row.price.toLocaleString()}) LIVE onto the website!`);
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                              isCurrentlyLive
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-[#1a1a1a] hover:bg-[#3428f8] text-white border-[#2a2a2a]'
+                            }`}
+                          >
+                            {isCurrentlyLive ? '✓ Live Now' : '🎯 Set Live'}
+                          </button>
+                          {!row.isOrder && (
+                            <button
+                              type="button"
+                              onClick={() => deletePitchEntry(row.id)}
+                              className="p-1.5 rounded-lg text-[#666] hover:text-red-400"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Pitch Memory Table */}
+              <div className="hidden md:block overflow-x-auto max-h-72 overflow-y-auto">
                 <table className="w-full text-left border-collapse min-w-[750px]">
                   <thead>
                     <tr className="bg-[#111] border-b border-[#222] text-[10px] font-bold uppercase tracking-widest text-[#666]">
@@ -1340,7 +1443,7 @@ export default function AdminFinances() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex flex-wrap gap-2 bg-[#0a0a0a] p-1.5 rounded-2xl mb-6 inline-flex border border-[#222]">
+      <div className="flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 bg-[#0a0a0a] p-1.5 rounded-2xl mb-5 sm:mb-6 border border-[#222] max-w-full">
         {[
           { id: 'All', label: 'All Orders' },
           { id: 'Pending', label: 'Pending Approval' },
@@ -1351,7 +1454,7 @@ export default function AdminFinances() {
           <button 
             key={tab.id}
             onClick={() => setFilter(tab.id)}
-            className={`px-5 py-2 text-xs uppercase font-bold tracking-wider rounded-xl transition-all cursor-pointer ${
+            className={`px-3.5 sm:px-5 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider rounded-xl transition-all cursor-pointer shrink-0 ${
               filter === tab.id 
                 ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.35)]' 
                 : 'text-[#666] hover:text-[#bbb]'
@@ -1368,8 +1471,197 @@ export default function AdminFinances() {
           <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3428f8]"></span>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-[#222]">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+        <>
+          {/* Mobile Order & EMI Card List (Phone & Small Screens) */}
+          <div className="md:hidden flex flex-col gap-3">
+            {filteredTransactions.map((txn) => {
+              const inst = txn.instMetrics;
+              const isEmi = inst.hasInstallments && inst.installments.length > 1;
+              const paidCount = inst.installments.filter(i => i.status === 'paid').length;
+              const totalSplits = inst.installments.length;
+              const pendingVerificationInst = inst.installments.find(i => i.status === 'pending_verification');
+              const nextUnpaidInst = inst.installments.find(i => i.status !== 'paid');
+
+              return (
+                <div key={txn.id} className="bg-[#0b0b0b] border border-[#222] rounded-2xl p-4 flex flex-col gap-3.5">
+                  {/* Top Row: Client Name, Order ID, Status */}
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <p className="text-white font-bold text-sm truncate">{txn.client.name}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className="text-[#3428f8] text-xs font-bold">{txn.plan_name}</span>
+                        <span className="text-[#666] text-[10px] font-mono">• {txn.order_id}</span>
+                      </div>
+                      <p className="text-[#555] text-[10px] mt-0.5">
+                        {new Date(txn.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      {txn.status === 'active' && (
+                        <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <CheckCircle size={10} /> Active
+                        </span>
+                      )}
+                      {txn.status === 'pending' && (
+                        <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
+                          <Clock size={10} /> Pending
+                        </span>
+                      )}
+                      {txn.status === 'paused' && (
+                        <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <PauseCircle size={10} /> Paused
+                        </span>
+                      )}
+                      {txn.status === 'cancelled' && (
+                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <XCircle size={10} /> Cancelled
+                        </span>
+                      )}
+                      {isEmi ? (
+                        <span className="text-[9px] bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 px-2 py-0.5 rounded font-bold uppercase">
+                          EMI {paidCount}/{totalSplits} Paid
+                        </span>
+                      ) : (
+                        <span className="text-[9px] bg-[#1a1a1a] text-[#777] border border-[#282828] px-2 py-0.5 rounded font-bold uppercase">
+                          Single Pay
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Financial Breakdown Box */}
+                  <div className="bg-[#121212] border border-[#1f1f1f] rounded-xl p-3 flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[9px] text-[#666] uppercase font-bold tracking-wider block">Contract Agreed</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-white font-mono font-bold text-base">₹{inst.totalAgreed.toLocaleString()}</span>
+                        {inst.discountAmount > 0 && (
+                          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                            ₹{inst.discountAmount.toLocaleString()} OFF
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-green-400 font-mono font-bold text-xs block">₹{inst.paidAmount.toLocaleString()} Paid</span>
+                      {inst.balanceDue > 0 ? (
+                        <span className="text-yellow-400 font-mono text-[11px] block">₹{inst.balanceDue.toLocaleString()} Due</span>
+                      ) : (
+                        <span className="text-[#666] text-[10px] block">Cleared in Full</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Primary Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleOpenConfigurator(txn)}
+                      className="bg-[#1b1b1b] hover:bg-[#3428f8] text-white border border-[#333] py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                    >
+                      <Edit3 size={12} className="text-[#3428f8]" /> Edit Payment
+                    </button>
+
+                    {txn.status === 'pending' ? (
+                      <button
+                        onClick={() => handleOpenConfigurator(txn)}
+                        className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle size={13} /> Accept Order
+                      </button>
+                    ) : pendingVerificationInst ? (
+                      <button
+                        onClick={() => handleOpenVerifyModal(txn, pendingVerificationInst)}
+                        className="bg-purple-500/20 text-purple-300 border border-purple-500/40 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                      >
+                        <ShieldCheck size={13} /> Verify EMI #{pendingVerificationInst.installment_number}
+                      </button>
+                    ) : nextUnpaidInst ? (
+                      <button
+                        onClick={() => handleOpenVerifyModal(txn, nextUnpaidInst)}
+                        className="bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                      >
+                        <CreditCard size={12} /> Record EMI #{nextUnpaidInst.installment_number}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => generateSingleInvoicePDF(txn, txn.client)}
+                        className="bg-[#181818] text-white border border-[#333] py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                      >
+                        <FileDown size={12} className="text-[#3428f8]" /> PDF Invoice
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Secondary Utility Row */}
+                  <div className="pt-2 border-t border-[#1c1c1c] flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => generateSingleInvoicePDF(txn, txn.client)}
+                        className="text-[10px] text-[#aaa] hover:text-white font-bold uppercase tracking-wider bg-[#161616] px-2.5 py-1.5 rounded-lg border border-[#262626] flex items-center gap-1"
+                      >
+                        <FileDown size={11} className="text-[#3428f8]" /> Invoice
+                      </button>
+                      <button
+                        onClick={() => setSelectedClientHistory(txn.client_id)}
+                        className="text-[10px] text-[#3428f8] font-bold uppercase tracking-wider bg-[#3428f8]/10 px-2.5 py-1.5 rounded-lg border border-[#3428f8]/20 flex items-center gap-1"
+                      >
+                        <History size={11} /> History
+                      </button>
+                      {(pendingVerificationInst?.receipt_url || txn.payment_receipt_url) && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewReceiptUrl(pendingVerificationInst?.receipt_url || txn.payment_receipt_url)}
+                          className="text-[10px] text-purple-300 font-bold uppercase tracking-wider bg-purple-500/10 px-2.5 py-1.5 rounded-lg border border-purple-500/20 flex items-center gap-1"
+                        >
+                          <Eye size={11} /> Receipt
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {txn.status === 'active' && (
+                        <button
+                          onClick={() => handleUpdateOrderStatus(txn.id, 'paused')}
+                          className="bg-orange-500/10 text-orange-400 p-1.5 rounded-lg"
+                          title="Pause Plan"
+                        >
+                          <PauseCircle size={15} />
+                        </button>
+                      )}
+                      {txn.status === 'paused' && (
+                        <button
+                          onClick={() => handleUpdateOrderStatus(txn.id, 'active')}
+                          className="bg-green-500/10 text-green-400 p-1.5 rounded-lg"
+                          title="Resume Plan"
+                        >
+                          <PlayCircle size={15} />
+                        </button>
+                      )}
+                      {['active', 'paused', 'pending'].includes(txn.status) && (
+                        <button
+                          onClick={() => handleUpdateOrderStatus(txn.id, 'cancelled')}
+                          className="bg-red-500/10 text-red-400 p-1.5 rounded-lg"
+                          title="Cancel Order"
+                        >
+                          <XCircle size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredTransactions.length === 0 && (
+              <div className="p-8 text-center text-[#666] text-sm bg-[#0a0a0a] rounded-2xl border border-[#222]">
+                No transactions or orders found matching the filter.
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table (md and up) */}
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-[#222]">
+            <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-[#0a0a0a] border-b border-[#222]">
                 <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Date & Order ID</th>
@@ -1644,6 +1936,7 @@ export default function AdminFinances() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* ============================================================== */}

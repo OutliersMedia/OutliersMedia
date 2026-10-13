@@ -179,17 +179,17 @@ export default function AdminNotifications() {
   const selectedClientObj = clients.find(c => c.auth_id === selectedClientId);
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-3xl p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col gap-6">
+    <div className="bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col gap-5 sm:gap-6">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-[#222]">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 pb-5 sm:pb-6 border-b border-[#222]">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="p-2.5 rounded-xl bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20">
+          <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 shrink-0">
               <BellRing size={20} />
             </div>
-            <h2 className="text-3xl font-serif text-white">Push Notification Broadcaster</h2>
+            <h2 className="text-xl sm:text-3xl font-serif text-white">Push Notification Broadcaster</h2>
           </div>
-          <p className="text-[#888] text-sm">
+          <p className="text-[#888] text-xs sm:text-sm">
             Send instant desktop and mobile notifications to all clients for offers, or send targeted alerts to specific accounts.
           </p>
         </div>
@@ -197,7 +197,7 @@ export default function AdminNotifications() {
         <button
           type="button"
           onClick={handleTestLocal}
-          className="inline-flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333] px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+          className="w-full sm:w-auto justify-center inline-flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333] px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
         >
           <Eye size={14} className="text-[#3428f8]" />
           Test Notification on My Screen
@@ -205,25 +205,25 @@ export default function AdminNotifications() {
       </div>
 
       {/* Device Notification Status Card */}
-      <div className={`p-4.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
+      <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
         devicePermission === 'granted'
           ? 'bg-emerald-950/20 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.06)]'
           : devicePermission === 'denied'
           ? 'bg-red-950/20 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.06)]'
           : 'bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.06)]'
       }`}>
-        <div className="flex items-center gap-3.5">
-          <div className={`p-2.5 rounded-xl border ${
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className={`p-2.5 rounded-xl border shrink-0 ${
             devicePermission === 'granted'
               ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
               : devicePermission === 'denied'
               ? 'bg-red-500/20 text-red-400 border-red-500/30'
               : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
           }`}>
-            <BellRing size={22} />
+            <BellRing size={20} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-sm font-bold text-white">This Device Notification Status:</h4>
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
                 devicePermission === 'granted'
@@ -245,7 +245,7 @@ export default function AdminNotifications() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           {devicePermission !== 'granted' && (
             <button
               type="button"
@@ -269,19 +269,19 @@ export default function AdminNotifications() {
       </div>
 
       {/* Top Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="bg-[#0a0a0a] border border-[#222] p-6 rounded-2xl relative overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-5">
+        <div className="bg-[#0a0a0a] border border-[#222] p-4 sm:p-6 rounded-2xl relative overflow-hidden">
           <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-1">Broadcast Channels</p>
-          <h3 className="text-2xl font-serif text-white flex items-center gap-2">
+          <h3 className="text-xl sm:text-2xl font-serif text-white flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></span>
             Realtime Push Active
           </h3>
-          <p className="text-[#666] text-xs mt-2">Zero-latency background delivery</p>
+          <p className="text-[#666] text-xs mt-1.5 sm:mt-2">Zero-latency background delivery</p>
         </div>
 
-        <div className="bg-[#0a0a0a] border border-[#222] p-6 rounded-2xl relative overflow-hidden">
+        <div className="bg-[#0a0a0a] border border-[#222] p-4 sm:p-6 rounded-2xl relative overflow-hidden">
           <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-1">Registered Clients</p>
-          <h3 className="text-2xl font-serif text-white flex items-center gap-2">
+          <h3 className="text-xl sm:text-2xl font-serif text-white flex items-center gap-2">
             <Users size={20} className="text-[#3428f8]" />
             {clients.length} Clients
           </h3>

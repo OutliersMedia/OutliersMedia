@@ -131,11 +131,11 @@ export default function AdminClients() {
   });
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-3xl p-8 min-h-[calc(100vh-140px)] shadow-2xl">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div className="bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 sm:mb-8 gap-3 sm:gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-white mb-2">Client Management</h2>
-          <p className="text-[#888] text-sm">Track all signed-up profiles, monitor plans, and upcoming deliverables.</p>
+          <h2 className="text-2xl sm:text-3xl font-serif text-white mb-1 sm:mb-2">Client Management</h2>
+          <p className="text-[#888] text-xs sm:text-sm">Track all signed-up profiles, monitor plans, and upcoming deliverables.</p>
         </div>
         <div className="relative w-full md:w-64">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
@@ -149,12 +149,12 @@ export default function AdminClients() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 bg-[#0a0a0a] p-1 rounded-xl mb-6 inline-flex border border-[#222]">
+      <div className="flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 bg-[#0a0a0a] p-1.5 rounded-xl mb-5 sm:mb-6 border border-[#222] max-w-full">
         {['All', 'Leads', 'Pending', 'Active', 'Testers', 'Expired', 'Paused', 'Inactive'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-6 py-2 text-xs uppercase font-bold tracking-widest rounded-lg transition-all ${filter === f ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]' : 'text-[#666] hover:text-[#aaa]'}`}
+            className={`px-3.5 sm:px-5 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider sm:tracking-widest rounded-lg transition-all shrink-0 ${filter === f ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]' : 'text-[#666] hover:text-[#aaa]'}`}
           >
             {f}
           </button>
@@ -166,8 +166,122 @@ export default function AdminClients() {
           <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3428f8]"></span>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#222]">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+        <>
+          {/* Mobile Client Card List (Phone & Small Screens) */}
+          <div className="md:hidden flex flex-col gap-3">
+            {filteredClients.map((client) => {
+              const order = client.latestOrder;
+              const si = client.scheduleInfo;
+
+              return (
+                <div key={client.auth_id} className="bg-[#0b0b0b] border border-[#222] rounded-2xl p-4 flex flex-col gap-3">
+                  {/* Top Row: Name + Status Pill */}
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        <p className="text-white font-bold text-sm truncate">{client.name || 'Unknown'}</p>
+                        {client.role === 'admin' && <span className="text-[9px] bg-[#3428f8] px-1.5 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
+                        {client.role === 'tester' && <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold uppercase">Tester</span>}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-[#888] truncate">
+                        <span className="truncate">{client.email}</span>
+                        {client.email && <CopyButton text={client.email} />}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-[#666] font-mono mt-0.5">
+                        <span>{client.phone || 'No Phone'}</span>
+                        {client.phone && <CopyButton text={client.phone} />}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
+                      {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                      {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
+                      {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Expired</span>}
+                      {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
+                      {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Lead</span>}
+                    </div>
+                  </div>
+
+                  {/* Business / IG Info */}
+                  {(client.business_type || client.instagram_handle) && (
+                    <div className="bg-[#121212] p-2.5 rounded-xl border border-[#1f1f1f] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      {client.business_type && (
+                        <span className="text-[#aaa]">
+                          Business: <strong className="text-white capitalize">{client.business_type}</strong>
+                        </span>
+                      )}
+                      {client.instagram_handle && (
+                        <a
+                          href={`https://instagram.com/${client.instagram_handle.replace('@', '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-pink-400 font-medium"
+                        >
+                          {client.instagram_handle}
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Plan & Edit Payment Row */}
+                  <div className="pt-2.5 border-t border-[#1c1c1c] flex items-center justify-between gap-2">
+                    {order ? (
+                      <>
+                        <div>
+                          <p className="text-[#3428f8] font-bold text-xs">{order.plan_name}</p>
+                          <p className="text-[#666] text-[10px] font-mono">{order.order_id}</p>
+                        </div>
+                        <button
+                          onClick={() => navigate(`/admin/finances?search=${encodeURIComponent(client.name || order.order_id)}`)}
+                          className="inline-flex items-center gap-1.5 text-[10px] text-white font-bold bg-[#181818] hover:bg-[#3428f8] px-3 py-1.5 rounded-xl border border-[#2a2a2a] transition-all"
+                        >
+                          <Edit3 size={11} className="text-[#3428f8]" /> Edit Payment
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[#555] text-xs italic">No Plan Selected</span>
+                    )}
+                  </div>
+
+                  {/* Next Upload Schedule Info */}
+                  {si && !si.allDone && si.nextSlot && (() => {
+                    const cfg = TYPE_CONFIG[si.nextSlot.type];
+                    const Icon = cfg.icon;
+                    const uploadDate = si.nextSlot.date;
+                    return (
+                      <div className="bg-[#121212] border border-[#222] rounded-xl p-2.5 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1.5 text-xs text-white font-bold">
+                            <Icon size={13} className={cfg.color} />
+                            Next: {cfg.label}
+                          </span>
+                          <span className="text-[10px] text-[#888] font-mono">
+                            {uploadDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                          </span>
+                        </div>
+                        <div className="w-full bg-[#222] h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-[#3428f8] h-full" style={{ width: `${(si.totalDone / si.totalQuota) * 100}%` }}></div>
+                        </div>
+                        <span className="text-[10px] text-[#666] font-mono">
+                          {si.totalDone}/{si.totalQuota} delivered • {si.daysLeftCycle}d left in cycle
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })}
+            {filteredClients.length === 0 && (
+              <div className="p-8 text-center text-[#666] text-sm bg-[#0a0a0a] rounded-2xl border border-[#222]">
+                No clients match the current filter.
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table (md and up) */}
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-[#222]">
+            <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-[#0a0a0a] border-b border-[#222]">
                 <th className="p-4 text-xs font-bold uppercase tracking-widest text-[#666]">Client / Contact</th>
@@ -346,6 +460,7 @@ export default function AdminClients() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );
