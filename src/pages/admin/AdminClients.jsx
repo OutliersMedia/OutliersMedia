@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabaseClient';
+import { isEmailAdmin } from '../../context/AuthContext';
 import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle, Edit3 } from 'lucide-react';
 
 // --- COPY BUTTON COMPONENT ---
@@ -26,6 +27,7 @@ export default function AdminClients() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [leadsSubFilter, setLeadsSubFilter] = useState('all'); // 'all' | 'leads' | 'admins'
 
   useEffect(() => {
     fetchClients();
@@ -57,6 +59,8 @@ export default function AdminClients() {
         const clientOrders = ordersList.filter(o => o.client_id === profile.auth_id);
         const activeOrPending = clientOrders.find(o => ['active', 'pending', 'paused'].includes(o.status));
         const latestOrder = activeOrPending || clientOrders[0] || null;
+
+        const isAdmin = profile.role === 'admin' || isEmailAdmin(profile.email);
 
         let calculatedStatus = 'lead';
         if (latestOrder) {
@@ -107,24 +111,75 @@ export default function AdminClients() {
           };
         }
 
-        return { ...profile, latestOrder, calculatedStatus, scheduleInfo };
+        return { ...profile, latestOrder, calculatedStatus, scheduleInfo, isAdmin };
       });
       setClients(merged);
     }
     setLoading(false);
   };
 
+  const counts = useMemo(() => {
+    const res = {
+      All: 0,
+      Leads: 0,
+      clientLeads: 0,
+      admins: 0,
+      Pending: 0,
+      Active: 0,
+      Testers: 0,
+      Expired: 0,
+      Paused: 0,
+      Inactive: 0
+    };
+
+    clients.forEach(c => {
+      if (c.isAdmin) {
+        res.admins += 1;
+        res.Leads += 1; // Admins are organized exclusively under Leads
+        return;
+      }
+
+      // Non-admin profiles are clients
+      res.All += 1;
+      if (c.calculatedStatus === 'active') res.Active += 1;
+      if (c.calculatedStatus === 'pending') res.Pending += 1;
+      if (c.calculatedStatus === 'paused') res.Paused += 1;
+      if (c.calculatedStatus === 'expired') res.Expired += 1;
+      if (c.calculatedStatus === 'lead') {
+        res.Leads += 1;
+        res.clientLeads += 1;
+      }
+      if (c.calculatedStatus === 'cancelled') res.Inactive += 1;
+      if (c.role === 'tester') res.Testers += 1;
+    });
+
+    return res;
+  }, [clients]);
+
   const filteredClients = clients.filter(c => {
     const matchesSearch = c.name?.toLowerCase().includes(search.toLowerCase()) ||
                           c.email?.toLowerCase().includes(search.toLowerCase()) ||
                           c.latestOrder?.order_id?.toLowerCase().includes(search.toLowerCase());
     if (!matchesSearch) return false;
+
+    // Admins must NOT be visible in the main client table (All, Active, Pending, etc.)
+    // Instead, they are only visible in the 'Leads' tab.
+    if (c.isAdmin) {
+      if (filter !== 'Leads') return false;
+      if (leadsSubFilter === 'leads') return false; // User requested client leads only
+      return true;
+    }
+
+    // For non-admin profiles (Clients):
     if (filter === 'All') return true;
     if (filter === 'Active') return c.calculatedStatus === 'active';
     if (filter === 'Pending') return c.calculatedStatus === 'pending';
     if (filter === 'Paused') return c.calculatedStatus === 'paused';
     if (filter === 'Expired') return c.calculatedStatus === 'expired';
-    if (filter === 'Leads') return c.calculatedStatus === 'lead';
+    if (filter === 'Leads') {
+      if (leadsSubFilter === 'admins') return false; // User requested admins only
+      return c.calculatedStatus === 'lead';
+    }
     if (filter === 'Inactive') return c.calculatedStatus === 'cancelled';
     if (filter === 'Testers') return c.role === 'tester';
     return true;
@@ -149,17 +204,52 @@ export default function AdminClients() {
         </div>
       </div>
 
-      <div className="flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 bg-[#0a0a0a] p-1.5 rounded-xl mb-5 sm:mb-6 border border-[#222] max-w-full">
+      <div className="flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 bg-[#0a0a0a] p-1.5 rounded-xl mb-3 sm:mb-4 border border-[#222] max-w-full">
         {['All', 'Leads', 'Pending', 'Active', 'Testers', 'Expired', 'Paused', 'Inactive'].map(f => (
           <button
             key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3.5 sm:px-5 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider sm:tracking-widest rounded-lg transition-all shrink-0 ${filter === f ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]' : 'text-[#666] hover:text-[#aaa]'}`}
+            onClick={() => {
+              setFilter(f);
+              if (f !== 'Leads') setLeadsSubFilter('all');
+            }}
+            className={`px-3 sm:px-4 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider sm:tracking-widest rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${filter === f ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]' : 'text-[#666] hover:text-[#aaa]'}`}
           >
-            {f}
+            <span>{f === 'All' ? 'All Clients' : f}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold ${filter === f ? 'bg-white/20 text-white' : 'bg-[#181818] text-[#777]'}`}>
+              {counts[f] || 0}
+            </span>
           </button>
         ))}
       </div>
+
+      {filter === 'Leads' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-5 p-2.5 sm:p-3 bg-[#0a0a0a] border border-[#222] rounded-xl text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[#888] text-[11px] font-bold uppercase tracking-wider">Leads Tab View:</span>
+            <span className="text-[11px] text-[#555] hidden sm:inline">• Admins are organized here to keep client lists focused</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-[#121212] p-1 rounded-lg border border-[#1f1f1f]">
+            <button
+              onClick={() => setLeadsSubFilter('all')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${leadsSubFilter === 'all' ? 'bg-[#222] text-white font-bold' : 'text-[#777] hover:text-[#bbb]'}`}
+            >
+              All ({counts.Leads})
+            </button>
+            <button
+              onClick={() => setLeadsSubFilter('leads')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${leadsSubFilter === 'leads' ? 'bg-[#222] text-white font-bold' : 'text-[#777] hover:text-[#bbb]'}`}
+            >
+              Client Leads ({counts.clientLeads})
+            </button>
+            <button
+              onClick={() => setLeadsSubFilter('admins')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${leadsSubFilter === 'admins' ? 'bg-[#3428f8]/20 text-[#8b82ff] border border-[#3428f8]/40 font-bold' : 'text-[#777] hover:text-[#bbb]'}`}
+            >
+              Admins Only ({counts.admins})
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
@@ -180,7 +270,7 @@ export default function AdminClients() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1">
                         <p className="text-white font-bold text-sm truncate">{client.name || 'Unknown'}</p>
-                        {client.role === 'admin' && <span className="text-[9px] bg-[#3428f8] px-1.5 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
+                        {(client.isAdmin || client.role === 'admin') && <span className="text-[9px] bg-[#3428f8] px-1.5 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
                         {client.role === 'tester' && <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold uppercase">Tester</span>}
                       </div>
                       <div className="flex items-center gap-1 text-xs text-[#888] truncate">
@@ -194,12 +284,18 @@ export default function AdminClients() {
                     </div>
 
                     <div className="shrink-0">
-                      {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
-                      {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
-                      {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
-                      {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Expired</span>}
-                      {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
-                      {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Lead</span>}
+                      {client.isAdmin ? (
+                        <span className="bg-[#3428f8]/15 text-[#8b82ff] border border-[#3428f8]/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Admin Account</span>
+                      ) : (
+                        <>
+                          {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
+                          {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                          {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
+                          {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Expired</span>}
+                          {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
+                          {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Lead</span>}
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -226,7 +322,9 @@ export default function AdminClients() {
 
                   {/* Plan & Edit Payment Row */}
                   <div className="pt-2.5 border-t border-[#1c1c1c] flex items-center justify-between gap-2">
-                    {order ? (
+                    {client.isAdmin ? (
+                      <span className="text-[#3428f8] text-xs font-semibold">Outliers Team Administrator</span>
+                    ) : order ? (
                       <>
                         <div>
                           <p className="text-[#3428f8] font-bold text-xs">{order.plan_name}</p>
@@ -274,7 +372,13 @@ export default function AdminClients() {
             })}
             {filteredClients.length === 0 && (
               <div className="p-8 text-center text-[#666] text-sm bg-[#0a0a0a] rounded-2xl border border-[#222]">
-                No clients match the current filter.
+                {filter === 'Leads' && leadsSubFilter === 'admins'
+                  ? 'No admin accounts match the current search.'
+                  : filter === 'Leads' && leadsSubFilter === 'leads'
+                  ? 'No client leads match the current search.'
+                  : filter === 'All'
+                  ? 'No clients match the current search.'
+                  : 'No clients match the current filter.'}
               </div>
             )}
           </div>
@@ -301,7 +405,7 @@ export default function AdminClients() {
                     <td className="p-4 min-w-[280px]">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-white font-medium">{client.name || 'Unknown'}</p>
-                        {client.role === 'admin' && <span className="text-[9px] bg-[#3428f8] px-1 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
+                        {(client.isAdmin || client.role === 'admin') && <span className="text-[9px] bg-[#3428f8] px-1 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
                         {client.role === 'tester' && <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Tester</span>}
                         {client.user_id && <span className="text-[9px] text-[#666] font-mono border border-[#333] px-1 py-0.5 rounded">{client.user_id}</span>}
                       </div>
@@ -332,7 +436,9 @@ export default function AdminClients() {
 
                     {/* Plan / Order ID */}
                     <td className="p-4">
-                      {order ? (
+                      {client.isAdmin ? (
+                        <span className="text-[#3428f8] text-xs font-semibold">Outliers Team Administrator</span>
+                      ) : order ? (
                         <>
                           <p className="text-[#3428f8] font-bold text-sm mb-1">{order.plan_name}</p>
                           <p className="text-[#666] text-xs font-mono mb-1.5">{order.order_id}</p>
@@ -351,12 +457,18 @@ export default function AdminClients() {
 
                     {/* Status */}
                     <td className="p-4">
-                      {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Active</span>}
-                      {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">Pending</span>}
-                      {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Paused</span>}
-                      {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Expired</span>}
-                      {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Cancelled</span>}
-                      {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Lead</span>}
+                      {client.isAdmin ? (
+                        <span className="bg-[#3428f8]/15 text-[#8b82ff] border border-[#3428f8]/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Admin Account</span>
+                      ) : (
+                        <>
+                          {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Active</span>}
+                          {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                          {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Paused</span>}
+                          {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Expired</span>}
+                          {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Cancelled</span>}
+                          {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Lead</span>}
+                        </>
+                      )}
                     </td>
 
                     {/* Next Upload — Intelligent Schedule */}
@@ -439,7 +551,8 @@ export default function AdminClients() {
                         })() : null
                       ) : (
                         <span className="text-[#444] text-xs italic">
-                          {client.calculatedStatus === 'lead' ? 'No plan yet' :
+                          {client.isAdmin ? 'Internal Admin Profile • Not a Client' :
+                           client.calculatedStatus === 'lead' ? 'No plan yet' :
                            client.calculatedStatus === 'pending' ? 'Awaiting approval' :
                            client.calculatedStatus === 'paused' ? 'Plan paused' :
                            client.calculatedStatus === 'expired' ? 'Plan expired' :
@@ -453,7 +566,13 @@ export default function AdminClients() {
               {filteredClients.length === 0 && (
                 <tr>
                   <td colSpan="4" className="p-8 text-center text-[#666]">
-                    No clients match the current filter.
+                    {filter === 'Leads' && leadsSubFilter === 'admins'
+                      ? 'No admin accounts match the current search.'
+                      : filter === 'Leads' && leadsSubFilter === 'leads'
+                      ? 'No client leads match the current search.'
+                      : filter === 'All'
+                      ? 'No clients match the current search.'
+                      : 'No clients match the current filter.'}
                   </td>
                 </tr>
               )}
