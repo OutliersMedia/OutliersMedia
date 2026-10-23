@@ -254,7 +254,16 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
               </span>
             ) : null}
           </div>
-          <h2 className="text-2xl font-serif text-primary">Project Dashboard</h2>
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-serif text-primary capitalize">
+              {order.business_name || order.schedule_config?.business_name || 'Project Dashboard'}
+            </h2>
+            {(order.instagram_handle || profile?.instagram_handle) && (
+              <p className="text-xs text-pink-400 font-mono mt-0.5">
+                {order.instagram_handle || profile?.instagram_handle}
+              </p>
+            )}
+          </div>
         </div>
 
         <button 

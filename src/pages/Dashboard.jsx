@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation, Navigate } from 'react-route
 import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { supabase } from '../utils/supabaseClient';
-import { IndianRupee, AlertTriangle, ShieldAlert, CreditCard, MessageSquare, ExternalLink } from 'lucide-react';
+import { IndianRupee, AlertTriangle, ShieldAlert, CreditCard, MessageSquare, ExternalLink, Briefcase, Plus } from 'lucide-react';
 import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 import InstallmentPayModal from '../components/dashboard/InstallmentPayModal';
@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [isTracking, setIsTracking] = useState(false);
   
   const [activeOrder, setActiveOrder] = useState(null);
+  const [userOrders, setUserOrders] = useState([]);
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [preSelectedPlanId, setPreSelectedPlanId] = useState(null);
@@ -56,30 +57,42 @@ export default function Dashboard() {
     }
   }, [user, isAdmin, isTester, isProfileComplete, loading, navigate, location]);
 
-  const fetchActiveOrder = async () => {
+  const fetchActiveOrder = async (preferredOrderId = null) => {
     setLoadingOrder(true);
-    const { data, error } = await supabase
+    const { data: allOrders, error } = await supabase
       .from('orders')
       .select('*')
       .eq('client_id', user.id)
-      .in('status', ['active', 'pending', 'paused'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .in('status', ['active', 'pending', 'paused', 'expired'])
+      .order('created_at', { ascending: false });
       
-    if (data) {
-      const instMetrics = computeOrderInstallmentMetrics(data);
-      // Automated suspension check: if active but past grace period, auto-pause
-      if (data.status === 'active' && instMetrics.isOverdue) {
-        await supabase.from('orders').update({ status: 'paused' }).eq('id', data.id);
-        data.status = 'paused';
+    if (allOrders && allOrders.length > 0) {
+      for (const ord of allOrders) {
+        const instMetrics = computeOrderInstallmentMetrics(ord);
+        // Automated suspension check: if active but past grace period, auto-pause
+        if (ord.status === 'active' && instMetrics.isOverdue) {
+          await supabase.from('orders').update({ status: 'paused' }).eq('id', ord.id);
+          ord.status = 'paused';
+        }
+        // Automated restoration check: if paused but all overdue payments confirmed, auto-restore
+        if (ord.status === 'paused' && !instMetrics.isOverdue && instMetrics.isFullyPaid) {
+          await supabase.from('orders').update({ status: 'active' }).eq('id', ord.id);
+          ord.status = 'active';
+        }
       }
-      // Automated restoration check: if paused but all overdue payments confirmed, auto-restore
-      if (data.status === 'paused' && !instMetrics.isOverdue && instMetrics.isFullyPaid) {
-        await supabase.from('orders').update({ status: 'active' }).eq('id', data.id);
-        data.status = 'active';
+
+      setUserOrders(allOrders);
+
+      let chosen = null;
+      if (preferredOrderId) {
+        chosen = allOrders.find(o => o.order_id === preferredOrderId);
+      } else if (activeOrder) {
+        chosen = allOrders.find(o => o.order_id === activeOrder.order_id);
       }
-      setActiveOrder(data);
+      setActiveOrder(chosen || allOrders[0]);
+    } else {
+      setUserOrders([]);
+      setActiveOrder(null);
     }
     setLoadingOrder(false);
   };
@@ -100,6 +113,9 @@ export default function Dashboard() {
     
     if (data) {
       setActiveOrder(data);
+      if (!userOrders.some(o => o.order_id === data.order_id)) {
+        setUserOrders(prev => [data, ...prev]);
+      }
       setOrderId('');
     } else {
       alert(`No active order found with ID: ${orderId.trim()}`);
@@ -123,8 +139,11 @@ export default function Dashboard() {
         const staticQuota = isStarter ? 12 : 15;
         const reelsQuota = isStarter ? 8 : 12;
         const storiesQuota = 15;
+        const bName = plan.business_name || profile.business_type || 'Brand';
+        const bType = plan.business_type || profile.business_type || 'General';
+        const igHandle = plan.instagram_handle || profile.instagram_handle || '';
 
-        // Attempt to lock in original_amount, total_agreed_amount, and updated plan quotas
+        // Attempt to lock in original_amount, total_agreed_amount, business details, and updated plan quotas
         try {
           await supabase
             .from('orders')
@@ -134,22 +153,22 @@ export default function Dashboard() {
               static_posts_total: staticQuota,
               reels_total: reelsQuota,
               stories_total: storiesQuota,
-              posters_total: 0
+              posters_total: 0,
+              business_name: bName,
+              business_type: bType,
+              instagram_handle: igHandle,
+              schedule_config: {
+                business_name: bName,
+                business_type: bType,
+                instagram_handle: igHandle
+              }
             })
             .eq('id', data.id);
         } catch {
           // Non-fatal if RLS restricts client direct update
         }
-        setActiveOrder({
-          ...data,
-          original_amount: plan.price,
-          total_agreed_amount: plan.price,
-          amount_paid: plan.price,
-          static_posts_total: staticQuota,
-          reels_total: reelsQuota,
-          stories_total: storiesQuota,
-          posters_total: 0
-        });
+
+        await fetchActiveOrder(data.order_id);
         setShowPlanModal(false); // Only close on success
         return true;
       }
@@ -192,6 +211,53 @@ export default function Dashboard() {
             </button>
           </div>
         </header>
+
+        {/* Multi-Business Horizontal Tabs */}
+        {!loadingOrder && userOrders.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 mb-8 border-b border-themeborder/50">
+            {userOrders.map((ord) => {
+              const isCurrent = ord.order_id === activeOrder?.order_id;
+              const bName = ord.business_name || ord.schedule_config?.business_name || (userOrders.length > 1 ? `Business (${ord.order_id})` : profile.business_type || 'Main Brand');
+              const isPaused = ord.status === 'paused';
+              const isPending = ord.status === 'pending';
+              const isActive = ord.status === 'active';
+
+              return (
+                <button
+                  key={ord.order_id}
+                  onClick={() => setActiveOrder(ord)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    isCurrent
+                      ? 'bg-accent text-white shadow-[0_0_15px_rgba(52,40,248,0.4)] border border-accent'
+                      : 'bg-surface hover:bg-raised text-muted hover:text-primary border border-themeborder'
+                  }`}
+                >
+                  <Briefcase size={14} className={isCurrent ? 'text-white' : 'text-accent'} />
+                  <span className="capitalize">{bName}</span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full uppercase font-mono font-bold ${
+                    isActive ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                    isPending ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                    isPaused ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                    'bg-[#222] text-[#888]'
+                  }`}>
+                    {ord.status}
+                  </span>
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => {
+                setPreSelectedPlanId(null);
+                setShowPlanModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-accent hover:text-white bg-accent/10 hover:bg-accent border border-accent/30 transition-all whitespace-nowrap cursor-pointer ml-auto sm:ml-0"
+              title="Enroll another business brand"
+            >
+              <Plus size={14} /> Add Another Business
+            </button>
+          </div>
+        )}
 
         {loadingOrder ? (
           <div className="flex justify-center items-center h-64">

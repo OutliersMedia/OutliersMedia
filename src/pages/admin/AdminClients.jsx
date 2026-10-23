@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabaseClient';
 import { isEmailAdmin } from '../../context/AuthContext';
-import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle, Edit3 } from 'lucide-react';
+import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle, Edit3, Briefcase } from 'lucide-react';
 
 // --- COPY BUTTON COMPONENT ---
 function CopyButton({ text }) {
@@ -31,6 +31,10 @@ export default function AdminClients() {
 
   useEffect(() => {
     fetchClients();
+
+    const handleRefresh = () => fetchClients();
+    window.addEventListener('om_business_added', handleRefresh);
+    return () => window.removeEventListener('om_business_added', handleRefresh);
   }, []);
 
   const fetchClients = async () => {
@@ -55,65 +59,97 @@ export default function AdminClients() {
       const ordersList = orders || [];
       const postsList = posts || [];
 
-      const merged = profiles.map(profile => {
-        const clientOrders = ordersList.filter(o => o.client_id === profile.auth_id);
-        const activeOrPending = clientOrders.find(o => ['active', 'pending', 'paused'].includes(o.status));
-        const latestOrder = activeOrPending || clientOrders[0] || null;
+      const clientItems = [];
 
+      profiles.forEach(profile => {
         const isAdmin = profile.role === 'admin' || isEmailAdmin(profile.email);
+        const clientOrders = ordersList.filter(o => o.client_id === profile.auth_id);
 
-        let calculatedStatus = 'lead';
-        if (latestOrder) {
-          calculatedStatus = latestOrder.status;
-          if (calculatedStatus === 'active' && latestOrder.created_at) {
-            const expiryDate = new Date(latestOrder.created_at);
-            expiryDate.setDate(expiryDate.getDate() + 30);
-            if (new Date() > expiryDate) calculatedStatus = 'expired';
-          }
+        if (clientOrders.length === 0 || isAdmin) {
+          // Profile without orders (Lead or Admin)
+          clientItems.push({
+            ...profile,
+            displayBusinessName: profile.business_type || 'Main Brand',
+            displayBusinessType: profile.business_type || '',
+            displayInstagram: profile.instagram_handle || '',
+            latestOrder: null,
+            calculatedStatus: 'lead',
+            scheduleInfo: null,
+            isAdmin,
+            isMultiBusiness: false,
+            businessCount: 0
+          });
+        } else {
+          // Decompose each enrolled order as its own business item
+          clientOrders.forEach(order => {
+            let calculatedStatus = order.status;
+            if (calculatedStatus === 'active' && order.created_at) {
+              const expiryDate = new Date(order.created_at);
+              expiryDate.setDate(expiryDate.getDate() + 30);
+              if (new Date() > expiryDate) calculatedStatus = 'expired';
+            }
+
+            const scheduleConfig = getClientSchedule(order);
+            const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
+
+            let scheduleInfo = null;
+            if (calculatedStatus === 'active') {
+              const orderPosts = postsList.filter(p => p.order_id === order.order_id);
+              const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
+              const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
+              const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
+              const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
+              const totalDone = staticDone + reelsDone + storiesDone + postersDone;
+              const storiesQuota = order.stories_total || scheduleConfig?.totalStories || 0;
+              const totalQuota = (order.static_posts_total || 0) + (order.reels_total || 0) + (order.posters_total || 0) + storiesQuota;
+
+              const schedule = generateUploadSchedule(
+                effectiveStart,
+                order.plan_name,
+                order.static_posts_total,
+                order.reels_total,
+                order.posters_total,
+                scheduleConfig
+              );
+
+              const nextSlot = getNextUpload(schedule, staticDone, reelsDone, postersDone, storiesDone);
+
+              const deadline = new Date(effectiveStart);
+              deadline.setDate(deadline.getDate() + 30);
+              const daysLeftCycle = Math.max(0, Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24)));
+
+              scheduleInfo = {
+                totalDone,
+                totalQuota,
+                daysLeftCycle,
+                nextSlot,
+                allDone: totalDone >= totalQuota
+              };
+            }
+
+            const bName = order.business_name || order.schedule_config?.business_name || profile.business_type || 'Main Brand';
+            const bType = order.business_type || order.schedule_config?.business_type || profile.business_type;
+            const bInstagram = order.instagram_handle || order.schedule_config?.instagram_handle || profile.instagram_handle;
+
+            clientItems.push({
+              ...profile,
+              auth_id: `${profile.auth_id}_${order.order_id}`,
+              real_auth_id: profile.auth_id,
+              displayBusinessName: bName,
+              displayBusinessType: bType,
+              displayInstagram: bInstagram,
+              latestOrder: order,
+              calculatedStatus,
+              scheduleInfo,
+              isAdmin: false,
+              isMultiBusiness: clientOrders.length > 1,
+              businessCount: clientOrders.length
+            });
+          });
         }
-
-        // Build intelligent schedule for active clients
-        let scheduleInfo = null;
-        if (latestOrder && calculatedStatus === 'active') {
-          const scheduleConfig = getClientSchedule(latestOrder);
-          const effectiveStart = scheduleConfig?.firstUploadDate || latestOrder.first_upload_date || latestOrder.created_at;
-
-          const orderPosts = postsList.filter(p => p.order_id === latestOrder.order_id);
-          const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
-          const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
-          const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
-          const postersDone = orderPosts.filter(p => p.post_type === 'poster').length;
-          const totalDone = staticDone + reelsDone + storiesDone + postersDone;
-          const storiesQuota = latestOrder.stories_total || scheduleConfig?.totalStories || 0;
-          const totalQuota = (latestOrder.static_posts_total || 0) + (latestOrder.reels_total || 0) + (latestOrder.posters_total || 0) + storiesQuota;
-
-          const schedule = generateUploadSchedule(
-            effectiveStart,
-            latestOrder.plan_name,
-            latestOrder.static_posts_total,
-            latestOrder.reels_total,
-            latestOrder.posters_total,
-            scheduleConfig
-          );
-
-          const nextSlot = getNextUpload(schedule, staticDone, reelsDone, postersDone, storiesDone);
-
-          const deadline = new Date(effectiveStart);
-          deadline.setDate(deadline.getDate() + 30);
-          const daysLeftCycle = Math.max(0, Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24)));
-
-          scheduleInfo = {
-            totalDone,
-            totalQuota,
-            daysLeftCycle,
-            nextSlot,
-            allDone: totalDone >= totalQuota
-          };
-        }
-
-        return { ...profile, latestOrder, calculatedStatus, scheduleInfo, isAdmin };
       });
-      setClients(merged);
+
+      setClients(clientItems);
     }
     setLoading(false);
   };
@@ -159,6 +195,7 @@ export default function AdminClients() {
   const filteredClients = clients.filter(c => {
     const matchesSearch = c.name?.toLowerCase().includes(search.toLowerCase()) ||
                           c.email?.toLowerCase().includes(search.toLowerCase()) ||
+                          c.displayBusinessName?.toLowerCase().includes(search.toLowerCase()) ||
                           c.latestOrder?.order_id?.toLowerCase().includes(search.toLowerCase());
     if (!matchesSearch) return false;
 
@@ -300,21 +337,30 @@ export default function AdminClients() {
                   </div>
 
                   {/* Business / IG Info */}
-                  {(client.business_type || client.instagram_handle) && (
+                  {(client.displayBusinessName || client.displayBusinessType || client.displayInstagram) && (
                     <div className="bg-[#121212] p-2.5 rounded-xl border border-[#1f1f1f] flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      {client.business_type && (
-                        <span className="text-[#aaa]">
-                          Business: <strong className="text-white capitalize">{client.business_type}</strong>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Briefcase size={12} className="text-[#3428f8] shrink-0" />
+                        <span className="text-white font-bold capitalize">
+                          {client.displayBusinessName}
                         </span>
-                      )}
-                      {client.instagram_handle && (
+                        {client.displayBusinessType && client.displayBusinessType !== client.displayBusinessName && (
+                          <span className="text-[#777]">({client.displayBusinessType})</span>
+                        )}
+                        {client.isMultiBusiness && (
+                          <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-mono font-bold">
+                            Multi-Brand ({client.businessCount})
+                          </span>
+                        )}
+                      </div>
+                      {client.displayInstagram && (
                         <a
-                          href={`https://instagram.com/${client.instagram_handle.replace('@', '')}`}
+                          href={`https://instagram.com/${client.displayInstagram.replace('@', '')}`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-pink-400 font-medium"
                         >
-                          {client.instagram_handle}
+                          {client.displayInstagram}
                         </a>
                       )}
                     </div>
@@ -418,16 +464,23 @@ export default function AdminClients() {
                         {client.phone && <CopyButton text={client.phone} />}
                       </div>
                       <p className="text-[#444] text-[10px] uppercase font-bold tracking-widest mb-2">Joined: {new Date(client.created_at).toLocaleDateString()}</p>
-                      {(client.business_type || client.instagram_handle) && (
+                      {(client.displayBusinessName || client.displayBusinessType || client.displayInstagram) && (
                         <div className="bg-[#0a0a0a] p-2 rounded-lg border border-[#222] flex flex-col gap-1">
-                          {client.business_type && (
+                          <p className="text-[#aaa] text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 flex-wrap">
+                            <Briefcase size={11} className="text-[#3428f8] shrink-0" />
+                            Brand: <span className="text-white font-bold capitalize tracking-normal">{client.displayBusinessName}</span>
+                            {client.displayBusinessType && client.displayBusinessType !== client.displayBusinessName && (
+                              <span className="text-[#777] font-normal font-sans">({client.displayBusinessType})</span>
+                            )}
+                            {client.isMultiBusiness && (
+                              <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-mono font-bold ml-auto">
+                                Multi-Brand ({client.businessCount})
+                              </span>
+                            )}
+                          </p>
+                          {client.displayInstagram && (
                             <p className="text-[#aaa] text-[10px] uppercase font-bold tracking-wider">
-                              Business: <span className="text-white font-normal capitalize tracking-normal">{client.business_type}</span>
-                            </p>
-                          )}
-                          {client.instagram_handle && (
-                            <p className="text-[#aaa] text-[10px] uppercase font-bold tracking-wider">
-                              IG: <a href={`https://instagram.com/${client.instagram_handle.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-pink-500 hover:text-pink-400 font-normal tracking-normal lowercase">{client.instagram_handle}</a>
+                              IG: <a href={`https://instagram.com/${client.displayInstagram.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-pink-500 hover:text-pink-400 font-normal tracking-normal lowercase">{client.displayInstagram}</a>
                             </p>
                           )}
                         </div>

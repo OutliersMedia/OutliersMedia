@@ -1,9 +1,10 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare, Menu, X, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare, Menu, X, Globe, Plus } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
+import AddBusinessModal from './AddBusinessModal';
 
 export default function AdminLayout() {
   const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, loading, signOut } = useAuth();
@@ -13,6 +14,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [addBusinessModalOpen, setAddBusinessModalOpen] = useState(false);
 
   // Close mobile menu automatically when navigating
   useEffect(() => {
@@ -104,6 +106,17 @@ export default function AdminLayout() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <button
+            type="button"
+            onClick={() => setAddBusinessModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#3428f8] hover:bg-[#271bd4] text-white shadow-[0_0_15px_rgba(52,40,248,0.35)] transition-all cursor-pointer"
+            title="Enroll a new business or client"
+          >
+            <Plus size={15} />
+            <span className="hidden sm:inline">Add Business</span>
+            <span className="sm:hidden">Add</span>
+          </button>
+
           <Link to="/" className="hidden sm:flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#888] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors" title="View Live Website">
             <Globe size={15} />
             <span className="hidden xl:inline">Live Site</span>
@@ -184,26 +197,40 @@ export default function AdminLayout() {
                 })}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-[#1f1f1f] flex items-center justify-between gap-3">
-                <Link
-                  to="/"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#161616] border border-[#262626] text-xs font-bold uppercase tracking-widest text-white hover:border-[#3428f8] transition-colors"
-                >
-                  <Globe size={14} />
-                  Live Website
-                </Link>
+              <div className="mt-4 pt-4 border-t border-[#1f1f1f] flex flex-col gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    signOut();
+                    setAddBusinessModalOpen(true);
                   }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/25 text-xs font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#3428f8] text-white text-xs font-bold uppercase tracking-widest shadow-[0_0_15px_rgba(52,40,248,0.35)]"
                 >
-                  <LogOut size={14} />
-                  Sign Out
+                  <Plus size={16} />
+                  Add Business / Client
                 </button>
+
+                <div className="flex items-center justify-between gap-3">
+                  <Link
+                    to="/"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#161616] border border-[#262626] text-xs font-bold uppercase tracking-widest text-white hover:border-[#3428f8] transition-colors"
+                  >
+                    <Globe size={14} />
+                    Live Site
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      signOut();
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/25 text-xs font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/20 transition-colors"
+                  >
+                    <LogOut size={14} />
+                    Sign Out
+                  </button>
+                </div>
               </div>
             </motion.div>
           </>
@@ -256,6 +283,12 @@ export default function AdminLayout() {
           );
         })}
       </nav>
+
+      {/* Global Add Business Modal */}
+      <AddBusinessModal 
+        isOpen={addBusinessModalOpen} 
+        onClose={() => setAddBusinessModalOpen(false)} 
+      />
     </div>
   );
 }

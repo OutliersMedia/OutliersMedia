@@ -7,7 +7,7 @@ import {
   PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3, 
   AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, Calendar, 
   Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight,
-  Zap, Globe, RotateCcw, Sparkles, UserCheck
+  Zap, Globe, RotateCcw, Sparkles, UserCheck, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
 import { 
@@ -70,6 +70,8 @@ export default function AdminFinances() {
   const [splitCount, setSplitCount] = useState(2); // 1 | 2 | 3 | 'custom'
   const [configInstallments, setConfigInstallments] = useState([]);
   const [savingPlan, setSavingPlan] = useState(false);
+  const [adminReceiptFile, setAdminReceiptFile] = useState(null);
+  const [adminReceiptPreview, setAdminReceiptPreview] = useState(null);
 
   // Quick Milestone Verification State
   const [verifyModalData, setVerifyModalData] = useState(null);
@@ -307,6 +309,8 @@ export default function AdminFinances() {
   // Open Installment Configurator Modal
   const handleOpenConfigurator = (order) => {
     setConfigModalOrder(order);
+    setAdminReceiptFile(null);
+    setAdminReceiptPreview(order.payment_receipt_url || order.installments?.[0]?.receipt_url || null);
     const metrics = computeOrderInstallmentMetrics(order);
     const agreed = metrics.totalAgreed || getStandardPlanPrice(order.plan_name);
     setAgreedPriceInput(String(agreed));
@@ -504,6 +508,28 @@ export default function AdminFinances() {
 
     setSavingPlan(true);
     try {
+      let receiptUrlToSave = adminReceiptPreview || configModalOrder.payment_receipt_url || null;
+
+      // If admin selected a new screenshot file, upload to Supabase Storage receipts bucket
+      if (adminReceiptFile) {
+        const fileExt = adminReceiptFile.name.split('.').pop() || 'png';
+        const fileName = `receipt_${configModalOrder.order_id || 'ord'}_admin_${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(fileName, adminReceiptFile, { upsert: true });
+
+        if (!uploadError) {
+          const { data: pubData } = supabase.storage
+            .from('receipts')
+            .getPublicUrl(fileName);
+          if (pubData?.publicUrl) {
+            receiptUrlToSave = pubData.publicUrl;
+          }
+        } else {
+          console.warn("Screenshot upload warning:", uploadError);
+        }
+      }
+
       const paidAmount = configInstallments
         .filter(inst => inst.status === 'paid')
         .reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
@@ -518,15 +544,16 @@ export default function AdminFinances() {
 
       const paymentStatus = balanceDue <= 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending');
 
-      const sanitizedInstallments = configInstallments.map(inst => {
-        if (inst.status === 'paid' && !inst.paid_at) {
-          return {
-            ...inst,
-            paid_at: new Date().toISOString(),
-            payment_id: inst.payment_id || `TXN-PAID-${Date.now().toString().slice(-6)}`
-          };
+      const sanitizedInstallments = configInstallments.map((inst, idx) => {
+        const item = { ...inst };
+        if (idx === 0 && receiptUrlToSave) {
+          item.receipt_url = receiptUrlToSave;
         }
-        return inst;
+        if (item.status === 'paid' && !item.paid_at) {
+          item.paid_at = new Date().toISOString();
+          item.payment_id = item.payment_id || `TXN-PAID-${Date.now().toString().slice(-6)}`;
+        }
+        return item;
       });
 
       const updatePayload = {
@@ -538,6 +565,10 @@ export default function AdminFinances() {
         status: nextStatus,
         payment_status: paymentStatus
       };
+
+      if (receiptUrlToSave) {
+        updatePayload.payment_receipt_url = receiptUrlToSave;
+      }
 
       if (balanceDue <= 0 && (!configModalOrder.payment_id || configModalOrder.payment_id.trim() === '')) {
         updatePayload.payment_id = sanitizedInstallments[0]?.payment_id || `TXN-FULL-PAID-${Date.now().toString().slice(-6)}`;
@@ -2341,6 +2372,87 @@ export default function AdminFinances() {
                         <option value={5}>5 Days Grace</option>
                         <option value={7}>7 Days Grace (Flexible)</option>
                       </select>
+                    </div>
+                  </div>
+
+                  {/* Section 4: Payment Screenshot / Proof of Payment (Admin Upload) */}
+                  <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <div>
+                        <span className="text-white font-bold text-xs uppercase tracking-wider block">
+                          4. Payment Screenshot / Proof of Payment
+                        </span>
+                        <p className="text-[#777] text-xs">
+                          Upload, replace, or preview payment confirmation receipt for this client.
+                        </p>
+                      </div>
+                      {adminReceiptPreview && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewReceiptUrl(adminReceiptPreview)}
+                          className="inline-flex items-center gap-1.5 text-[11px] text-[#3428f8] hover:text-white font-bold bg-[#3428f8]/10 hover:bg-[#3428f8] px-2.5 py-1 rounded-lg border border-[#3428f8]/20 transition-all cursor-pointer"
+                        >
+                          <Eye size={12} /> View Full Image
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                      {adminReceiptPreview ? (
+                        <div 
+                          onClick={() => setPreviewReceiptUrl(adminReceiptPreview)}
+                          className="relative w-28 h-20 rounded-xl overflow-hidden border border-[#333] shrink-0 bg-[#0a0a0a] group cursor-pointer"
+                          title="Click to zoom screenshot"
+                        >
+                          <img 
+                            src={adminReceiptPreview} 
+                            alt="Payment Screenshot" 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1">
+                            <Eye size={12} /> Zoom
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-28 h-20 rounded-xl border border-dashed border-[#333] bg-[#0a0a0a] shrink-0 flex flex-col items-center justify-center text-[#555] text-[10px]">
+                          <ImageIcon size={18} className="mb-1 text-[#444]" />
+                          <span>No Screenshot</span>
+                        </div>
+                      )}
+
+                      <div className="flex-1 w-full">
+                        <label className="flex items-center justify-center gap-2 w-full p-3 bg-[#0e0e0e] hover:bg-[#1a1a1a] border border-dashed border-[#333] hover:border-[#3428f8] rounded-xl text-xs text-[#aaa] hover:text-white transition-all cursor-pointer font-medium">
+                          <Upload size={14} className="text-[#3428f8]" />
+                          <span>{adminReceiptFile ? adminReceiptFile.name : (adminReceiptPreview ? 'Replace Payment Screenshot' : 'Upload Payment Screenshot')}</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                setAdminReceiptFile(file);
+                                setAdminReceiptPreview(URL.createObjectURL(file));
+                              }
+                            }}
+                          />
+                        </label>
+                        {adminReceiptFile && (
+                          <div className="flex justify-between items-center mt-1.5 px-1">
+                            <span className="text-[10px] text-green-400 font-mono">✓ Ready to save on update</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdminReceiptFile(null);
+                                setAdminReceiptPreview(configModalOrder.payment_receipt_url || null);
+                              }}
+                              className="text-[10px] text-red-400 hover:text-red-300 font-medium cursor-pointer"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 

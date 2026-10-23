@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import { 
   Search, Image as ImageIcon, Video, Layout, Plus, CheckCircle, Clock, 
-  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw
+  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw, Briefcase
 } from 'lucide-react';
 import { 
   getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG, broadcastDeliverablesSync
@@ -79,6 +79,10 @@ export default function AdminDeliverables() {
 
   useEffect(() => {
     fetchData();
+
+    const handleRefresh = () => fetchData();
+    window.addEventListener('om_business_added', handleRefresh);
+    return () => window.removeEventListener('om_business_added', handleRefresh);
   }, []);
 
   // When selectedClient changes, prefill their saved schedule configuration
@@ -134,83 +138,93 @@ export default function AdminDeliverables() {
       .order('published_at', { ascending: false });
 
     if (profiles) {
-      const enrichedClients = profiles.map(profile => {
+      const enrichedClients = [];
+
+      profiles.forEach(profile => {
         const clientOrders = orders ? orders.filter(o => o.client_id === profile.auth_id) : [];
-        const activeOrPending = clientOrders.find(o => ['active', 'pending', 'paused'].includes(o.status));
-        let latestOrder = activeOrPending || clientOrders[0] || null;
 
-        let calculatedStatus = 'lead';
+        if (clientOrders.length === 0) {
+          enrichedClients.push({
+            ...profile,
+            latestOrder: null,
+            calculatedStatus: 'lead',
+            scheduleConfig: null,
+            posts: [],
+            progress: { static: 0, reels: 0, stories: 0, posters: 0, total_delivered: 0, total_quota: 0 },
+            displayTitle: profile.name,
+            displayBusinessName: profile.business_type || 'Main Brand'
+          });
+        } else {
+          clientOrders.forEach(order => {
+            const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
+            const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
+              ? order.static_posts_total
+              : (isStarterOrd ? 12 : 15);
+            const normReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+              ? order.reels_total
+              : (isStarterOrd ? 8 : 12);
+            const normStories = (order.stories_total && order.stories_total !== 32)
+              ? order.stories_total
+              : 15;
 
-        if (latestOrder) {
-          const isStarterOrd = (latestOrder.plan_name || '').toLowerCase().includes('starter');
-          const normStatic = (latestOrder.static_posts_total && latestOrder.static_posts_total !== 10)
-            ? latestOrder.static_posts_total
-            : (isStarterOrd ? 12 : 15);
-          const normReels = (latestOrder.reels_total && latestOrder.reels_total !== 3 && latestOrder.reels_total !== 4)
-            ? latestOrder.reels_total
-            : (isStarterOrd ? 8 : 12);
-          const normStories = (latestOrder.stories_total && latestOrder.stories_total !== 32)
-            ? latestOrder.stories_total
-            : 15;
+            const normalizedOrder = {
+              ...order,
+              static_posts_total: normStatic,
+              reels_total: normReels,
+              stories_total: normStories,
+              posters_total: 0
+            };
 
-          latestOrder = {
-            ...latestOrder,
-            static_posts_total: normStatic,
-            reels_total: normReels,
-            stories_total: normStories,
-            posters_total: 0
-          };
+            let calculatedStatus = normalizedOrder.status;
 
-          calculatedStatus = latestOrder.status;
+            if (calculatedStatus === 'active' && normalizedOrder.created_at) {
+              const createdDate = new Date(normalizedOrder.created_at);
+              const expiryDate = new Date(createdDate);
+              expiryDate.setDate(expiryDate.getDate() + 30);
 
-          if (calculatedStatus === 'active' && latestOrder.created_at) {
-            const createdDate = new Date(latestOrder.created_at);
-            const expiryDate = new Date(createdDate);
-            expiryDate.setDate(expiryDate.getDate() + 30);
-
-            if (new Date() > expiryDate) {
-              calculatedStatus = 'expired';
+              if (new Date() > expiryDate) {
+                calculatedStatus = 'expired';
+              }
             }
-          }
+
+            const scheduleConfig = getClientSchedule(normalizedOrder);
+            const clientPosts = posts ? posts.filter(p => p.order_id === normalizedOrder.order_id) : [];
+
+            const staticDelivered = clientPosts.filter(p => p.post_type === 'static').length;
+            const reelsDelivered = clientPosts.filter(p => p.post_type === 'reel').length;
+            const storiesDelivered = clientPosts.filter(p => p.post_type === 'story').length;
+            const postersDelivered = clientPosts.filter(p => p.post_type === 'poster').length;
+
+            const storiesQuota = normalizedOrder.stories_total || scheduleConfig?.totalStories || 15;
+            const totalQuota = (normalizedOrder.static_posts_total || 0) + 
+                               (normalizedOrder.reels_total || 0) + 
+                               storiesQuota;
+
+            const progress = {
+              static: staticDelivered,
+              reels: reelsDelivered,
+              stories: storiesDelivered,
+              posters: postersDelivered,
+              total_delivered: staticDelivered + reelsDelivered + storiesDelivered,
+              total_quota: totalQuota
+            };
+
+            const bName = normalizedOrder.business_name || normalizedOrder.schedule_config?.business_name || profile.business_type || 'Main Brand';
+
+            enrichedClients.push({
+              ...profile,
+              auth_id: `${profile.auth_id}_${normalizedOrder.order_id}`,
+              real_auth_id: profile.auth_id,
+              displayTitle: `${profile.name} (${bName})`,
+              displayBusinessName: bName,
+              latestOrder: normalizedOrder,
+              calculatedStatus,
+              scheduleConfig,
+              posts: clientPosts,
+              progress
+            });
+          });
         }
-
-        // Deliverables Progress
-        let progress = { static: 0, reels: 0, stories: 0, posters: 0, total_delivered: 0, total_quota: 0 };
-        let clientPosts = [];
-        let scheduleConfig = null;
-
-        if (latestOrder) {
-          scheduleConfig = getClientSchedule(latestOrder);
-          clientPosts = posts ? posts.filter(p => p.order_id === latestOrder.order_id) : [];
-
-          const staticDelivered = clientPosts.filter(p => p.post_type === 'static').length;
-          const reelsDelivered = clientPosts.filter(p => p.post_type === 'reel').length;
-          const storiesDelivered = clientPosts.filter(p => p.post_type === 'story').length;
-          const postersDelivered = clientPosts.filter(p => p.post_type === 'poster').length;
-
-          const storiesQuota = latestOrder.stories_total || scheduleConfig?.totalStories || 15;
-          const totalQuota = (latestOrder.static_posts_total || 0) + 
-                             (latestOrder.reels_total || 0) + 
-                             storiesQuota;
-
-          progress = {
-            static: staticDelivered,
-            reels: reelsDelivered,
-            stories: storiesDelivered,
-            posters: postersDelivered,
-            total_delivered: staticDelivered + reelsDelivered + storiesDelivered,
-            total_quota: totalQuota
-          };
-        }
-
-        return {
-          ...profile,
-          latestOrder,
-          calculatedStatus,
-          scheduleConfig,
-          posts: clientPosts,
-          progress
-        };
       });
 
       setClientsList(enrichedClients);
@@ -487,7 +501,13 @@ export default function AdminDeliverables() {
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <h4 className="text-white font-bold text-sm">{client.name || 'Unknown'}</h4>
+                          <h4 className="text-white font-bold text-sm truncate">{client.name || 'Unknown'}</h4>
+                          {client.displayBusinessName && (
+                            <p className="text-[#3428f8] text-xs font-semibold truncate capitalize flex items-center gap-1 mt-0.5">
+                              <Briefcase size={11} className="shrink-0" />
+                              {client.displayBusinessName}
+                            </p>
+                          )}
                           <p className="text-[#666] text-[10px] font-mono">{client.latestOrder?.order_id || 'No Order ID'}</p>
                         </div>
                         <div>
@@ -545,7 +565,14 @@ export default function AdminDeliverables() {
                   <div className="p-4 sm:p-6 border-b border-[#222] bg-[#0c0c0c] flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4">
                     <div className="min-w-0 w-full md:w-auto">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                        <h3 className="text-lg sm:text-xl font-serif text-white truncate">{selectedClient.name}</h3>
+                        <h3 className="text-lg sm:text-xl font-serif text-white truncate">
+                          {selectedClient.name}
+                          {selectedClient.displayBusinessName && (
+                            <span className="text-sm font-sans font-bold text-[#3428f8] ml-2">
+                              • {selectedClient.displayBusinessName}
+                            </span>
+                          )}
+                        </h3>
                         <span className="text-[11px] sm:text-xs bg-[#1f1f1f] text-[#3428f8] border border-[#333] px-2.5 py-0.5 rounded-full font-bold">
                           {selectedClient.latestOrder.plan_name}
                         </span>

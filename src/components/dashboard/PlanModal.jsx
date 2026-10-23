@@ -9,6 +9,8 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);
+  const [businessNameInput, setBusinessNameInput] = useState('');
+  const [instagramHandleInput, setInstagramHandleInput] = useState('');
 
   if (!isOpen) {
     return null;
@@ -43,7 +45,9 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
 
       await onSelectPlan({
         ...selectedPlan,
-        receipt_url: publicUrlData.publicUrl
+        receipt_url: publicUrlData.publicUrl,
+        business_name: businessNameInput.trim() || undefined,
+        instagram_handle: instagramHandleInput.trim() || undefined
       });
     } catch (err) {
       alert("Unexpected error during upload: " + err.message);
@@ -168,6 +172,29 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                 </div>
                 
                 <div className="w-full">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    <div>
+                      <label className="text-muted text-[10px] uppercase tracking-widest font-bold mb-1 block">Brand / Business Name</label>
+                      <input
+                        type="text"
+                        value={businessNameInput}
+                        onChange={(e) => setBusinessNameInput(e.target.value)}
+                        placeholder="e.g. Cravory Bakery"
+                        className="w-full bg-base border border-themeborder rounded-xl p-2.5 text-xs text-primary focus:border-accent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-muted text-[10px] uppercase tracking-widest font-bold mb-1 block">Instagram Handle (Optional)</label>
+                      <input
+                        type="text"
+                        value={instagramHandleInput}
+                        onChange={(e) => setInstagramHandleInput(e.target.value)}
+                        placeholder="e.g. @cravory.in"
+                        className="w-full bg-base border border-themeborder rounded-xl p-2.5 text-xs text-primary focus:border-accent outline-none"
+                      />
+                    </div>
+                  </div>
+
                   <div className="w-full bg-base border border-themeborder rounded-xl p-4 text-center mb-4">
                     <p className="text-muted text-[10px] uppercase tracking-widest font-bold mb-1">UPI ID</p>
                     <p className="text-primary font-mono text-xs font-bold tracking-wide">dhimanpashvinder@okicici</p>
