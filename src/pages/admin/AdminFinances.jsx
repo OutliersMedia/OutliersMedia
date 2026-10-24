@@ -7,7 +7,8 @@ import {
   PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3, 
   AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, Calendar, 
   Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight,
-  Zap, Globe, RotateCcw, Sparkles, UserCheck, Upload, Image as ImageIcon
+  Zap, Globe, RotateCcw, Sparkles, UserCheck, Upload, Image as ImageIcon,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
 import { 
@@ -60,7 +61,7 @@ export default function AdminFinances() {
   });
 
   const [selectedClientHistory, setSelectedClientHistory] = useState(null);
-  const [previewReceiptUrl, setPreviewReceiptUrl] = useState(null);
+  const [previewReceiptModal, setPreviewReceiptModal] = useState(null); // { urls: string[], activeIndex: number, title?: string }
   const [popupType, setPopupType] = useState(null); // 'discount' | 'retainer' | null
 
   // Installment & Custom Price Configurator State
@@ -70,12 +71,101 @@ export default function AdminFinances() {
   const [splitCount, setSplitCount] = useState(2); // 1 | 2 | 3 | 'custom'
   const [configInstallments, setConfigInstallments] = useState([]);
   const [savingPlan, setSavingPlan] = useState(false);
-  const [adminReceiptFile, setAdminReceiptFile] = useState(null);
-  const [adminReceiptPreview, setAdminReceiptPreview] = useState(null);
+  
+  // Multiple Payment Screenshots State
+  const [savedReceiptUrls, setSavedReceiptUrls] = useState([]);
+  const [stagedReceiptFiles, setStagedReceiptFiles] = useState([]); // array of { id, file, previewUrl, name }
 
   // Quick Milestone Verification State
   const [verifyModalData, setVerifyModalData] = useState(null);
   const [verifyingMilestone, setVerifyingMilestone] = useState(false);
+
+  // Helper to open multi-screenshot preview modal
+  const openReceiptPreview = (urlOrUrls, initialIndex = 0, title = 'Payment Receipt Proof') => {
+    if (!urlOrUrls) return;
+    const list = Array.isArray(urlOrUrls) ? urlOrUrls.filter(Boolean) : [urlOrUrls];
+    if (list.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(initialIndex, list.length - 1));
+    setPreviewReceiptModal({ urls: list, activeIndex: safeIndex, title });
+  };
+
+  // Backwards-compatible alias for single or multi-url calls
+  const setPreviewReceiptUrl = (urlOrUrls, idx = 0) => {
+    if (!urlOrUrls) {
+      setPreviewReceiptModal(null);
+    } else {
+      openReceiptPreview(urlOrUrls, idx);
+    }
+  };
+
+  // Helper: Extract all receipt URLs from an order across all legacy fields & milestones
+  const getAllOrderReceiptUrls = (order) => {
+    if (!order) return [];
+    const urls = [];
+    if (Array.isArray(order.schedule_config?.receipt_urls)) {
+      order.schedule_config.receipt_urls.forEach(u => {
+        if (u && typeof u === 'string' && !urls.includes(u)) urls.push(u);
+      });
+    }
+    if (Array.isArray(order.payment_receipt_urls)) {
+      order.payment_receipt_urls.forEach(u => {
+        if (u && typeof u === 'string' && !urls.includes(u)) urls.push(u);
+      });
+    }
+    if (order.payment_receipt_url && typeof order.payment_receipt_url === 'string') {
+      if (order.payment_receipt_url.startsWith('[') && order.payment_receipt_url.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(order.payment_receipt_url);
+          if (Array.isArray(parsed)) parsed.forEach(u => { if (u && !urls.includes(u)) urls.push(u); });
+        } catch {
+          if (!urls.includes(order.payment_receipt_url)) urls.push(order.payment_receipt_url);
+        }
+      } else if (order.payment_receipt_url.includes(',')) {
+        order.payment_receipt_url.split(',').map(s => s.trim()).forEach(u => {
+          if (u && !urls.includes(u)) urls.push(u);
+        });
+      } else {
+        if (!urls.includes(order.payment_receipt_url)) urls.push(order.payment_receipt_url);
+      }
+    }
+    if (Array.isArray(order.installments)) {
+      order.installments.forEach(inst => {
+        if (inst.receipt_url && !urls.includes(inst.receipt_url)) urls.push(inst.receipt_url);
+        if (Array.isArray(inst.receipt_urls)) {
+          inst.receipt_urls.forEach(u => { if (u && !urls.includes(u)) urls.push(u); });
+        }
+      });
+    }
+    return urls;
+  };
+
+  // Handle attaching multiple new screenshot files
+  const handleAttachReceiptFiles = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const added = Array.from(e.target.files).map(file => ({
+        id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        name: file.name
+      }));
+      setStagedReceiptFiles(prev => [...prev, ...added]);
+      e.target.value = '';
+    }
+  };
+
+  // Handle removing a newly staged local file
+  const handleRemoveStagedReceipt = (id) => {
+    setStagedReceiptFiles(prev => {
+      const target = prev.find(item => item.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter(item => item.id !== id);
+    });
+  };
+
+  // Handle removing an already-saved cloud URL from this order
+  const handleRemoveSavedReceipt = (urlToRemove) => {
+    setSavedReceiptUrls(prev => prev.filter(u => u !== urlToRemove));
+  };
 
   useEffect(() => {
     setCustomStarterInput(String(livePricing.starter || 3500));
@@ -309,8 +399,9 @@ export default function AdminFinances() {
   // Open Installment Configurator Modal
   const handleOpenConfigurator = (order) => {
     setConfigModalOrder(order);
-    setAdminReceiptFile(null);
-    setAdminReceiptPreview(order.payment_receipt_url || order.installments?.[0]?.receipt_url || null);
+    const existing = getAllOrderReceiptUrls(order);
+    setSavedReceiptUrls(existing);
+    setStagedReceiptFiles([]);
     const metrics = computeOrderInstallmentMetrics(order);
     const agreed = metrics.totalAgreed || getStandardPlanPrice(order.plan_name);
     setAgreedPriceInput(String(agreed));
@@ -508,27 +599,33 @@ export default function AdminFinances() {
 
     setSavingPlan(true);
     try {
-      let receiptUrlToSave = adminReceiptPreview || configModalOrder.payment_receipt_url || null;
-
-      // If admin selected a new screenshot file, upload to Supabase Storage receipts bucket
-      if (adminReceiptFile) {
-        const fileExt = adminReceiptFile.name.split('.').pop() || 'png';
-        const fileName = `receipt_${configModalOrder.order_id || 'ord'}_admin_${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from('receipts')
-          .upload(fileName, adminReceiptFile, { upsert: true });
-
-        if (!uploadError) {
-          const { data: pubData } = supabase.storage
+      // If admin selected new screenshot file(s), upload all to Supabase Storage receipts bucket
+      let newlyUploadedUrls = [];
+      if (stagedReceiptFiles.length > 0) {
+        for (let i = 0; i < stagedReceiptFiles.length; i++) {
+          const item = stagedReceiptFiles[i];
+          const fileExt = item.file.name.split('.').pop() || 'png';
+          const fileName = `receipt_${configModalOrder.order_id || 'ord'}_admin_${Date.now()}_${i}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
             .from('receipts')
-            .getPublicUrl(fileName);
-          if (pubData?.publicUrl) {
-            receiptUrlToSave = pubData.publicUrl;
+            .upload(fileName, item.file, { upsert: true });
+
+          if (!uploadError) {
+            const { data: pubData } = supabase.storage
+              .from('receipts')
+              .getPublicUrl(fileName);
+            if (pubData?.publicUrl) {
+              newlyUploadedUrls.push(pubData.publicUrl);
+            }
+          } else {
+            console.warn("Screenshot upload warning for file:", item.file.name, uploadError);
           }
-        } else {
-          console.warn("Screenshot upload warning:", uploadError);
         }
       }
+
+      // Combine remaining saved cloud URLs with newly uploaded URLs
+      const finalReceiptUrls = [...savedReceiptUrls, ...newlyUploadedUrls];
+      const primaryReceiptUrl = finalReceiptUrls.length > 0 ? finalReceiptUrls[0] : null;
 
       const paidAmount = configInstallments
         .filter(inst => inst.status === 'paid')
@@ -546,8 +643,9 @@ export default function AdminFinances() {
 
       const sanitizedInstallments = configInstallments.map((inst, idx) => {
         const item = { ...inst };
-        if (idx === 0 && receiptUrlToSave) {
-          item.receipt_url = receiptUrlToSave;
+        if (idx === 0) {
+          item.receipt_url = primaryReceiptUrl;
+          item.receipt_urls = finalReceiptUrls;
         }
         if (item.status === 'paid' && !item.paid_at) {
           item.paid_at = new Date().toISOString();
@@ -556,6 +654,10 @@ export default function AdminFinances() {
         return item;
       });
 
+      const existingScheduleConfig = (configModalOrder.schedule_config && typeof configModalOrder.schedule_config === 'object')
+        ? configModalOrder.schedule_config
+        : {};
+
       const updatePayload = {
         total_agreed_amount: totalAgreed,
         amount_paid: paidAmount,
@@ -563,12 +665,13 @@ export default function AdminFinances() {
         installments: sanitizedInstallments,
         grace_period_days: Number(gracePeriodInput || 3),
         status: nextStatus,
-        payment_status: paymentStatus
+        payment_status: paymentStatus,
+        payment_receipt_url: primaryReceiptUrl,
+        schedule_config: {
+          ...existingScheduleConfig,
+          receipt_urls: finalReceiptUrls
+        }
       };
-
-      if (receiptUrlToSave) {
-        updatePayload.payment_receipt_url = receiptUrlToSave;
-      }
 
       if (balanceDue <= 0 && (!configModalOrder.payment_id || configModalOrder.payment_id.trim() === '')) {
         updatePayload.payment_id = sanitizedInstallments[0]?.payment_id || `TXN-FULL-PAID-${Date.now().toString().slice(-6)}`;
@@ -582,6 +685,9 @@ export default function AdminFinances() {
       if (error) {
         alert("Failed to save installment plan: " + error.message);
       } else {
+        stagedReceiptFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+        setStagedReceiptFiles([]);
+        setSavedReceiptUrls([]);
         setConfigModalOrder(null);
         await fetchFinances();
       }
@@ -1862,18 +1968,24 @@ export default function AdminFinances() {
                           PDF Invoice
                         </button>
 
-                        {/* Receipt Link */}
-                        {(pendingVerificationInst?.receipt_url || txn.payment_receipt_url) ? (
-                          <button
-                            type="button"
-                            onClick={() => setPreviewReceiptUrl(pendingVerificationInst?.receipt_url || txn.payment_receipt_url)}
-                            className="inline-flex items-center gap-1 text-[#aaa] hover:text-white text-[10px] font-medium tracking-wider transition-colors"
-                          >
-                            <Eye size={11} className="text-purple-400" /> View Receipt Proof
-                          </button>
-                        ) : (
-                          <span className="text-[#444] text-[9px] font-mono">No receipt proof</span>
-                        )}
+                        {/* Receipt Proofs (Single or Multiple) */}
+                        {(() => {
+                          const orderReceipts = getAllOrderReceiptUrls(txn);
+                          if (orderReceipts.length > 0) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => openReceiptPreview(orderReceipts, 0, `${txn.client?.name || 'Client'} - Payment Receipt Proofs`)}
+                                className="inline-flex items-center gap-1.5 text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/25 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-colors cursor-pointer"
+                                title="Click to view and browse full payment receipts"
+                              >
+                                <Eye size={11} className="text-purple-400" />
+                                {orderReceipts.length > 1 ? `View Receipts (${orderReceipts.length})` : 'View Receipt Proof'}
+                              </button>
+                            );
+                          }
+                          return <span className="text-[#444] text-[9px] font-mono">No receipt proof</span>;
+                        })()}
                       </div>
                     </td>
 
@@ -2375,85 +2487,171 @@ export default function AdminFinances() {
                     </div>
                   </div>
 
-                  {/* Section 4: Payment Screenshot / Proof of Payment (Admin Upload) */}
+                  {/* Section 4: Payment Screenshots / Proof of Payment (Admin Multi-Upload) */}
                   <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <div>
-                        <span className="text-white font-bold text-xs uppercase tracking-wider block">
-                          4. Payment Screenshot / Proof of Payment
-                        </span>
-                        <p className="text-[#777] text-xs">
-                          Upload, replace, or preview payment confirmation receipt for this client.
-                        </p>
-                      </div>
-                      {adminReceiptPreview && (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewReceiptUrl(adminReceiptPreview)}
-                          className="inline-flex items-center gap-1.5 text-[11px] text-[#3428f8] hover:text-white font-bold bg-[#3428f8]/10 hover:bg-[#3428f8] px-2.5 py-1 rounded-lg border border-[#3428f8]/20 transition-all cursor-pointer"
-                        >
-                          <Eye size={12} /> View Full Image
-                        </button>
-                      )}
-                    </div>
+                    {(() => {
+                      const allScreenshots = [
+                        ...savedReceiptUrls.map((url, idx) => ({
+                          type: 'saved',
+                          url,
+                          key: `saved_${idx}_${url}`,
+                          displayIndex: idx
+                        })),
+                        ...stagedReceiptFiles.map((item, idx) => ({
+                          type: 'staged',
+                          id: item.id,
+                          url: item.previewUrl,
+                          name: item.name,
+                          key: `staged_${item.id}`,
+                          displayIndex: savedReceiptUrls.length + idx
+                        }))
+                      ];
+                      const allUrls = allScreenshots.map(s => s.url);
 
-                    <div className="mt-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                      {adminReceiptPreview ? (
-                        <div 
-                          onClick={() => setPreviewReceiptUrl(adminReceiptPreview)}
-                          className="relative w-28 h-20 rounded-xl overflow-hidden border border-[#333] shrink-0 bg-[#0a0a0a] group cursor-pointer"
-                          title="Click to zoom screenshot"
-                        >
-                          <img 
-                            src={adminReceiptPreview} 
-                            alt="Payment Screenshot" 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1">
-                            <Eye size={12} /> Zoom
+                      return (
+                        <>
+                          <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                            <div>
+                              <span className="text-white font-bold text-xs uppercase tracking-wider block">
+                                4. Payment Screenshots / Proof of Payment ({allScreenshots.length})
+                              </span>
+                              <p className="text-[#777] text-xs">
+                                Attach multiple transaction slips, UPI receipts, or bank payment proofs.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {allScreenshots.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => openReceiptPreview(allUrls, 0, `${configModalOrder.client?.name || 'Order'} - Payment Screenshots`)}
+                                  className="inline-flex items-center gap-1.5 text-[11px] text-[#3428f8] hover:text-white font-bold bg-[#3428f8]/10 hover:bg-[#3428f8] px-2.5 py-1.5 rounded-lg border border-[#3428f8]/20 transition-all cursor-pointer"
+                                >
+                                  <Eye size={12} /> View Fullscreen ({allScreenshots.length})
+                                </button>
+                              )}
+                              <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-[#3428f8] hover:bg-[#281cd4] px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm">
+                                <Plus size={13} />
+                                <span>+ Add Screenshot</span>
+                                <input 
+                                  type="file" 
+                                  multiple 
+                                  accept="image/*" 
+                                  className="hidden" 
+                                  onChange={handleAttachReceiptFiles}
+                                />
+                              </label>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="w-28 h-20 rounded-xl border border-dashed border-[#333] bg-[#0a0a0a] shrink-0 flex flex-col items-center justify-center text-[#555] text-[10px]">
-                          <ImageIcon size={18} className="mb-1 text-[#444]" />
-                          <span>No Screenshot</span>
-                        </div>
-                      )}
 
-                      <div className="flex-1 w-full">
-                        <label className="flex items-center justify-center gap-2 w-full p-3 bg-[#0e0e0e] hover:bg-[#1a1a1a] border border-dashed border-[#333] hover:border-[#3428f8] rounded-xl text-xs text-[#aaa] hover:text-white transition-all cursor-pointer font-medium">
-                          <Upload size={14} className="text-[#3428f8]" />
-                          <span>{adminReceiptFile ? adminReceiptFile.name : (adminReceiptPreview ? 'Replace Payment Screenshot' : 'Upload Payment Screenshot')}</span>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                const file = e.target.files[0];
-                                setAdminReceiptFile(file);
-                                setAdminReceiptPreview(URL.createObjectURL(file));
-                              }
-                            }}
-                          />
-                        </label>
-                        {adminReceiptFile && (
-                          <div className="flex justify-between items-center mt-1.5 px-1">
-                            <span className="text-[10px] text-green-400 font-mono">✓ Ready to save on update</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAdminReceiptFile(null);
-                                setAdminReceiptPreview(configModalOrder.payment_receipt_url || null);
-                              }}
-                              className="text-[10px] text-red-400 hover:text-red-300 font-medium cursor-pointer"
-                            >
-                              Reset
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                          {allScreenshots.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-3">
+                              {allScreenshots.map((item, index) => (
+                                <div
+                                  key={item.key}
+                                  className="relative group rounded-xl overflow-hidden border border-[#2a2a2a] bg-[#0a0a0a] aspect-[4/3] flex flex-col justify-between"
+                                >
+                                  <img 
+                                    src={item.url} 
+                                    alt={`Proof ${index + 1}`} 
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform cursor-pointer"
+                                    onClick={() => openReceiptPreview(allUrls, index, `${configModalOrder.client?.name || 'Order'} - Screenshot #${index + 1}`)}
+                                  />
+
+                                  {/* Badge: Cloud Saved vs Staged */}
+                                  <div className="absolute top-1.5 left-1.5 pointer-events-none">
+                                    {item.type === 'saved' ? (
+                                      <span className="text-[9px] font-bold bg-emerald-500/80 text-black px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm">
+                                        Saved ✓
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9px] font-bold bg-purple-500/85 text-white px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm">
+                                        New Staged
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Delete / Remove Button */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (item.type === 'saved') {
+                                        handleRemoveSavedReceipt(item.url);
+                                      } else {
+                                        handleRemoveStagedReceipt(item.id);
+                                      }
+                                    }}
+                                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/80 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer shadow-md opacity-90 group-hover:opacity-100"
+                                    title="Delete this screenshot"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+
+                                  {/* Click to Zoom Hover Overlay */}
+                                  <div 
+                                    onClick={() => openReceiptPreview(allUrls, index, `${configModalOrder.client?.name || 'Order'} - Screenshot #${index + 1}`)}
+                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1 cursor-pointer pointer-events-none"
+                                  >
+                                    <Eye size={13} /> Zoom
+                                  </div>
+                                </div>
+                              ))}
+
+                              {/* Upload More Card Tile */}
+                              <label className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-[#2a2a2a] hover:border-[#3428f8] bg-[#0d0d0d] hover:bg-[#141414] text-[#888] hover:text-white transition-all cursor-pointer aspect-[4/3] group">
+                                <div className="w-8 h-8 rounded-full bg-[#1b1b1b] group-hover:bg-[#3428f8] text-[#888] group-hover:text-white flex items-center justify-center transition-colors">
+                                  <Plus size={16} />
+                                </div>
+                                <span className="text-[11px] font-bold">+ Add Image</span>
+                                <span className="text-[9px] text-[#555] group-hover:text-[#aaa]">Multi-select</span>
+                                <input 
+                                  type="file" 
+                                  multiple 
+                                  accept="image/*" 
+                                  className="hidden" 
+                                  onChange={handleAttachReceiptFiles}
+                                />
+                              </label>
+                            </div>
+                          ) : (
+                            <label className="flex flex-col items-center justify-center gap-2 p-6 bg-[#0a0a0a] hover:bg-[#121212] border-2 border-dashed border-[#2a2a2a] hover:border-[#3428f8] rounded-xl text-xs text-[#aaa] hover:text-white transition-all cursor-pointer group mt-2">
+                              <div className="w-10 h-10 rounded-2xl bg-[#181818] group-hover:bg-[#3428f8]/20 text-[#3428f8] flex items-center justify-center transition-colors">
+                                <Upload size={18} />
+                              </div>
+                              <div className="text-center">
+                                <span className="font-bold text-white text-xs block">+ Add Payment Screenshot(s)</span>
+                                <span className="text-[#666] text-[11px]">Select one or multiple transaction receipts (PNG, JPG, WEBP)</span>
+                              </div>
+                              <input 
+                                type="file" 
+                                multiple 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={handleAttachReceiptFiles}
+                              />
+                            </label>
+                          )}
+
+                          {stagedReceiptFiles.length > 0 && (
+                            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#1e1e1e]">
+                              <span className="text-[10px] text-green-400 font-mono">
+                                ✓ {stagedReceiptFiles.length} new screenshot{stagedReceiptFiles.length > 1 ? 's' : ''} staged for upload
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  stagedReceiptFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+                                  setStagedReceiptFiles([]);
+                                }}
+                                className="text-[10px] text-red-400 hover:text-red-300 font-medium cursor-pointer"
+                              >
+                                Clear New Uploads
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Live Contract & Payment Summary Card */}
@@ -2634,26 +2832,35 @@ export default function AdminFinances() {
       </AnimatePresence>
 
       {/* ============================================================== */}
-      {/* 3. RECEIPT PREVIEW MODAL */}
+      {/* 3. RECEIPT PREVIEW MODAL (Single & Multi-Screenshot Carousel) */}
       {/* ============================================================== */}
       <AnimatePresence>
-        {previewReceiptUrl && (
+        {previewReceiptModal && (
           <div 
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
-            onClick={() => setPreviewReceiptUrl(null)}
+            onClick={() => setPreviewReceiptModal(null)}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#111] border border-[#333] rounded-3xl p-4 max-w-2xl w-full max-h-[90vh] flex flex-col relative"
+              className="bg-[#111] border border-[#333] rounded-3xl p-4 max-w-3xl w-full max-h-[92vh] flex flex-col relative"
             >
               <div className="flex justify-between items-center pb-3 border-b border-[#222]">
-                <span className="text-white text-xs font-bold uppercase tracking-wider">Payment Receipt Proof</span>
                 <div className="flex items-center gap-2">
+                  <span className="text-white text-xs font-bold uppercase tracking-wider">
+                    {previewReceiptModal.title || 'Payment Receipt Proof'}
+                  </span>
+                  {previewReceiptModal.urls.length > 1 && (
+                    <span className="text-[11px] font-mono bg-[#202020] text-purple-400 px-2.5 py-0.5 rounded-full font-bold">
+                      {previewReceiptModal.activeIndex + 1} of {previewReceiptModal.urls.length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
                   <a 
-                    href={previewReceiptUrl} 
+                    href={previewReceiptModal.urls[previewReceiptModal.activeIndex]} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="text-[#3428f8] hover:text-white text-xs flex items-center gap-1 font-bold"
@@ -2661,20 +2868,70 @@ export default function AdminFinances() {
                     Open Original <ExternalLink size={12} />
                   </a>
                   <button
-                    onClick={() => setPreviewReceiptUrl(null)}
+                    onClick={() => setPreviewReceiptModal(null)}
                     className="text-[#666] hover:text-white p-1 rounded-lg cursor-pointer"
                   >
                     <X size={18} />
                   </button>
                 </div>
               </div>
-              <div className="overflow-auto flex items-center justify-center p-2 mt-2">
+
+              {/* Main Image View with Navigation Arrows */}
+              <div className="relative overflow-auto flex items-center justify-center p-2 mt-2 flex-1 min-h-[300px]">
+                {previewReceiptModal.urls.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewReceiptModal(prev => ({
+                      ...prev,
+                      activeIndex: (prev.activeIndex - 1 + prev.urls.length) % prev.urls.length
+                    }))}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/75 hover:bg-black text-white flex items-center justify-center border border-[#444] transition-all cursor-pointer shadow-lg"
+                    title="Previous Screenshot"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                )}
+
                 <img 
-                  src={previewReceiptUrl} 
-                  alt="Receipt Preview" 
-                  className="max-h-[75vh] w-auto rounded-xl object-contain border border-[#222]" 
+                  src={previewReceiptModal.urls[previewReceiptModal.activeIndex]} 
+                  alt={`Receipt ${previewReceiptModal.activeIndex + 1}`} 
+                  className="max-h-[65vh] w-auto rounded-xl object-contain border border-[#222]" 
                 />
+
+                {previewReceiptModal.urls.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewReceiptModal(prev => ({
+                      ...prev,
+                      activeIndex: (prev.activeIndex + 1) % prev.urls.length
+                    }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/75 hover:bg-black text-white flex items-center justify-center border border-[#444] transition-all cursor-pointer shadow-lg"
+                    title="Next Screenshot"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                )}
               </div>
+
+              {/* Thumbnail Strip if multiple images */}
+              {previewReceiptModal.urls.length > 1 && (
+                <div className="flex items-center gap-2 pt-3 border-t border-[#222] overflow-x-auto justify-center">
+                  {previewReceiptModal.urls.map((u, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setPreviewReceiptModal(prev => ({ ...prev, activeIndex: i }))}
+                      className={`relative w-14 h-12 rounded-lg overflow-hidden border-2 transition-all cursor-pointer shrink-0 ${
+                        i === previewReceiptModal.activeIndex
+                          ? 'border-[#3428f8] scale-105 shadow-[0_0_10px_rgba(52,40,248,0.5)]'
+                          : 'border-[#333] opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={u} alt={`Thumb ${i + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </motion.div>
           </div>
         )}

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Briefcase, Plus, UserPlus, UserCheck, CheckCircle, 
-  Upload, Image as ImageIcon, Calendar, IndianRupee, Tag, AlertCircle 
+  Upload, Image as ImageIcon, Calendar, IndianRupee, Tag, AlertCircle,
+  Trash2, Eye
 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { usePricing } from '../../context/PricingContext';
@@ -35,8 +36,8 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
     return tmrw.toISOString().split('T')[0];
   });
 
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [receiptPreview, setReceiptPreview] = useState(null);
+  const [receiptFiles, setReceiptFiles] = useState([]); // array of { id, file, previewUrl, name }
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -45,10 +46,32 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
     if (isOpen) {
       fetchProfiles();
       setErrorMsg('');
-      setReceiptFile(null);
-      setReceiptPreview(null);
+      receiptFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+      setReceiptFiles([]);
+      setPreviewReceiptUrl(null);
     }
   }, [isOpen]);
+
+  const handleAttachReceipts = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const added = Array.from(e.target.files).map(file => ({
+        id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        name: file.name
+      }));
+      setReceiptFiles(prev => [...prev, ...added]);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveReceipt = (id) => {
+    setReceiptFiles(prev => {
+      const target = prev.find(item => item.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter(item => item.id !== id);
+    });
+  };
 
   // Adjust price when plan changes
   useEffect(() => {
@@ -173,20 +196,26 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
       }
       const newOrderId = `OM${nextOrderNum}`;
 
-      // 3. Upload screenshot if selected
-      let uploadedReceiptUrl = null;
-      if (receiptFile) {
-        const ext = receiptFile.name.split('.').pop() || 'png';
-        const fileName = `receipt_${newOrderId}_${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from('receipts')
-          .upload(fileName, receiptFile, { upsert: true });
+      // 3. Upload screenshot(s) if selected
+      const uploadedReceiptUrls = [];
+      if (receiptFiles.length > 0) {
+        for (let i = 0; i < receiptFiles.length; i++) {
+          const item = receiptFiles[i];
+          const ext = item.file.name.split('.').pop() || 'png';
+          const fileName = `receipt_${newOrderId}_${Date.now()}_${i}.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from('receipts')
+            .upload(fileName, item.file, { upsert: true });
 
-        if (!uploadErr) {
-          const { data: pubData } = supabase.storage.from('receipts').getPublicUrl(fileName);
-          uploadedReceiptUrl = pubData?.publicUrl || null;
+          if (!uploadErr) {
+            const { data: pubData } = supabase.storage.from('receipts').getPublicUrl(fileName);
+            if (pubData?.publicUrl) {
+              uploadedReceiptUrls.push(pubData.publicUrl);
+            }
+          }
         }
       }
+      const primaryReceiptUrl = uploadedReceiptUrls.length > 0 ? uploadedReceiptUrls[0] : null;
 
       // 4. Determine Plan Quotas
       const isStarter = selectedPlan.includes('Starter');
@@ -212,7 +241,8 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
           paid_at: orderStatus === 'active' ? new Date().toISOString() : null,
           payment_id: `TXN-${newOrderId}-${Date.now().toString().slice(-4)}`,
           notes: orderStatus === 'active' ? 'Payment Confirmed on Enrollment' : 'Initial Retainer',
-          receipt_url: uploadedReceiptUrl
+          receipt_url: primaryReceiptUrl,
+          receipt_urls: uploadedReceiptUrls
         }
       ];
 
@@ -228,7 +258,8 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
         storiesPerWeek: 4,
         storiesInterval: 2,
         totalStories: storiesQuota,
-        installments: initialInstallments
+        installments: initialInstallments,
+        receipt_urls: uploadedReceiptUrls
       };
 
       // 6. Insert Order into Supabase
@@ -246,7 +277,7 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
         posters_total: postersQuota,
         has_website: hasWebsite,
         status: orderStatus,
-        payment_receipt_url: uploadedReceiptUrl,
+        payment_receipt_url: primaryReceiptUrl,
         payment_id: `TXN-${newOrderId}`,
         first_upload_date: firstUploadDate,
         schedule_config: scheduleConfig,
@@ -568,24 +599,82 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-[#888] font-medium block mb-1">Payment Proof Screenshot</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] text-[#888] font-medium">Payment Proof Screenshots</label>
+                    {receiptFiles.length > 0 && (
+                      <span className="text-[10px] text-purple-400 font-mono font-bold">
+                        {receiptFiles.length} attached
+                      </span>
+                    )}
+                  </div>
                   <label className="flex items-center justify-center gap-2 p-2 bg-[#0a0a0a] hover:bg-[#1a1a1a] border border-dashed border-[#333] hover:border-[#3428f8] rounded-xl text-xs text-[#aaa] hover:text-white transition-all cursor-pointer">
                     <Upload size={13} className="text-[#3428f8]" />
-                    <span className="truncate">{receiptFile ? receiptFile.name : 'Attach Screenshot'}</span>
+                    <span className="truncate">
+                      {receiptFiles.length > 0 ? `+ Add More Screenshots (${receiptFiles.length})` : 'Attach Screenshot(s)'}
+                    </span>
                     <input
                       type="file"
+                      multiple
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          setReceiptFile(e.target.files[0]);
-                          setReceiptPreview(URL.createObjectURL(e.target.files[0]));
-                        }
-                      }}
+                      onChange={handleAttachReceipts}
                     />
                   </label>
                 </div>
               </div>
+
+              {/* Multi-Screenshot Thumbnails Preview */}
+              {receiptFiles.length > 0 && (
+                <div className="pt-2 border-t border-[#1e1e1e]">
+                  <span className="text-[10px] text-[#888] font-bold uppercase tracking-wider block mb-2">
+                    Attached Proofs ({receiptFiles.length})
+                  </span>
+                  <div className="flex flex-wrap gap-2.5">
+                    {receiptFiles.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className="relative group rounded-xl overflow-hidden border border-[#333] bg-[#0a0a0a] w-20 h-16 shrink-0"
+                      >
+                        <img 
+                          src={item.previewUrl} 
+                          alt={`Proof ${idx + 1}`} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform cursor-pointer"
+                          onClick={() => setPreviewReceiptUrl(item.previewUrl)}
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveReceipt(item.id);
+                          }}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/80 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer shadow-md"
+                          title="Remove screenshot"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                        <div 
+                          onClick={() => setPreviewReceiptUrl(item.previewUrl)}
+                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold pointer-events-none"
+                        >
+                          <Eye size={11} className="mr-0.5" /> Zoom
+                        </div>
+                      </div>
+                    ))}
+
+                    <label className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[#333] hover:border-[#3428f8] bg-[#0d0d0d] hover:bg-[#161616] text-[#777] hover:text-white transition-all cursor-pointer w-20 h-16 shrink-0">
+                      <Plus size={14} className="text-[#3428f8]" />
+                      <span className="text-[10px] font-bold">+ Add</span>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAttachReceipts}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Modal Action Buttons */}
@@ -614,6 +703,36 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
             </div>
           </form>
         </motion.div>
+
+        {/* Fullscreen Zoom Preview for attached screenshots */}
+        {previewReceiptUrl && (
+          <div 
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            onClick={() => setPreviewReceiptUrl(null)}
+          >
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111] border border-[#333] rounded-3xl p-4 max-w-2xl w-full max-h-[90vh] flex flex-col relative"
+            >
+              <div className="flex justify-between items-center pb-3 border-b border-[#222]">
+                <span className="text-white text-xs font-bold uppercase tracking-wider">Screenshot Preview</span>
+                <button
+                  onClick={() => setPreviewReceiptUrl(null)}
+                  className="text-[#666] hover:text-white p-1 rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="overflow-auto flex items-center justify-center p-2 mt-2">
+                <img 
+                  src={previewReceiptUrl} 
+                  alt="Receipt Zoom" 
+                  className="max-h-[75vh] w-auto rounded-xl object-contain border border-[#222]" 
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AnimatePresence>
   );
