@@ -2,12 +2,15 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import { 
   Search, Image as ImageIcon, Video, Layout, Plus, CheckCircle, Clock, 
-  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw, Briefcase
+  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw, Briefcase,
+  Star, Globe, ExternalLink, Trash2, IndianRupee, Link as LinkIcon
 } from 'lucide-react';
 import { 
-  getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG, broadcastDeliverablesSync
+  getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG, broadcastDeliverablesSync,
+  getSpecialDeliverables, saveSpecialDeliverable, deleteSpecialDeliverable
 } from '../../utils/scheduleEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
+import AddSpecialDeliverableModal from '../../components/admin/AddSpecialDeliverableModal';
 
 export default function AdminDeliverables() {
   const [clientsList, setClientsList] = useState([]);
@@ -15,7 +18,12 @@ export default function AdminDeliverables() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('active'); // 'active' | 'pending' | 'all'
-  const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'logging'
+  const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'logging' | 'special'
+
+  // Special Deliverables State
+  const [isSpecialModalOpen, setIsSpecialModalOpen] = useState(false);
+  const [togglingPaymentId, setTogglingPaymentId] = useState(null);
+  const [deletingSpecialId, setDeletingSpecialId] = useState(null);
 
   // Schedule Configuration State
   const [firstUploadDate, setFirstUploadDate] = useState('');
@@ -38,6 +46,7 @@ export default function AdminDeliverables() {
   const rightPanelContainerRef = useRef(null);
   const scheduleScrollRef = useRef(null);
   const historyScrollRef = useRef(null);
+  const specialScrollRef = useRef(null);
 
   // Isolate mouse wheel and touchpad scrolling exclusively to the right panel
   useEffect(() => {
@@ -64,7 +73,7 @@ export default function AdminDeliverables() {
       // Determine active target scroll pane
       const scrollTarget = activeTab === 'schedule' 
         ? scheduleScrollRef.current 
-        : historyScrollRef.current;
+        : (activeTab === 'special' ? specialScrollRef.current : historyScrollRef.current);
 
       if (scrollTarget) {
         scrollTarget.scrollTop += e.deltaY;
@@ -82,7 +91,11 @@ export default function AdminDeliverables() {
 
     const handleRefresh = () => fetchData();
     window.addEventListener('om_business_added', handleRefresh);
-    return () => window.removeEventListener('om_business_added', handleRefresh);
+    window.addEventListener('om_special_deliverable_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('om_business_added', handleRefresh);
+      window.removeEventListener('om_special_deliverable_changed', handleRefresh);
+    };
   }, []);
 
   // When selectedClient changes, prefill their saved schedule configuration
@@ -136,6 +149,16 @@ export default function AdminDeliverables() {
       .from('posts_log')
       .select('*')
       .order('published_at', { ascending: false });
+
+    // Fetch all special deliverables (with fallback)
+    let specialDeliverablesList = [];
+    try {
+      const { data: spData } = await supabase
+        .from('special_deliverables')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (spData) specialDeliverablesList = spData;
+    } catch {}
 
     if (profiles) {
       const enrichedClients = [];
@@ -211,6 +234,10 @@ export default function AdminDeliverables() {
 
             const bName = normalizedOrder.business_name || normalizedOrder.schedule_config?.business_name || profile.business_type || 'Main Brand';
 
+            const clientSpecial = specialDeliverablesList.length > 0
+              ? specialDeliverablesList.filter(s => s.order_id === normalizedOrder.order_id)
+              : getSpecialDeliverables(normalizedOrder);
+
             enrichedClients.push({
               ...profile,
               auth_id: `${profile.auth_id}_${normalizedOrder.order_id}`,
@@ -221,6 +248,7 @@ export default function AdminDeliverables() {
               calculatedStatus,
               scheduleConfig,
               posts: clientPosts,
+              specialDeliverables: clientSpecial,
               progress
             });
           });
@@ -395,6 +423,39 @@ export default function AdminDeliverables() {
 
     await fetchData();
     setRevertingId(null);
+  };
+
+  const handleToggleSpecialPayment = async (deliverable) => {
+    if (!selectedClient?.latestOrder) return;
+    const nextStatus = deliverable.payment_status === 'paid' ? 'pending' : 'paid';
+    setTogglingPaymentId(deliverable.id);
+    try {
+      const updated = {
+        ...deliverable,
+        payment_status: nextStatus,
+        payment_id: nextStatus === 'paid' ? (deliverable.payment_id || `TXN-SPECIAL-${Date.now().toString().slice(-6)}`) : deliverable.payment_id
+      };
+      await saveSpecialDeliverable(selectedClient.latestOrder, updated);
+      await fetchData();
+    } catch (err) {
+      alert("Error updating payment status: " + err.message);
+    } finally {
+      setTogglingPaymentId(null);
+    }
+  };
+
+  const handleDeleteSpecial = async (deliverableId) => {
+    if (!selectedClient?.latestOrder) return;
+    if (!confirm("Are you sure you want to remove this special deliverable?")) return;
+    setDeletingSpecialId(deliverableId);
+    try {
+      await deleteSpecialDeliverable(selectedClient.latestOrder, deliverableId);
+      await fetchData();
+    } catch (err) {
+      alert("Error deleting special deliverable: " + err.message);
+    } finally {
+      setDeletingSpecialId(null);
+    }
   };
 
   // Filter clients for the left panel
@@ -582,27 +643,55 @@ export default function AdminDeliverables() {
                       </p>
                     </div>
 
-                    {/* Tab Buttons */}
-                    <div className="flex w-full md:w-auto bg-[#161616] p-1 rounded-xl border border-[#2a2a2a]">
+                    {/* Tab Buttons & Action */}
+                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                      <div className="flex w-full sm:w-auto bg-[#161616] p-1 rounded-xl border border-[#2a2a2a]">
+                        <button
+                          onClick={() => setActiveTab('schedule')}
+                          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                            activeTab === 'schedule'
+                              ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
+                              : 'text-[#888] hover:text-white'
+                          }`}
+                        >
+                          <CalendarIcon size={13} /> Schedule
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('logging')}
+                          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                            activeTab === 'logging'
+                              ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
+                              : 'text-[#888] hover:text-white'
+                          }`}
+                        >
+                          <Plus size={13} /> Log & History
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('special')}
+                          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                            activeTab === 'special'
+                              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]'
+                              : 'text-purple-300/80 hover:text-white'
+                          }`}
+                        >
+                          <Star size={13} className="text-purple-400" />
+                          <span>Special</span>
+                          {selectedClient.specialDeliverables?.length > 0 && (
+                            <span className="ml-1 px-1.5 py-0.2 bg-purple-500/20 text-purple-200 rounded-full text-[9px] font-mono font-bold">
+                              {selectedClient.specialDeliverables.length}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+
                       <button
-                        onClick={() => setActiveTab('schedule')}
-                        className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all ${
-                          activeTab === 'schedule'
-                            ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
-                            : 'text-[#888] hover:text-white'
-                        }`}
+                        type="button"
+                        onClick={() => setIsSpecialModalOpen(true)}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-purple-500/15 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                        title="Add a custom deliverable (website, extra reels, landing page)"
                       >
-                        <CalendarIcon size={14} /> Schedule
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('logging')}
-                        className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all ${
-                          activeTab === 'logging'
-                            ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
-                            : 'text-[#888] hover:text-white'
-                        }`}
-                      >
-                        <Plus size={14} /> Log & History
+                        <Plus size={13} />
+                        <span>+ Special Deliverable</span>
                       </button>
                     </div>
                   </div>
@@ -1035,6 +1124,186 @@ export default function AdminDeliverables() {
                     </div>
                   )}
 
+                  {/* TAB 3: SPECIAL DELIVERABLES & CUSTOM PROJECTS */}
+                  {activeTab === 'special' && (
+                    <div ref={specialScrollRef} data-lenis-prevent="true" className="flex-1 min-h-0 lg:overflow-y-auto p-4 sm:p-6 custom-scrollbar overscroll-contain flex flex-col gap-5">
+                      
+                      {/* Top Action Bar & Metrics */}
+                      <div className="bg-[#111] border border-[#222] p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Star size={16} className="text-purple-400" />
+                            <h4 className="text-white font-bold text-sm uppercase tracking-wider">
+                              Special Deliverables & Custom Add-ons
+                            </h4>
+                            <span className="text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
+                              {selectedClient.specialDeliverables?.length || 0} Total
+                            </span>
+                          </div>
+                          <p className="text-[#777] text-xs mt-1">
+                            Interactive websites, spin the wheel apps, extra reels, landing pages, or event campaigns.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsSpecialModalOpen(true)}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)] cursor-pointer"
+                        >
+                          <Plus size={14} /> + Add Special Deliverable
+                        </button>
+                      </div>
+
+                      {/* Deliverables List */}
+                      {(!selectedClient.specialDeliverables || selectedClient.specialDeliverables.length === 0) ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0a0a0a] border border-[#222] rounded-2xl text-center">
+                          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center mb-3 border border-purple-500/20">
+                            <Star size={24} />
+                          </div>
+                          <h4 className="text-white font-bold text-base mb-1">No Special Deliverables Yet</h4>
+                          <p className="text-[#666] text-xs max-w-md mb-4">
+                            Has this client asked for a custom website (like a spin-the-wheel app), extra reels, or a special promotional campaign?
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setIsSpecialModalOpen(true)}
+                            className="inline-flex items-center gap-1.5 bg-[#181818] hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                          >
+                            <Plus size={13} /> Add First Special Deliverable
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-3">
+                          {selectedClient.specialDeliverables.map(deliv => {
+                            const isPaid = deliv.payment_status === 'paid';
+                            const isComplimentary = deliv.payment_status === 'complimentary' || Number(deliv.price || 0) === 0;
+                            const isDelivered = deliv.status === 'delivered';
+
+                            return (
+                              <div 
+                                key={deliv.id}
+                                className="bg-[#111] border border-[#222] hover:border-[#333] p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                      <Star size={10} /> {deliv.category || deliv.custom_type_name || 'Special Project'}
+                                    </span>
+
+                                    {isDelivered ? (
+                                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                        <CheckCircle size={10} /> Delivered / Live
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
+                                        <Clock size={10} /> In Progress
+                                      </span>
+                                    )}
+
+                                    <span className="text-[10px] text-[#666] font-mono flex items-center gap-1 ml-auto sm:ml-0">
+                                      <CalendarIcon size={11} />
+                                      {deliv.delivered_at ? new Date(deliv.delivered_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                    </span>
+                                  </div>
+
+                                  <h4 className="text-white text-base font-bold truncate mb-1">
+                                    {deliv.title}
+                                  </h4>
+
+                                  {deliv.description && (
+                                    <p className="text-[#888] text-xs line-clamp-2 mb-2">
+                                      {deliv.description}
+                                    </p>
+                                  )}
+
+                                  {/* Project / Live URL Link */}
+                                  {deliv.project_url && (
+                                    <div className="mt-1">
+                                      <a
+                                        href={deliv.project_url.startsWith('http') ? deliv.project_url : `https://${deliv.project_url}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline"
+                                      >
+                                        <Globe size={13} />
+                                        <span className="truncate max-w-xs">{deliv.project_url}</span>
+                                        <ExternalLink size={11} />
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Financial Badge & Actions */}
+                                <div className="flex flex-wrap md:flex-col items-end gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-[#1c1c1c]">
+                                  {/* Price & Payment Pill */}
+                                  <div className="flex items-center gap-2">
+                                    {isComplimentary ? (
+                                      <span className="text-xs font-bold font-mono px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                        Complimentary (₹0)
+                                      </span>
+                                    ) : (
+                                      <span className={`text-xs font-bold font-mono px-2.5 py-1 rounded-xl border flex items-center gap-1.5 ${
+                                        isPaid 
+                                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                                          : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      }`}>
+                                        <IndianRupee size={12} />
+                                        <span>₹{Number(deliv.price).toLocaleString()}</span>
+                                        <span className="text-[10px] uppercase font-sans font-extrabold ml-1">
+                                          {isPaid ? '• Paid ✓' : '• Due ⚠️'}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Quick Action Toggles */}
+                                  <div className="flex items-center gap-2">
+                                    {!isComplimentary && (
+                                      <button
+                                        type="button"
+                                        disabled={togglingPaymentId === deliv.id}
+                                        onClick={() => handleToggleSpecialPayment(deliv)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
+                                          isPaid
+                                            ? 'bg-[#181818] hover:bg-amber-500/20 text-[#aaa] hover:text-amber-300 border-[#2a2a2a]'
+                                            : 'bg-emerald-500 hover:bg-emerald-400 text-black border-transparent shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                                        }`}
+                                        title={isPaid ? "Click to toggle payment back to Pending" : "Click to mark payment as Paid"}
+                                      >
+                                        {togglingPaymentId === deliv.id ? (
+                                          <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></span>
+                                        ) : isPaid ? (
+                                          'Mark Due'
+                                        ) : (
+                                          '✓ Mark Paid'
+                                        )}
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      disabled={deletingSpecialId === deliv.id}
+                                      onClick={() => handleDeleteSpecial(deliv.id)}
+                                      className="p-1.5 rounded-lg text-[#666] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                      title="Delete special deliverable"
+                                    >
+                                      {deletingSpecialId === deliv.id ? (
+                                        <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
+                                      ) : (
+                                        <Trash2 size={13} />
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+
                 </>
               ) : (
                 <div className="flex-1 flex flex-col justify-center items-center text-center p-12">
@@ -1053,6 +1322,17 @@ export default function AdminDeliverables() {
           </div>
 
         </div>
+      )}
+
+      {/* Add Special Deliverable Modal */}
+      {selectedClient?.latestOrder && (
+        <AddSpecialDeliverableModal
+          isOpen={isSpecialModalOpen}
+          onClose={() => setIsSpecialModalOpen(false)}
+          initialClient={selectedClient}
+          initialOrder={selectedClient.latestOrder}
+          onSuccess={() => fetchData()}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Video, Layout, Sparkles, BookOpen } from 'lucide-react';
+import { Image as ImageIcon, Video, Layout, Sparkles, BookOpen, Globe, Star } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 /**
@@ -10,7 +10,8 @@ export const TYPE_CONFIG = {
   reel:    { label: 'Reel',        shortLabel: 'Reel',   icon: Video,     color: 'text-pink-500',   bg: 'bg-pink-500',   dot: 'bg-pink-500' },
   poster:  { label: 'Poster',      shortLabel: 'Poster', icon: Layout,    color: 'text-green-500',  bg: 'bg-green-500',  dot: 'bg-green-500' },
   story:   { label: 'Story',       shortLabel: 'Story',  icon: Sparkles,  color: 'text-amber-400',  bg: 'bg-amber-400',  dot: 'bg-amber-400' },
-  special: { label: 'Special',     shortLabel: 'Special',icon: BookOpen,  color: 'text-purple-400', bg: 'bg-purple-400', dot: 'bg-purple-400' },
+  special: { label: 'Special Project', shortLabel: 'Special', icon: Star, color: 'text-purple-400', bg: 'bg-purple-500', dot: 'bg-purple-400' },
+  website: { label: 'Website / App', shortLabel: 'Web',  icon: Globe,     color: 'text-cyan-400',   bg: 'bg-cyan-500',   dot: 'bg-cyan-400' },
 };
 
 /**
@@ -451,4 +452,244 @@ export function getNextUpload(schedule, staticDone = 0, reelsDone = 0, postersDo
     }
   }
   return null;
+}
+
+// ==============================================================================
+// SPECIAL DELIVERABLES & CUSTOM PROJECT HELPERS
+// ==============================================================================
+
+/**
+ * Extracts special deliverables array from an order object (with dual storage check)
+ */
+export function getSpecialDeliverables(order) {
+  if (!order) return [];
+  // 1. Check if directly attached on order (e.g. from table join or schedule_config)
+  if (Array.isArray(order.special_deliverables)) {
+    return order.special_deliverables;
+  }
+  // 2. Check inside schedule_config
+  if (order.schedule_config && typeof order.schedule_config === 'object') {
+    if (Array.isArray(order.schedule_config.special_deliverables)) {
+      return order.schedule_config.special_deliverables;
+    }
+  }
+  if (typeof order.schedule_config === 'string') {
+    try {
+      const parsed = JSON.parse(order.schedule_config);
+      if (Array.isArray(parsed?.special_deliverables)) {
+        return parsed.special_deliverables;
+      }
+    } catch {}
+  }
+  // 3. Check localStorage cache
+  if (typeof window !== 'undefined' && order.order_id) {
+    try {
+      const cached = localStorage.getItem(`om_special_deliv_${order.order_id}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+  }
+  return [];
+}
+
+/**
+ * Fetches special deliverables for an order from public.special_deliverables with fallback
+ */
+export async function fetchSpecialDeliverablesFromDB(orderId) {
+  if (!orderId) return [];
+  try {
+    const { data, error } = await supabase
+      .from('special_deliverables')
+      .select('*')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false });
+
+    if (!error && Array.isArray(data)) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`om_special_deliv_${orderId}`, JSON.stringify(data));
+      }
+      return data;
+    }
+  } catch (err) {
+    console.warn("Notice: public.special_deliverables query fallback:", err);
+  }
+
+  // Fallback: fetch from orders.schedule_config
+  try {
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select('schedule_config')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if (orderData?.schedule_config?.special_deliverables) {
+      return orderData.schedule_config.special_deliverables;
+    }
+  } catch {}
+
+  // Last resort: localStorage
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(`om_special_deliv_${orderId}`);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+  }
+
+  return [];
+}
+
+/**
+ * Saves or updates a special deliverable (dual write to table & orders.schedule_config)
+ */
+export async function saveSpecialDeliverable(order, deliverableData) {
+  if (!order || !order.order_id) return { error: new Error("Missing order") };
+  const orderId = order.order_id;
+  const clientId = order.client_id || order.auth_id;
+
+  const id = deliverableData.id || `deliv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = new Date().toISOString();
+
+  const record = {
+    id,
+    order_id: orderId,
+    client_id: clientId || null,
+    title: (deliverableData.title || '').trim(),
+    category: deliverableData.category || 'Website / Web App',
+    custom_type_name: deliverableData.custom_type_name || null,
+    deliverable_type: deliverableData.deliverable_type || 'special', // 'reel' | 'static' | 'story' | 'website' | 'special'
+    description: (deliverableData.description || '').trim(),
+    project_url: (deliverableData.project_url || '').trim() || null,
+    status: deliverableData.status || 'delivered', // 'delivered' | 'in_progress'
+    price: Number(deliverableData.price || 0),
+    payment_status: deliverableData.payment_status || (Number(deliverableData.price || 0) === 0 ? 'complimentary' : 'pending'), // 'paid' | 'pending' | 'complimentary'
+    payment_id: (deliverableData.payment_id || '').trim() || null,
+    payment_receipt_url: deliverableData.payment_receipt_url || null,
+    receipt_urls: Array.isArray(deliverableData.receipt_urls) ? deliverableData.receipt_urls : (deliverableData.payment_receipt_url ? [deliverableData.payment_receipt_url] : []),
+    delivered_at: deliverableData.delivered_at || deliverableData.scheduled_date || now,
+    created_at: deliverableData.created_at || now,
+    updated_at: now
+  };
+
+  // 1. Update localStorage cache
+  const existingList = getSpecialDeliverables(order);
+  const updatedList = existingList.some(item => item.id === id)
+    ? existingList.map(item => item.id === id ? { ...item, ...record } : item)
+    : [record, ...existingList];
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`om_special_deliv_${orderId}`, JSON.stringify(updatedList));
+      window.dispatchEvent(new CustomEvent('om_special_deliverable_changed', { detail: { orderId, record } }));
+    } catch {}
+  }
+
+  // 2. Write to public.special_deliverables
+  try {
+    const { error: dbError } = await supabase
+      .from('special_deliverables')
+      .upsert([
+        {
+          id: record.id,
+          order_id: record.order_id,
+          client_id: record.client_id,
+          title: record.title,
+          category: record.category,
+          description: record.description,
+          project_url: record.project_url,
+          status: record.status,
+          price: record.price,
+          payment_status: record.payment_status,
+          payment_id: record.payment_id,
+          payment_receipt_url: record.payment_receipt_url,
+          delivered_at: record.delivered_at,
+          created_at: record.created_at
+        }
+      ], { onConflict: 'id' });
+
+    if (dbError) {
+      console.warn("Notice: public.special_deliverables upsert notice (using JSONB mirror):", dbError.message);
+    }
+  } catch (err) {
+    console.warn("Notice: special_deliverables table upsert error:", err);
+  }
+
+  // 3. Mirror into orders.schedule_config
+  try {
+    const currentCfg = (order.schedule_config && typeof order.schedule_config === 'object')
+      ? { ...order.schedule_config }
+      : {};
+
+    currentCfg.special_deliverables = updatedList;
+
+    await supabase
+      .from('orders')
+      .update({ schedule_config: currentCfg })
+      .eq('order_id', orderId);
+  } catch (err) {
+    console.warn("Notice: order schedule_config update notice:", err);
+  }
+
+  // 4. Real-time broadcast
+  await broadcastDeliverablesSync({
+    type: 'special_deliverable_saved',
+    order_id: orderId,
+    deliverable: record
+  });
+
+  return { data: record, error: null };
+}
+
+/**
+ * Deletes a special deliverable from both table and orders.schedule_config
+ */
+export async function deleteSpecialDeliverable(order, deliverableId) {
+  if (!order || !order.order_id || !deliverableId) return { error: new Error("Missing parameters") };
+  const orderId = order.order_id;
+
+  // 1. Update localStorage cache
+  const existingList = getSpecialDeliverables(order);
+  const updatedList = existingList.filter(item => item.id !== deliverableId);
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`om_special_deliv_${orderId}`, JSON.stringify(updatedList));
+      window.dispatchEvent(new CustomEvent('om_special_deliverable_changed', { detail: { orderId, deletedId: deliverableId } }));
+    } catch {}
+  }
+
+  // 2. Delete from public.special_deliverables
+  try {
+    await supabase
+      .from('special_deliverables')
+      .delete()
+      .eq('id', deliverableId);
+  } catch (err) {
+    console.warn("Notice: special_deliverables delete notice:", err);
+  }
+
+  // 3. Mirror in orders.schedule_config
+  try {
+    const currentCfg = (order.schedule_config && typeof order.schedule_config === 'object')
+      ? { ...order.schedule_config }
+      : {};
+
+    currentCfg.special_deliverables = updatedList;
+
+    await supabase
+      .from('orders')
+      .update({ schedule_config: currentCfg })
+      .eq('order_id', orderId);
+  } catch (err) {
+    console.warn("Notice: order schedule_config delete update notice:", err);
+  }
+
+  await broadcastDeliverablesSync({
+    type: 'special_deliverable_deleted',
+    order_id: orderId,
+    deletedId: deliverableId
+  });
+
+  return { success: true };
 }

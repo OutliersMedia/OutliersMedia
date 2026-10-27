@@ -17,6 +17,10 @@ import {
   getStandardPlanPrice,
   isCravoryOrder
 } from '../../utils/installmentEngine';
+import { 
+  getSpecialDeliverables, 
+  saveSpecialDeliverable 
+} from '../../utils/scheduleEngine';
 import { usePricing, DEFAULT_LIVE_PRICING } from '../../context/PricingContext';
 
 export { getStandardPlanPrice };
@@ -270,6 +274,17 @@ export default function AdminFinances() {
       .select('*')
       .order('created_at', { ascending: false });
 
+    // Fetch all special deliverables (with fallback if table does not exist)
+    let allSpecialDeliverables = [];
+    try {
+      const { data: sds, error } = await supabase.from('special_deliverables').select('*');
+      if (!error && Array.isArray(sds)) {
+        allSpecialDeliverables = sds;
+      }
+    } catch (err) {
+      console.warn("Notice: special_deliverables table query fallback:", err);
+    }
+
     if (orders) {
       let totalRev = 0;
       let totalPendingBal = 0;
@@ -359,13 +374,39 @@ export default function AdminFinances() {
           }
         }
 
+        // Calculate Special Deliverables & Add-ons for this order
+        const dbSpecials = allSpecialDeliverables.filter(sd => sd.order_id === order.id || sd.order_id === order.order_id);
+        const configSpecials = (order.schedule_config?.special_deliverables && Array.isArray(order.schedule_config.special_deliverables))
+          ? order.schedule_config.special_deliverables
+          : [];
+
+        const combinedSpecialsMap = new Map();
+        configSpecials.forEach(sd => { if (sd && sd.id) combinedSpecialsMap.set(sd.id, sd); });
+        dbSpecials.forEach(sd => { if (sd && sd.id) combinedSpecialsMap.set(sd.id, sd); });
+        const orderSpecialDeliverables = Array.from(combinedSpecialsMap.values());
+
+        let specialPaidTotal = 0;
+        let specialDueTotal = 0;
+
+        orderSpecialDeliverables.forEach(sd => {
+          if (!sd.is_complimentary) {
+            const fee = Number(sd.price || sd.fee || 0);
+            if (sd.payment_status === 'paid') {
+              specialPaidTotal += fee;
+            } else {
+              specialDueTotal += fee;
+            }
+          }
+        });
+
         // Metrics aggregation
         if (currentStatus === 'active' || currentStatus === 'paused' || currentStatus === 'cancelled') {
-          totalRev += instMetrics.paidAmount;
-          totalPendingBal += instMetrics.balanceDue;
+          totalRev += instMetrics.paidAmount + specialPaidTotal;
+          totalPendingBal += instMetrics.balanceDue + specialDueTotal;
           totalDiscountGiven += instMetrics.discountAmount;
         } else if (currentStatus === 'pending') {
-          totalPendingBal += instMetrics.totalAgreed;
+          totalPendingBal += instMetrics.totalAgreed + specialDueTotal;
+          totalRev += specialPaidTotal;
           totalDiscountGiven += instMetrics.discountAmount;
         }
 
@@ -380,7 +421,10 @@ export default function AdminFinances() {
           totalAgreed: instMetrics.totalAgreed,
           discountAmount: instMetrics.discountAmount,
           instMetrics,
-          client: clientProfile
+          client: clientProfile,
+          specialDeliverables: orderSpecialDeliverables,
+          specialPaidAmount: specialPaidTotal,
+          specialDueAmount: specialDueTotal
         };
       }));
 
@@ -394,6 +438,38 @@ export default function AdminFinances() {
       });
     }
     setLoading(false);
+  };
+
+  // Toggle Special Deliverable Payment Status (Paid <-> Pending)
+  const handleToggleSpecialPaymentStatus = async (order, deliverable) => {
+    if (!order || !deliverable) return;
+    const nextStatus = deliverable.payment_status === 'paid' ? 'pending' : 'paid';
+    const updated = {
+      ...deliverable,
+      payment_status: nextStatus,
+      paid_at: nextStatus === 'paid' ? (deliverable.paid_at || new Date().toISOString()) : null
+    };
+
+    try {
+      await saveSpecialDeliverable(order, updated);
+
+      // If configModalOrder is open, update local state immediately
+      if (configModalOrder && (configModalOrder.id === order.id || configModalOrder.order_id === order.order_id)) {
+        setConfigModalOrder(prev => {
+          const currentList = prev.specialDeliverables || [];
+          const updatedList = currentList.map(item => item.id === deliverable.id ? updated : item);
+          return {
+            ...prev,
+            specialDeliverables: updatedList
+          };
+        });
+      }
+
+      await fetchFinances();
+    } catch (err) {
+      console.error("Error toggling special deliverable payment status:", err);
+      alert("Failed to update special deliverable payment status: " + err.message);
+    }
   };
 
   // Open Installment Configurator Modal
@@ -1690,6 +1766,25 @@ export default function AdminFinances() {
                     </div>
                   </div>
 
+                  {/* Special Deliverables Add-on pill (Mobile) */}
+                  {txn.specialDeliverables && txn.specialDeliverables.length > 0 && (
+                    <div className="bg-purple-950/20 border border-purple-500/30 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                      <span className="text-purple-400 font-bold flex items-center gap-1 truncate text-[11px]">
+                        🌟 {txn.specialDeliverables.length} Special Add-on{txn.specialDeliverables.length > 1 ? 's' : ''}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-mono">
+                        {txn.specialPaidAmount > 0 && (
+                          <span className="text-green-400 font-bold">₹{txn.specialPaidAmount.toLocaleString()} Paid</span>
+                        )}
+                        {txn.specialDueAmount > 0 && (
+                          <span className="text-yellow-400 font-bold bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                            ₹{txn.specialDueAmount.toLocaleString()} Due
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Primary Action Buttons */}
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -1901,6 +1996,20 @@ export default function AdminFinances() {
                             Edit Payment & EMIs
                           </button>
                         </div>
+
+                        {/* Special Deliverables Add-on pill (Desktop) */}
+                        {txn.specialDeliverables && txn.specialDeliverables.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] bg-purple-500/15 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">
+                              🌟 +{txn.specialDeliverables.length} Special (₹{(txn.specialPaidAmount || 0).toLocaleString()})
+                            </span>
+                            {txn.specialDueAmount > 0 && (
+                              <span className="text-[10px] bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
+                                ₹{txn.specialDueAmount.toLocaleString()} Due
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
 
@@ -2654,27 +2763,182 @@ export default function AdminFinances() {
                     })()}
                   </div>
 
-                  {/* Live Contract & Payment Summary Card */}
-                  <div className="bg-[#141414] border border-[#262626] rounded-2xl p-4 flex flex-wrap justify-between items-center gap-3">
-                    <div>
-                      <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Agreed Contract Value</span>
-                      <span className="text-white font-mono font-bold text-lg">₹{currentInputVal.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Paid So Far</span>
-                      <span className="text-green-400 font-mono font-bold text-lg">
-                        ₹{totalPaidNow.toLocaleString()}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Remaining Balance</span>
-                      <span className={`font-mono font-bold text-lg ${remainingBalVal === 0 ? 'text-green-400' : 'text-yellow-400'}`}>
-                        ₹{remainingBalVal.toLocaleString()}
-                        {remainingBalVal === 0 && (
-                          <span className="text-xs ml-1.5 font-sans font-medium text-green-400">(Paid in Full ✓)</span>
+                  {/* Section 5: Special Deliverables & Add-ons */}
+                  {(() => {
+                    const orderSpecials = configModalOrder.specialDeliverables || getSpecialDeliverables(configModalOrder);
+                    const totalSpecialsPaid = orderSpecials.filter(sd => !sd.is_complimentary && sd.payment_status === 'paid').reduce((s, sd) => s + Number(sd.price || sd.fee || 0), 0);
+                    const totalSpecialsDue = orderSpecials.filter(sd => !sd.is_complimentary && sd.payment_status !== 'paid').reduce((s, sd) => s + Number(sd.price || sd.fee || 0), 0);
+
+                    return (
+                      <div className="bg-[#161616] border border-[#252525] rounded-2xl p-4">
+                        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                          <div>
+                            <span className="text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                              🌟 5. Special Deliverables & Add-on Projects ({orderSpecials.length})
+                            </span>
+                            <p className="text-[#777] text-xs">
+                              Independent custom projects, extra reels, or mini-sites logged for this client with their own fee & payment status.
+                            </p>
+                          </div>
+                          {orderSpecials.length > 0 && (
+                            <div className="flex items-center gap-2 text-[10px] font-mono">
+                              {totalSpecialsPaid > 0 && (
+                                <span className="text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded font-bold">
+                                  ₹{totalSpecialsPaid.toLocaleString()} Paid
+                                </span>
+                              )}
+                              {totalSpecialsDue > 0 && (
+                                <span className="text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded font-bold">
+                                  ₹{totalSpecialsDue.toLocaleString()} Due
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {orderSpecials.length > 0 ? (
+                          <div className="flex flex-col gap-2.5">
+                            {orderSpecials.map((sd) => {
+                              const fee = Number(sd.price || sd.fee || 0);
+                              const isComp = Boolean(sd.is_complimentary);
+                              const isPaid = sd.payment_status === 'paid';
+                              const isReview = sd.payment_status === 'pending_verification';
+
+                              return (
+                                <div 
+                                  key={sd.id} 
+                                  className="bg-[#0f0f0f] border border-[#262626] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                                        {sd.type || 'Special'}
+                                      </span>
+                                      <span className="text-white font-bold text-xs truncate">{sd.title}</span>
+                                      {sd.project_url && (
+                                        <a
+                                          href={sd.project_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-[#3428f8] hover:text-white p-1 inline-flex items-center gap-1 text-[11px]"
+                                          title="Open project URL"
+                                        >
+                                          <ExternalLink size={12} />
+                                          <span className="underline text-[10px]">Project Link</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] text-[#777] flex-wrap">
+                                      <span>Delivered: <strong className="text-[#aaa]">{sd.delivery_date || 'Flexible'}</strong></span>
+                                      <span>•</span>
+                                      <span>Status: <strong className="text-[#ccc] capitalize">{sd.status || 'in_progress'}</strong></span>
+                                      {sd.utr_reference && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="font-mono text-[#aaa]">UTR: {sd.utr_reference}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                                    <span className="font-mono font-bold text-xs text-white">
+                                      {isComp ? (
+                                        <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[10px]">
+                                          Complimentary (₹0)
+                                        </span>
+                                      ) : (
+                                        `₹${fee.toLocaleString()}`
+                                      )}
+                                    </span>
+
+                                    {!isComp && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleSpecialPaymentStatus(configModalOrder, sd)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                                          isPaid 
+                                            ? 'bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/25' 
+                                            : isReview
+                                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30'
+                                            : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/25'
+                                        }`}
+                                        title="Click to toggle Paid / Due status"
+                                      >
+                                        {isPaid ? (
+                                          <>
+                                            <CheckCircle size={11} /> Paid ✓
+                                          </>
+                                        ) : isReview ? (
+                                          <>
+                                            <Clock size={11} /> Review (Mark Paid)
+                                          </>
+                                        ) : (
+                                          <>
+                                            <AlertCircle size={11} /> Due (Mark Paid)
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="p-3.5 bg-[#0d0d0d] rounded-xl border border-[#222] text-center">
+                            <p className="text-[#666] text-xs">
+                              No special deliverables logged for this client yet. Use "+ Special" on the Clients or Deliverables tab to log add-ons.
+                            </p>
+                          </div>
                         )}
-                      </span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Live Contract & Payment Summary Card */}
+                  <div className="bg-[#141414] border border-[#262626] rounded-2xl p-4 flex flex-col gap-3">
+                    <div className="flex flex-wrap justify-between items-center gap-3">
+                      <div>
+                        <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Agreed Contract Value</span>
+                        <span className="text-white font-mono font-bold text-lg">₹{currentInputVal.toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Paid So Far</span>
+                        <span className="text-green-400 font-mono font-bold text-lg">
+                          ₹{totalPaidNow.toLocaleString()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#888] text-[10px] uppercase font-bold tracking-wider block mb-0.5">Remaining Balance</span>
+                        <span className={`font-mono font-bold text-lg ${remainingBalVal === 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+                          ₹{remainingBalVal.toLocaleString()}
+                          {remainingBalVal === 0 && (
+                            <span className="text-xs ml-1.5 font-sans font-medium text-green-400">(Paid in Full ✓)</span>
+                          )}
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Add-on Summary line */}
+                    {(() => {
+                      const orderSpecials = configModalOrder.specialDeliverables || getSpecialDeliverables(configModalOrder);
+                      const totalSpecialsPaid = orderSpecials.filter(sd => !sd.is_complimentary && sd.payment_status === 'paid').reduce((s, sd) => s + Number(sd.price || sd.fee || 0), 0);
+                      const totalSpecialsDue = orderSpecials.filter(sd => !sd.is_complimentary && sd.payment_status !== 'paid').reduce((s, sd) => s + Number(sd.price || sd.fee || 0), 0);
+                      if (totalSpecialsPaid === 0 && totalSpecialsDue === 0) return null;
+
+                      return (
+                        <div className="pt-2.5 border-t border-[#222] flex justify-between items-center text-xs">
+                          <span className="text-purple-400 font-bold flex items-center gap-1">
+                            🌟 Special Deliverables Add-ons:
+                          </span>
+                          <div className="flex items-center gap-3 font-mono">
+                            {totalSpecialsPaid > 0 && <span className="text-green-400 font-bold">+₹{totalSpecialsPaid.toLocaleString()} Paid</span>}
+                            {totalSpecialsDue > 0 && <span className="text-yellow-400 font-bold">+₹{totalSpecialsDue.toLocaleString()} Due</span>}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

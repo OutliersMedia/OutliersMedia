@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare, RotateCcw, Trash2 } from 'lucide-react';
+import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
-import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync } from '../../utils/scheduleEngine';
+import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 
@@ -210,6 +210,16 @@ export default function AdminOverview() {
     const ordersList = orders || [];
     let postsList = rawPosts || [];
 
+    // Fetch special deliverables (with fallback)
+    let specialList = [];
+    try {
+      const { data: spData } = await supabase
+        .from('special_deliverables')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (spData) specialList = spData;
+    } catch {}
+
     // --- ONE-TIME AUTO-REPAIR FOR OCT 12 CRAVORY STORY/STATIC SUBMISSIONS ---
     // Previously, submitting a 'story' event on the calendar fell back to post_type='static',
     // which caused extra 'static' rows to mark Oct 14, 16, and 19 Static Posts as delivered.
@@ -401,6 +411,30 @@ export default function AdminOverview() {
           deliveredTitle: slot.deliveredTitle || null,
           matchedPost: slot.matchedPost || null,
           isOverdue: !delivered && slotDate < today && ['static', 'reel', 'poster', 'story'].includes(slot.type)
+        });
+      });
+
+      // Plot Special Deliverables (e.g. Spin the Wheel Web App, Custom Landing Page, Extra Reels)
+      const ordSpecial = specialList.length > 0
+        ? specialList.filter(s => s.order_id === order.order_id)
+        : getSpecialDeliverables(order);
+
+      ordSpecial.forEach(sp => {
+        const spDate = new Date(sp.delivered_at || sp.created_at);
+        events.push({
+          date: spDate,
+          type: 'special',
+          time: 'Special Deliverable',
+          note: sp.title,
+          clientName,
+          brandName: order.business_name || order.schedule_config?.business_name || profileMap[order.client_id]?.business_type || 'Main Brand',
+          clientId: order.client_id,
+          orderId: order.order_id,
+          delivered: sp.status === 'delivered',
+          isSpecialDeliverable: true,
+          specialDeliverable: sp,
+          deliveredTitle: sp.title,
+          isOverdue: false
         });
       });
     });
@@ -1239,7 +1273,71 @@ export default function AdminOverview() {
               </div>
 
               {/* Submission Form / Status */}
-              {!selectedEvent.delivered ? (
+              {selectedEvent.isSpecialDeliverable ? (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-xl space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[#888] font-bold uppercase tracking-wider">Project Type</span>
+                      <span className="text-purple-300 font-bold">{selectedEvent.specialDeliverable?.category || 'Special Project'}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[#888] font-bold uppercase tracking-wider">Pricing / Fee</span>
+                      <span className="text-white font-mono font-bold">
+                        {Number(selectedEvent.specialDeliverable?.price || 0) === 0 ? 'Complimentary (₹0)' : `₹${Number(selectedEvent.specialDeliverable?.price).toLocaleString()}`}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[#888] font-bold uppercase tracking-wider">Payment Status</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        selectedEvent.specialDeliverable?.payment_status === 'paid'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : selectedEvent.specialDeliverable?.payment_status === 'complimentary'
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {selectedEvent.specialDeliverable?.payment_status === 'paid' ? 'Paid ✓' : selectedEvent.specialDeliverable?.payment_status === 'complimentary' ? 'Included' : 'Payment Due ⚠️'}
+                      </span>
+                    </div>
+
+                    {selectedEvent.specialDeliverable?.project_url && (
+                      <div className="pt-2 border-t border-purple-500/20">
+                        <a
+                          href={selectedEvent.specialDeliverable.project_url.startsWith('http') ? selectedEvent.specialDeliverable.project_url : `https://${selectedEvent.specialDeliverable.project_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline"
+                        >
+                          <Globe size={13} />
+                          <span>Open Live Project Link</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEvent(null)}
+                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEvent(null);
+                        navigate('/admin/deliverables');
+                      }}
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      Deliverables Tab <ArrowRight size={13} />
+                    </button>
+                  </div>
+                </div>
+              ) : !selectedEvent.delivered ? (
                 <form onSubmit={handleMarkDelivered} className="flex flex-col gap-4">
                   <div>
                     <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">

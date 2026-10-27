@@ -1,22 +1,140 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { 
   Download, Copy, LifeBuoy, CheckCircle, Clock, AlertTriangle, 
   IndianRupee, CreditCard, ShieldCheck, Image as ImageIcon, Video, 
-  Layout, Sparkles, Calendar 
+  Layout, Sparkles, Calendar, ExternalLink, Globe, X, UploadCloud, Check
 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import TicketModal from './TicketModal';
 import { generateSingleInvoicePDF } from '../../utils/invoiceGenerator';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
-import { getClientSchedule } from '../../utils/scheduleEngine';
+import { 
+  getClientSchedule,
+  getSpecialDeliverables,
+  fetchSpecialDeliverablesFromDB,
+  saveSpecialDeliverable
+} from '../../utils/scheduleEngine';
 import { triggerLocalNotification } from '../../utils/pushManager';
 
 export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpenPayModal }) {
   const [posts, setPosts] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+
+  // Special Deliverables & Add-ons state
+  const [specialDeliverables, setSpecialDeliverables] = useState([]);
+  const [selectedSpecialForPayment, setSelectedSpecialForPayment] = useState(null);
+  const [specialPayTxnId, setSpecialPayTxnId] = useState('');
+  const [specialPayReceiptFile, setSpecialPayReceiptFile] = useState(null);
+  const [payingSpecial, setPayingSpecial] = useState(false);
+  const [specialPaySuccess, setSpecialPaySuccess] = useState(false);
+
+  // Sync and fetch special deliverables
+  useEffect(() => {
+    if (!order) return;
+    let isMounted = true;
+
+    const loadSpecials = async () => {
+      // 1. Initial extraction from order
+      const initial = getSpecialDeliverables(order);
+      if (isMounted && initial && initial.length > 0) {
+        setSpecialDeliverables(initial);
+      }
+
+      // 2. Fetch from database table
+      try {
+        const fromDb = await fetchSpecialDeliverablesFromDB(order.id || order.order_id);
+        if (isMounted && Array.isArray(fromDb) && fromDb.length > 0) {
+          setSpecialDeliverables(fromDb);
+        }
+      } catch (err) {
+        console.warn("Notice: special deliverables DB query fallback:", err);
+      }
+    };
+
+    loadSpecials();
+
+    const handleCustomEvent = (e) => {
+      const detailOrderId = e?.detail?.orderId;
+      if (!detailOrderId || detailOrderId === order.id || detailOrderId === order.order_id) {
+        loadSpecials();
+      }
+    };
+    window.addEventListener('om_special_deliverable_changed', handleCustomEvent);
+
+    const specialsChannel = supabase
+      .channel(`client-specials-${order.order_id || order.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'special_deliverables' }, () => {
+        loadSpecials();
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('om_special_deliverable_changed', handleCustomEvent);
+      supabase.removeChannel(specialsChannel);
+    };
+  }, [order?.id, order?.order_id, order?.schedule_config]);
+
+  // Submit payment proof for a special deliverable
+  const handlePaySpecialProof = async (e) => {
+    e.preventDefault();
+    if (!selectedSpecialForPayment) return;
+    if (!specialPayTxnId.trim()) {
+      alert("Please enter the UPI Transaction Reference ID (UTR).");
+      return;
+    }
+    if (!specialPayReceiptFile) {
+      alert("Please upload a payment screenshot receipt.");
+      return;
+    }
+
+    setPayingSpecial(true);
+    try {
+      const fileExt = specialPayReceiptFile.name.split('.').pop() || 'png';
+      const fileName = `special_proof_${order.order_id || 'ord'}_${Date.now()}.${fileExt}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('receipts')
+        .upload(fileName, specialPayReceiptFile, { upsert: true });
+
+      let receiptUrl = null;
+      if (!uploadErr) {
+        const { data: pubData } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(fileName);
+        receiptUrl = pubData?.publicUrl || null;
+      }
+
+      const currentReceipts = Array.isArray(selectedSpecialForPayment.receipt_urls)
+        ? [...selectedSpecialForPayment.receipt_urls]
+        : (selectedSpecialForPayment.receipt_url ? [selectedSpecialForPayment.receipt_url] : []);
+      if (receiptUrl) currentReceipts.push(receiptUrl);
+
+      const updated = {
+        ...selectedSpecialForPayment,
+        payment_status: 'pending_verification',
+        utr_reference: specialPayTxnId.trim(),
+        receipt_url: receiptUrl || selectedSpecialForPayment.receipt_url,
+        receipt_urls: currentReceipts
+      };
+
+      await saveSpecialDeliverable(order, updated);
+      setSpecialPaySuccess(true);
+      setTimeout(() => {
+        setSpecialPaySuccess(false);
+        setSelectedSpecialForPayment(null);
+        setSpecialPayTxnId('');
+        setSpecialPayReceiptFile(null);
+        if (onRefreshOrder) onRefreshOrder();
+      }, 2000);
+    } catch (err) {
+      alert("Error submitting payment proof: " + err.message);
+    } finally {
+      setPayingSpecial(false);
+    }
+  };
 
   useEffect(() => {
     if (!order?.order_id) return;
@@ -446,6 +564,134 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
             )}
           </motion.div>
 
+          {/* Special Deliverables & Custom Projects (Spin-the-wheel, Web Apps, Extra Add-ons) */}
+          {specialDeliverables.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="bg-glass backdrop-blur-md border border-purple-500/25 p-6 md:p-8 rounded-3xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
+
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 relative z-10">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      <Sparkles size={16} />
+                    </span>
+                    <h3 className="text-xl font-serif text-white">Special Deliverables & Custom Projects</h3>
+                  </div>
+                  <p className="text-xs text-muted mt-1">
+                    Custom web apps, special campaigns, and add-on deliverables crafted specifically for your brand.
+                  </p>
+                </div>
+
+                <span className="text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full uppercase tracking-wider">
+                  {specialDeliverables.length} Special Item{specialDeliverables.length > 1 ? 's' : ''}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                {specialDeliverables.map((item) => {
+                  const fee = Number(item.price || item.fee || 0);
+                  const isComp = Boolean(item.is_complimentary);
+                  const isPaid = item.payment_status === 'paid';
+                  const isReview = item.payment_status === 'pending_verification';
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-[#0b0c10] border border-[#232634] hover:border-purple-500/40 rounded-2xl p-5 flex flex-col justify-between transition-all group"
+                    >
+                      <div>
+                        {/* Top row: Type Badge + Status */}
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            {item.type || 'Custom Deliverable'}
+                          </span>
+
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            item.status === 'delivered'
+                              ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                              : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                          }`}>
+                            {item.status === 'delivered' ? <CheckCircle size={10} /> : <Clock size={10} />}
+                            <span className="capitalize">{item.status === 'delivered' ? 'Ready / Delivered' : 'In Progress'}</span>
+                          </span>
+                        </div>
+
+                        {/* Title & Description */}
+                        <h4 className="text-white font-bold text-base group-hover:text-purple-300 transition-colors mb-1.5">
+                          {item.title}
+                        </h4>
+                        {item.description && (
+                          <p className="text-xs text-[#888] leading-relaxed mb-4 line-clamp-2">
+                            {item.description}
+                          </p>
+                        )}
+
+                        {/* Delivery Date */}
+                        {item.delivery_date && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#666] mb-4">
+                            <Calendar size={12} className="text-purple-400" />
+                            <span>Delivery Date: <strong className="text-[#aaa]">{new Date(item.delivery_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom Row: Project Link & Payment / Price Badge */}
+                      <div className="pt-3 border-t border-[#1c1d24] flex flex-wrap items-center justify-between gap-2.5 mt-2">
+                        <div>
+                          {item.project_url ? (
+                            <a
+                              href={item.project_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-400 hover:text-white bg-purple-500/15 hover:bg-purple-600 px-3 py-1.5 rounded-xl border border-purple-500/30 transition-all cursor-pointer shadow-sm"
+                            >
+                              <ExternalLink size={13} /> Open Project ↗
+                            </a>
+                          ) : (
+                            <span className="text-[11px] text-[#666] italic">Link shared upon completion</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isComp ? (
+                            <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg">
+                              Complimentary (₹0)
+                            </span>
+                          ) : isPaid ? (
+                            <span className="text-[11px] font-bold text-green-400 bg-green-500/10 border border-green-500/25 px-2.5 py-1 rounded-lg flex items-center gap-1 font-mono">
+                              <CheckCircle size={12} /> ₹{fee.toLocaleString()} Paid
+                            </span>
+                          ) : isReview ? (
+                            <span className="text-[10px] font-bold text-purple-300 bg-purple-500/20 border border-purple-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                              <Clock size={11} className="animate-spin" /> Verifying Payment
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-amber-400">
+                                ₹{fee.toLocaleString()}
+                              </span>
+                              <button
+                                onClick={() => setSelectedSpecialForPayment(item)}
+                                className="text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-black px-3 py-1.5 rounded-xl transition-all shadow-[0_0_12px_rgba(245,158,11,0.3)] flex items-center gap-1 cursor-pointer"
+                              >
+                                <CreditCard size={12} /> Pay Due
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
           {/* Activity Graph: Stacked Bars with exact Admin Colors */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -720,6 +966,133 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
         order={order} 
         onTicketCreated={(newTicket) => setTickets([newTicket, ...tickets])}
       />
+
+      {/* Pay Due Modal for Special Deliverables */}
+      <AnimatePresence>
+        {selectedSpecialForPayment && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+            onClick={() => !payingSpecial && setSelectedSpecialForPayment(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0f0f12] border border-[#2b2d3d] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-6 border-b border-[#20222e] flex justify-between items-center bg-[#14151e]">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                    Special Deliverable Add-on
+                  </span>
+                  <h3 className="text-lg font-serif text-white mt-1">
+                    Pay for {selectedSpecialForPayment.title}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => !payingSpecial && setSelectedSpecialForPayment(null)}
+                  className="p-2 text-[#777] hover:text-white rounded-xl hover:bg-[#222] transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                {specialPaySuccess ? (
+                  <div className="py-10 text-center flex flex-col items-center">
+                    <CheckCircle size={46} className="text-green-400 mb-3 animate-bounce" />
+                    <h4 className="text-lg font-bold text-white mb-1.5">Payment Submitted!</h4>
+                    <p className="text-[#888] text-xs max-w-xs">
+                      Your payment receipt and UTR reference have been recorded. Our finance team will verify and mark it as settled.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-[#14151e] border border-[#252838] p-4 rounded-2xl flex justify-between items-center">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#888] block">Amount to Clear</span>
+                        <span className="text-2xl font-serif text-white flex items-center gap-1 mt-0.5">
+                          <IndianRupee size={20} className="text-emerald-400" />
+                          {Number(selectedSpecialForPayment.price || selectedSpecialForPayment.fee || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        {selectedSpecialForPayment.type || 'Custom'}
+                      </span>
+                    </div>
+
+                    {/* UPI QR & ID */}
+                    <div className="bg-[#12131a] border border-[#20222e] p-4 rounded-2xl flex flex-col items-center text-center">
+                      <p className="text-xs text-[#aaa] font-medium mb-3">
+                        Scan via Google Pay, PhonePe, Paytm or Any UPI App:
+                      </p>
+                      <div className="p-3 bg-white rounded-2xl shadow-lg border border-white mb-3">
+                        <img src="/qr.png" alt="Outliers Media UPI QR" className="w-40 h-40 object-contain" />
+                      </div>
+                      <div className="bg-[#191b26] px-3.5 py-1.5 rounded-xl border border-[#2a2c3d] flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#777]">UPI ID:</span>
+                        <span className="text-xs font-mono text-emerald-400 font-bold select-all">dhimanpashvinder@okicici</span>
+                      </div>
+                    </div>
+
+                    {/* Submission Form */}
+                    <form onSubmit={handlePaySpecialProof} className="space-y-4">
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-[#aaa] mb-1.5">
+                          UPI Reference / UTR Number *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 429182910281"
+                          value={specialPayTxnId}
+                          onChange={(e) => setSpecialPayTxnId(e.target.value)}
+                          required
+                          className="w-full bg-[#14151e] border border-[#2d3045] text-white p-3 rounded-xl text-sm font-mono focus:border-purple-500 outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-[#aaa] mb-1.5">
+                          Upload Payment Screenshot *
+                        </label>
+                        <div className="relative border-2 border-dashed border-[#2d3045] hover:border-purple-500 rounded-2xl p-4 text-center cursor-pointer transition-colors bg-[#14151e]">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setSpecialPayReceiptFile(e.target.files[0])}
+                            required
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                          <UploadCloud size={24} className={`mx-auto mb-1 ${specialPayReceiptFile ? 'text-emerald-400' : 'text-[#666]'}`} />
+                          <p className="text-xs text-white font-medium truncate">
+                            {specialPayReceiptFile ? specialPayReceiptFile.name : 'Click to select screenshot'}
+                          </p>
+                          <p className="text-[10px] text-[#666] mt-0.5">PNG, JPG up to 10MB</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={payingSpecial || !specialPayTxnId || !specialPayReceiptFile}
+                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(168,85,247,0.3)] flex justify-center items-center gap-2 cursor-pointer"
+                      >
+                        {payingSpecial ? (
+                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                        ) : (
+                          <>
+                            <CheckCircle size={16} /> Submit Payment Proof
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

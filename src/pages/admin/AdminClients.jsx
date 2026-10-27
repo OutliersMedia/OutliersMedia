@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabaseClient';
 import { isEmailAdmin } from '../../context/AuthContext';
-import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle, Edit3, Briefcase } from 'lucide-react';
+import { Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, AlertTriangle, Edit3, Briefcase, Plus, Star } from 'lucide-react';
+import AddSpecialDeliverableModal from '../../components/admin/AddSpecialDeliverableModal';
 
 // --- COPY BUTTON COMPONENT ---
 function CopyButton({ text }) {
@@ -28,6 +29,7 @@ export default function AdminClients() {
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [leadsSubFilter, setLeadsSubFilter] = useState('all'); // 'all' | 'leads' | 'admins'
+  const [specialModalOrder, setSpecialModalOrder] = useState(null);
 
   useEffect(() => {
     fetchClients();
@@ -376,12 +378,21 @@ export default function AdminClients() {
                           <p className="text-[#3428f8] font-bold text-xs">{order.plan_name}</p>
                           <p className="text-[#666] text-[10px] font-mono">{order.order_id}</p>
                         </div>
-                        <button
-                          onClick={() => navigate(`/admin/finances?search=${encodeURIComponent(client.name || order.order_id)}`)}
-                          className="inline-flex items-center gap-1.5 text-[10px] text-white font-bold bg-[#181818] hover:bg-[#3428f8] px-3 py-1.5 rounded-xl border border-[#2a2a2a] transition-all"
-                        >
-                          <Edit3 size={11} className="text-[#3428f8]" /> Edit Payment
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSpecialModalOrder({ client, order })}
+                            className="inline-flex items-center gap-1 text-[10px] text-purple-300 hover:text-white font-bold bg-purple-500/10 hover:bg-purple-600 px-2.5 py-1.5 rounded-xl border border-purple-500/30 transition-all cursor-pointer"
+                            title="Add special deliverable (website, extra reels, event campaign)"
+                          >
+                            <Plus size={11} /> + Special
+                          </button>
+                          <button
+                            onClick={() => navigate(`/admin/finances?search=${encodeURIComponent(client.name || order.order_id)}`)}
+                            className="inline-flex items-center gap-1.5 text-[10px] text-white font-bold bg-[#181818] hover:bg-[#3428f8] px-3 py-1.5 rounded-xl border border-[#2a2a2a] transition-all"
+                          >
+                            <Edit3 size={11} className="text-[#3428f8]" /> Edit Payment
+                          </button>
+                        </div>
                       </>
                     ) : (
                       <span className="text-[#555] text-xs italic">No Plan Selected</span>
@@ -495,13 +506,23 @@ export default function AdminClients() {
                         <>
                           <p className="text-[#3428f8] font-bold text-sm mb-1">{order.plan_name}</p>
                           <p className="text-[#666] text-xs font-mono mb-1.5">{order.order_id}</p>
-                          <button
-                            onClick={() => navigate(`/admin/finances?search=${encodeURIComponent(client.name || order.order_id)}`)}
-                            className="inline-flex items-center gap-1.5 text-[10px] text-[#aaa] hover:text-white font-bold bg-[#141414] hover:bg-[#3428f8] px-2 py-1 rounded-lg border border-[#2a2a2a] hover:border-[#3428f8] transition-all cursor-pointer shadow-sm"
-                            title="Edit client payment, agreed price, or EMI schedule in Finances"
-                          >
-                            <Edit3 size={10} className="text-[#3428f8] group-hover:text-white" /> Edit Payment
-                          </button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={() => setSpecialModalOrder({ client, order })}
+                              className="inline-flex items-center gap-1 text-[10px] text-purple-300 hover:text-white font-bold bg-purple-500/10 hover:bg-purple-600 px-2 py-1 rounded-lg border border-purple-500/30 hover:border-purple-500 transition-all cursor-pointer shadow-sm"
+                              title="Add a special deliverable (e.g. website, extra reels, event campaign) for this client"
+                            >
+                              <Plus size={10} className="text-purple-400 group-hover:text-white" />
+                              <span>+ Special</span>
+                            </button>
+                            <button
+                              onClick={() => navigate(`/admin/finances?search=${encodeURIComponent(client.name || order.order_id)}`)}
+                              className="inline-flex items-center gap-1.5 text-[10px] text-[#aaa] hover:text-white font-bold bg-[#141414] hover:bg-[#3428f8] px-2 py-1 rounded-lg border border-[#2a2a2a] hover:border-[#3428f8] transition-all cursor-pointer shadow-sm"
+                              title="Edit client payment, agreed price, or EMI schedule in Finances"
+                            >
+                              <Edit3 size={10} className="text-[#3428f8] group-hover:text-white" /> Edit Payment
+                            </button>
+                          </div>
                         </>
                       ) : (
                         <span className="text-[#555] text-sm italic">No Plan Selected</span>
@@ -633,6 +654,17 @@ export default function AdminClients() {
           </table>
         </div>
         </>
+      )}
+
+      {/* Add Special Deliverable Modal */}
+      {specialModalOrder && (
+        <AddSpecialDeliverableModal
+          isOpen={Boolean(specialModalOrder)}
+          onClose={() => setSpecialModalOrder(null)}
+          initialClient={specialModalOrder.client}
+          initialOrder={specialModalOrder.order}
+          onSuccess={() => fetchClients()}
+        />
       )}
     </div>
   );
