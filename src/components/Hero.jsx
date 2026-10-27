@@ -67,7 +67,6 @@ export default function Hero() {
             <Link
               to="/contact"
               className="bg-[#3428f8] text-[#EEF2FF] px-8 py-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-105 text-center shadow-lg rounded-2xl"
-              style={{ boxShadow: '0 0 24px var(--accent-glow)' }}
             >
               Get a Free Audit
             </Link>

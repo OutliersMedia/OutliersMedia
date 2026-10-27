@@ -166,7 +166,6 @@ export default function AdminTickets() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
             <input 
               type="text" 
-              placeholder="Search ID, Client..."
               className="w-full bg-[#111] border border-[#222] p-3 pl-10 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
             />
           </div>
@@ -179,7 +178,7 @@ export default function AdminTickets() {
               <div 
                 key={thread.id} 
                 onClick={() => setSelectedThread(thread)}
-                className={`p-3.5 sm:p-4 rounded-2xl cursor-pointer transition-all border ${selectedThread?.id === thread.id ? 'bg-[#3428f8]/10 border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.1)]' : 'bg-[#151515] border-[#222] hover:border-[#444]'}`}
+                className={`p-3.5 sm:p-4 rounded-2xl cursor-pointer transition-all border ${selectedThread?.id === thread.id ? 'bg-[#3428f8]/10 border-[#3428f8]' : 'bg-[#151515] border-[#222] hover:border-[#444]'}`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <span className="text-xs font-bold text-white bg-[#222] px-2 py-1 rounded-md uppercase tracking-wider">{thread.order_id}</span>
@@ -263,7 +262,6 @@ export default function AdminTickets() {
                   type="text" 
                   value={replyMessage}
                   onChange={(e) => setReplyMessage(e.target.value)}
-                  placeholder={selectedThread.status === 'resolved' ? "Ticket resolved. Type to re-open..." : "Type your reply..."}
                   className="flex-1 bg-[#0a0a0a] border border-[#222] p-3 sm:p-4 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
                 />
                 <button 

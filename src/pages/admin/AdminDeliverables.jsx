@@ -486,7 +486,6 @@ export default function AdminDeliverables() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
           <input 
             type="text" 
-            placeholder="Search clients or orders..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[#0a0a0a] border border-[#222] p-3 pl-10 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
@@ -509,7 +508,7 @@ export default function AdminDeliverables() {
                 onClick={() => setClientFilter('active')}
                 className={`flex-1 py-1.5 px-3 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
                   clientFilter === 'active' 
-                    ? 'bg-[#3428f8] text-white shadow-[0_0_12px_rgba(52,40,248,0.3)]' 
+                    ? 'bg-[#3428f8] text-white' 
                     : 'text-[#666] hover:text-[#aaa]'
                 }`}
               >
@@ -519,7 +518,7 @@ export default function AdminDeliverables() {
                 onClick={() => setClientFilter('pending')}
                 className={`flex-1 py-1.5 px-3 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
                   clientFilter === 'pending' 
-                    ? 'bg-[#3428f8] text-white shadow-[0_0_12px_rgba(52,40,248,0.3)]' 
+                    ? 'bg-[#3428f8] text-white' 
                     : 'text-[#666] hover:text-[#aaa]'
                 }`}
               >
@@ -529,7 +528,7 @@ export default function AdminDeliverables() {
                 onClick={() => setClientFilter('all')}
                 className={`py-1.5 px-3 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
                   clientFilter === 'all' 
-                    ? 'bg-[#3428f8] text-white shadow-[0_0_12px_rgba(52,40,248,0.3)]' 
+                    ? 'bg-[#3428f8] text-white' 
                     : 'text-[#666] hover:text-[#aaa]'
                 }`}
               >
@@ -556,7 +555,7 @@ export default function AdminDeliverables() {
                       onClick={() => setSelectedClient(client)}
                       className={`text-left p-3.5 sm:p-4 rounded-2xl border transition-all ${
                         selectedClient?.auth_id === client.auth_id 
-                          ? 'bg-[#3428f8]/10 border-[#3428f8] shadow-[0_0_20px_rgba(52,40,248,0.25)]' 
+                          ? 'bg-[#3428f8]/10 border-[#3428f8]' 
                           : 'bg-[#0a0a0a] border-[#222] hover:border-[#333]'
                       }`}
                     >
@@ -650,7 +649,7 @@ export default function AdminDeliverables() {
                           onClick={() => setActiveTab('schedule')}
                           className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                             activeTab === 'schedule'
-                              ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
+                              ? 'bg-[#3428f8] text-white'
                               : 'text-[#888] hover:text-white'
                           }`}
                         >
@@ -660,7 +659,7 @@ export default function AdminDeliverables() {
                           onClick={() => setActiveTab('logging')}
                           className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                             activeTab === 'logging'
-                              ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
+                              ? 'bg-[#3428f8] text-white'
                               : 'text-[#888] hover:text-white'
                           }`}
                         >
@@ -670,7 +669,7 @@ export default function AdminDeliverables() {
                           onClick={() => setActiveTab('special')}
                           className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                             activeTab === 'special'
-                              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]'
+                              ? 'bg-purple-600 text-white'
                               : 'text-purple-300/80 hover:text-white'
                           }`}
                         >
@@ -902,7 +901,7 @@ export default function AdminDeliverables() {
                           <button
                             onClick={handleSaveSchedule}
                             disabled={savingSchedule}
-                            className="bg-[#3428f8] hover:bg-[#271bd1] disabled:bg-[#3428f8]/50 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] flex items-center gap-2"
+                            className="bg-[#3428f8] hover:bg-[#271bd1] disabled:bg-[#3428f8]/50 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
                           >
                             {savingSchedule ? (
                               <>
@@ -1048,7 +1047,6 @@ export default function AdminDeliverables() {
                               <label className="block text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2">Title / Description</label>
                               <input 
                                 type="text" 
-                                placeholder="e.g. Weekend Special Reel / Story promo"
                                 value={postTitle}
                                 onChange={(e) => setPostTitle(e.target.value)}
                                 required
@@ -1060,7 +1058,7 @@ export default function AdminDeliverables() {
                               <button 
                                 type="submit"
                                 disabled={isSubmitting || !postTitle}
-                                className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(52,40,248,0.3)] flex justify-center items-center gap-2"
+                                className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex justify-center items-center gap-2"
                               >
                                 {isSubmitting ? (
                                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
@@ -1148,7 +1146,7 @@ export default function AdminDeliverables() {
                         <button
                           type="button"
                           onClick={() => setIsSpecialModalOpen(true)}
-                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)] cursor-pointer"
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
                         >
                           <Plus size={14} /> + Add Special Deliverable
                         </button>
@@ -1266,7 +1264,7 @@ export default function AdminDeliverables() {
                                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
                                           isPaid
                                             ? 'bg-[#181818] hover:bg-amber-500/20 text-[#aaa] hover:text-amber-300 border-[#2a2a2a]'
-                                            : 'bg-emerald-500 hover:bg-emerald-400 text-black border-transparent shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                                            : 'bg-emerald-500 hover:bg-emerald-400 text-black border-transparent'
                                         }`}
                                         title={isPaid ? "Click to toggle payment back to Pending" : "Click to mark payment as Paid"}
                                       >

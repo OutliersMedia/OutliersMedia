@@ -108,7 +108,7 @@ export default function Navbar() {
               isAdmin || isTester ? (
                 <Link
                   to="/admin"
-                  className="bg-accent text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl flex items-center gap-2 border-2 border-transparent"
+                  className="bg-accent text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl flex items-center gap-2 border-2 border-transparent"
                 >
                   Command Center
                   {isTester && (
@@ -120,7 +120,7 @@ export default function Navbar() {
               ) : (
                 <Link
                   to="/dashboard"
-                  className="bg-[#3428f8] text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl flex items-center gap-2"
+                  className="bg-[#3428f8] text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl flex items-center gap-2"
                 >
                   Dashboard
                 </Link>
@@ -128,7 +128,7 @@ export default function Navbar() {
             ) : (
               <Link
                 to="/auth"
-                className="bg-[#3428f8] text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-[0_0_15px_var(--accent-glow)] rounded-2xl"
+                className="bg-[#3428f8] text-[#EEF2FF] px-5 py-2.5 text-xs tracking-wide uppercase font-bold hover:opacity-80 transition-all duration-300 hover:scale-105 rounded-2xl"
               >
                 Sign In
               </Link>

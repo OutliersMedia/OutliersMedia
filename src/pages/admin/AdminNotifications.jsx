@@ -207,10 +207,10 @@ export default function AdminNotifications() {
       {/* Device Notification Status Card */}
       <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
         devicePermission === 'granted'
-          ? 'bg-emerald-950/20 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.06)]'
+          ? 'bg-emerald-950/20 border-emerald-500/30'
           : devicePermission === 'denied'
-          ? 'bg-red-950/20 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.06)]'
-          : 'bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.06)]'
+          ? 'bg-red-950/20 border-red-500/30'
+          : 'bg-amber-950/20 border-amber-500/30'
       }`}>
         <div className="flex items-start sm:items-center gap-3.5">
           <div className={`p-2.5 rounded-xl border shrink-0 ${
@@ -318,7 +318,7 @@ export default function AdminNotifications() {
                   onClick={() => setTargetType('global')}
                   className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
                     targetType === 'global'
-                      ? 'bg-[#3428f8]/15 border-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.2)]'
+                      ? 'bg-[#3428f8]/15 border-[#3428f8] text-white'
                       : 'bg-[#141414] border-[#222] text-[#888] hover:text-white'
                   }`}
                 >
@@ -336,7 +336,7 @@ export default function AdminNotifications() {
                   onClick={() => setTargetType('client')}
                   className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
                     targetType === 'client'
-                      ? 'bg-[#3428f8]/15 border-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.2)]'
+                      ? 'bg-[#3428f8]/15 border-[#3428f8] text-white'
                       : 'bg-[#141414] border-[#222] text-[#888] hover:text-white'
                   }`}
                 >
@@ -424,7 +424,6 @@ export default function AdminNotifications() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. 🎉 Special Offer: 20% Off Video Editing!"
                 className="w-full bg-[#141414] border border-[#333] text-white p-3.5 rounded-xl text-sm font-bold outline-none focus:border-[#3428f8] transition-colors"
               />
             </div>
@@ -438,7 +437,6 @@ export default function AdminNotifications() {
                 rows={3}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder="Write the message that will pop up on the client's screen/phone..."
                 className="w-full bg-[#141414] border border-[#333] text-white p-3.5 rounded-xl text-sm outline-none focus:border-[#3428f8] transition-colors resize-none"
               />
             </div>
@@ -452,7 +450,6 @@ export default function AdminNotifications() {
                 type="text"
                 value={targetUrl}
                 onChange={(e) => setTargetUrl(e.target.value)}
-                placeholder="/dashboard"
                 className="w-full bg-[#141414] border border-[#333] text-white font-mono p-3 rounded-xl text-xs outline-none focus:border-[#3428f8]"
               />
             </div>
@@ -469,7 +466,7 @@ export default function AdminNotifications() {
             <button
               type="submit"
               disabled={sending}
-              className="w-full bg-[#3428f8] hover:bg-[#281fe0] text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest shadow-[0_0_20px_rgba(52,40,248,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+              className="w-full bg-[#3428f8] hover:bg-[#281fe0] text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
               {sending ? (
                 <RefreshCw size={16} className="animate-spin" />

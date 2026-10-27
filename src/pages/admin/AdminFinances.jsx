@@ -936,7 +936,6 @@ export default function AdminFinances() {
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#555]" />
             <input 
               type="text" 
-              placeholder="Search TXN ID, Client, Order ID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-[#0a0a0a] border border-[#222] p-3 pl-10 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
@@ -1130,7 +1129,7 @@ export default function AdminFinances() {
                         onClick={() => handleInstantPriceChange('starter', preset, 'Starter Plan')}
                         className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                           isActive
-                            ? 'bg-[#3428f8] text-white border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.4)]'
+                            ? 'bg-[#3428f8] text-white border-[#3428f8]'
                             : 'bg-[#141414] text-[#bbb] border-[#262626] hover:border-[#3428f8]/50 hover:text-white'
                         }`}
                       >
@@ -1147,7 +1146,6 @@ export default function AdminFinances() {
                       type="number"
                       value={customStarterInput}
                       onChange={(e) => setCustomStarterInput(e.target.value)}
-                      placeholder="Custom ₹"
                       className="w-full bg-[#141414] border border-[#262626] rounded-xl py-2 pl-7 pr-3 text-white text-xs font-mono focus:border-[#3428f8] outline-none"
                     />
                   </div>
@@ -1194,7 +1192,7 @@ export default function AdminFinances() {
                         onClick={() => handleInstantPriceChange('growth', preset, 'Growth Plan')}
                         className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                           isActive
-                            ? 'bg-[#3428f8] text-white border-[#3428f8] shadow-[0_0_15px_rgba(52,40,248,0.4)]'
+                            ? 'bg-[#3428f8] text-white border-[#3428f8]'
                             : 'bg-[#141414] text-[#bbb] border-[#262626] hover:border-[#3428f8]/50 hover:text-white'
                         }`}
                       >
@@ -1211,7 +1209,6 @@ export default function AdminFinances() {
                       type="number"
                       value={customGrowthInput}
                       onChange={(e) => setCustomGrowthInput(e.target.value)}
-                      placeholder="Custom ₹"
                       className="w-full bg-[#141414] border border-[#262626] rounded-xl py-2 pl-7 pr-3 text-white text-xs font-mono focus:border-[#3428f8] outline-none"
                     />
                   </div>
@@ -1315,7 +1312,6 @@ export default function AdminFinances() {
                     type="text"
                     value={pitchClientName}
                     onChange={(e) => setPitchClientName(e.target.value)}
-                    placeholder="e.g. Cravory, Royal Cafe..."
                     className="w-full bg-[#141414] border border-[#262626] rounded-xl p-2.5 text-white text-xs focus:border-[#3428f8] outline-none"
                   />
                 </div>
@@ -1343,7 +1339,6 @@ export default function AdminFinances() {
                     type="number"
                     value={pitchPriceInput}
                     onChange={(e) => setPitchPriceInput(e.target.value)}
-                    placeholder="4000"
                     className="w-full bg-[#141414] border border-[#262626] rounded-xl p-2.5 text-white text-xs font-mono font-bold focus:border-[#3428f8] outline-none"
                   />
                 </div>
@@ -1393,7 +1388,6 @@ export default function AdminFinances() {
                     type="text"
                     value={pitchSearch}
                     onChange={(e) => setPitchSearch(e.target.value)}
-                    placeholder="Filter client name or price..."
                     className="w-full bg-[#141414] border border-[#262626] rounded-xl py-1.5 pl-8 pr-3 text-white text-xs focus:border-[#3428f8] outline-none"
                   />
                 </div>
@@ -1669,7 +1663,7 @@ export default function AdminFinances() {
             onClick={() => setFilter(tab.id)}
             className={`px-3.5 sm:px-5 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider rounded-xl transition-all cursor-pointer shrink-0 ${
               filter === tab.id 
-                ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.35)]' 
+                ? 'bg-[#3428f8] text-white' 
                 : 'text-[#666] hover:text-[#bbb]'
             }`}
           >
@@ -2115,7 +2109,7 @@ export default function AdminFinances() {
                         {txn.status === 'pending' && (
                           <button 
                             onClick={() => handleOpenConfigurator(txn)}
-                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.15)] cursor-pointer"
+                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
                             title="Approve order and configure agreed pricing & EMIs"
                           >
                             <CheckCircle size={14} /> Accept Order
@@ -2126,7 +2120,7 @@ export default function AdminFinances() {
                         {txn.status !== 'pending' && pendingVerificationInst && (
                           <button 
                             onClick={() => handleOpenVerifyModal(txn, pendingVerificationInst)}
-                            className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(168,85,247,0.2)] cursor-pointer"
+                            className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
                             title="Verify client uploaded payment receipt"
                           >
                             <ShieldCheck size={14} /> Verify EMI #{pendingVerificationInst.installment_number}
@@ -2298,7 +2292,6 @@ export default function AdminFinances() {
                         step="100"
                         value={agreedPriceInput}
                         onChange={(e) => handleAgreedPriceChange(e.target.value)}
-                        placeholder="e.g. 3000"
                         className="w-full bg-[#0a0a0a] border border-[#333] focus:border-emerald-500 text-white font-mono text-2xl font-bold p-3.5 pl-9 rounded-xl outline-none transition-colors"
                       />
                     </div>
@@ -2357,7 +2350,7 @@ export default function AdminFinances() {
                     {/* Dedicated Complete Payment Option */}
                     <div className={`mb-4 p-4 rounded-2xl border transition-all ${
                       isFullyPaidNow 
-                        ? 'bg-emerald-950/20 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.08)]' 
+                        ? 'bg-emerald-950/20 border-emerald-500/40' 
                         : 'bg-[#15171d] border-[#2d3045] hover:border-emerald-500/50'
                     }`}>
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -2405,7 +2398,7 @@ export default function AdminFinances() {
                             className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                               isFullyPaidNow
                                 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 cursor-default font-medium'
-                                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] active:scale-[0.98]'
+                                : 'bg-emerald-500 hover:bg-emerald-400 text-black active:scale-[0.98]'
                             }`}
                             title="Mark all installments as paid in full"
                           >
@@ -2958,7 +2951,7 @@ export default function AdminFinances() {
                     disabled={savingPlan || !isBalanced}
                     className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer ${
                       isBalanced 
-                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black' 
                         : 'bg-[#222] text-[#666] cursor-not-allowed'
                     }`}
                   >
@@ -3060,7 +3053,6 @@ export default function AdminFinances() {
                   type="text"
                   value={verifyModalData.txnId}
                   onChange={(e) => setVerifyModalData({ ...verifyModalData, txnId: e.target.value })}
-                  placeholder="e.g. 427819284719"
                   className="w-full bg-[#0a0a0a] border border-[#333] focus:border-purple-500 text-white font-mono text-sm p-3 rounded-xl outline-none transition-colors"
                 />
               </div>
@@ -3079,7 +3071,7 @@ export default function AdminFinances() {
                   type="button"
                   onClick={handleConfirmVerifyMilestone}
                   disabled={verifyingMilestone}
-                  className="flex-1 bg-green-500 hover:bg-green-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(34,197,94,0.3)] flex items-center justify-center gap-2 cursor-pointer font-bold"
+                  className="flex-1 bg-green-500 hover:bg-green-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer font-bold"
                 >
                   {verifyingMilestone ? (
                     <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
@@ -3187,7 +3179,7 @@ export default function AdminFinances() {
                       onClick={() => setPreviewReceiptModal(prev => ({ ...prev, activeIndex: i }))}
                       className={`relative w-14 h-12 rounded-lg overflow-hidden border-2 transition-all cursor-pointer shrink-0 ${
                         i === previewReceiptModal.activeIndex
-                          ? 'border-[#3428f8] scale-105 shadow-[0_0_10px_rgba(52,40,248,0.5)]'
+                          ? 'border-[#3428f8] scale-105'
                           : 'border-[#333] opacity-60 hover:opacity-100'
                       }`}
                     >

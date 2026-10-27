@@ -68,7 +68,7 @@ export default function Onboarding() {
         className="w-full max-w-2xl bg-glass backdrop-blur-xl border border-glass-border p-8 md:p-12 rounded-3xl shadow-2xl relative z-10"
       >
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-accent/10 border border-accent/30 text-accent rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_var(--accent-glow)]">
+          <div className="w-16 h-16 bg-accent/10 border border-accent/30 text-accent rounded-full flex items-center justify-center mx-auto mb-6">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16">
               <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4Zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10Z"/>
             </svg>
@@ -93,7 +93,6 @@ export default function Onboarding() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-surface dark:bg-raised border border-themeborder p-4 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-              placeholder="John Doe"
             />
           </div>
 
@@ -105,7 +104,6 @@ export default function Onboarding() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="w-full bg-surface dark:bg-raised border border-themeborder p-4 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-              placeholder="+91 98765 43210"
             />
           </div>
 
@@ -135,7 +133,6 @@ export default function Onboarding() {
                 value={instagram}
                 onChange={(e) => setInstagram(e.target.value)}
                 className="w-full bg-surface dark:bg-raised border border-themeborder p-4 pl-10 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                placeholder="outliersmedia22"
               />
             </div>
           </div>
@@ -144,7 +141,7 @@ export default function Onboarding() {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full bg-[#3428f8] text-[#EEF2FF] p-5 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl shadow-[0_0_20px_var(--accent-glow)] disabled:opacity-50 flex items-center justify-center gap-3"
+              className="w-full bg-[#3428f8] text-[#EEF2FF] p-5 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl disabled:opacity-50 flex items-center justify-center gap-3"
             >
               {loading && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
               Complete Setup

@@ -176,7 +176,7 @@ export default function NotificationBell({ user, order }) {
         <Bell size={18} className="text-muted hover:text-primary transition-colors" />
         
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-[#3428f8] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(52,40,248,0.6)] animate-pulse">
+          <span className="absolute -top-1 -right-1 bg-[#3428f8] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}

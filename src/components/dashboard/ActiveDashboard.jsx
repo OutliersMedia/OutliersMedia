@@ -415,7 +415,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
           </div>
           <button
             onClick={() => onOpenPayModal && onOpenPayModal(nextMilestone)}
-            className="bg-amber-500 hover:bg-amber-400 text-black px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(245,158,11,0.3)] whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+            className="bg-amber-500 hover:bg-amber-400 text-black px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
           >
             <CreditCard size={14} /> Pay Installment Now
           </button>
@@ -466,7 +466,6 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                 icon={ImageIcon}
                 barColor="bg-[#3428f8]"
                 textColor="text-[#3428f8]"
-                glow="shadow-[0_0_12px_rgba(52,40,248,0.35)]"
               />
 
               {/* Reels: Admin Pink #ec4899 */}
@@ -477,7 +476,6 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                 icon={Video}
                 barColor="bg-pink-500"
                 textColor="text-pink-500"
-                glow="shadow-[0_0_12px_rgba(236,72,153,0.35)]"
               />
 
               {/* Stories: Admin Amber #fbbf24 */}
@@ -489,7 +487,6 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   icon={Sparkles}
                   barColor="bg-amber-400"
                   textColor="text-amber-400"
-                  glow="shadow-[0_0_12px_rgba(251,191,36,0.35)]"
                 />
               )}
 
@@ -502,7 +499,6 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   icon={Layout}
                   barColor="bg-green-500"
                   textColor="text-green-500"
-                  glow="shadow-[0_0_12px_rgba(34,197,94,0.35)]"
                 />
               )}
 
@@ -572,8 +568,6 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
               transition={{ delay: 0.15 }}
               className="bg-glass backdrop-blur-md border border-purple-500/25 p-6 md:p-8 rounded-3xl relative overflow-hidden"
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 relative z-10">
                 <div>
                   <div className="flex items-center gap-2">
@@ -677,7 +671,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                               </span>
                               <button
                                 onClick={() => setSelectedSpecialForPayment(item)}
-                                className="text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-black px-3 py-1.5 rounded-xl transition-all shadow-[0_0_12px_rgba(245,158,11,0.3)] flex items-center gap-1 cursor-pointer"
+                                className="text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-black px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
                               >
                                 <CreditCard size={12} /> Pay Due
                               </button>
@@ -1044,7 +1038,6 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. 429182910281"
                           value={specialPayTxnId}
                           onChange={(e) => setSpecialPayTxnId(e.target.value)}
                           required
@@ -1075,7 +1068,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                       <button
                         type="submit"
                         disabled={payingSpecial || !specialPayTxnId || !specialPayReceiptFile}
-                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(168,85,247,0.3)] flex justify-center items-center gap-2 cursor-pointer"
+                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex justify-center items-center gap-2 cursor-pointer"
                       >
                         {payingSpecial ? (
                           <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

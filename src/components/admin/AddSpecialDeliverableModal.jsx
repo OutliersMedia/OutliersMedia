@@ -311,7 +311,7 @@ export default function AddSpecialDeliverableModal({
                       onClick={() => setDeliverableType(t.id)}
                       className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                         isSelected 
-                          ? `${t.bg} ${t.border} ${t.color} shadow-[0_0_12px_rgba(52,40,248,0.2)]` 
+                          ? `${t.bg} ${t.border} ${t.color}` 
                           : 'bg-[#0a0a0a] border-[#222] text-[#777] hover:text-white'
                       }`}
                     >
@@ -332,7 +332,6 @@ export default function AddSpecialDeliverableModal({
                     required
                     value={customTypeName}
                     onChange={(e) => setCustomTypeName(e.target.value)}
-                    placeholder="e.g. Spin the Wheel Web App, Influencer Campaign, Menu Redesign..."
                     className="w-full bg-[#0a0a0a] border border-[#333] focus:border-purple-500 text-white text-xs p-3 rounded-xl outline-none"
                   />
                 </div>
@@ -354,7 +353,6 @@ export default function AddSpecialDeliverableModal({
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Spin the Wheel Interactive Website, Festive Reel #1..."
                   className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-sm font-bold p-3 rounded-xl outline-none"
                 />
               </div>
@@ -371,7 +369,6 @@ export default function AddSpecialDeliverableModal({
                     type="url"
                     value={projectUrl}
                     onChange={(e) => setProjectUrl(e.target.value)}
-                    placeholder="https://cravory-spin.web.app or Google Drive asset link"
                     className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 pl-9 rounded-xl outline-none"
                   />
                 </div>
@@ -414,7 +411,6 @@ export default function AddSpecialDeliverableModal({
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Additional specifications, coupon rules, or deliverable details..."
                   className="w-full bg-[#0a0a0a] border border-[#333] text-white text-xs p-2.5 rounded-xl outline-none resize-none"
                 />
               </div>
@@ -482,7 +478,6 @@ export default function AddSpecialDeliverableModal({
                           type="text"
                           value={paymentId}
                           onChange={(e) => setPaymentId(e.target.value)}
-                          placeholder="e.g. UPI-92847192841"
                           className="w-full bg-[#0a0a0a] border border-[#333] text-white font-mono text-xs p-2.5 rounded-xl outline-none"
                         />
                       </div>
@@ -580,7 +575,7 @@ export default function AddSpecialDeliverableModal({
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex-1 bg-[#3428f8] hover:bg-[#281cd4] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] flex items-center justify-center gap-2 cursor-pointer"
+                className="flex-1 bg-[#3428f8] hover:bg-[#281cd4] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {submitting ? (
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

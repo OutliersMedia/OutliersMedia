@@ -604,7 +604,7 @@ export default function AdminOverview() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.1 }}
             onClick={() => setSelectedMetric(card.id)}
-            className="bg-[#111] border border-[#222] p-3.5 sm:p-6 rounded-2xl flex flex-col justify-between gap-2.5 sm:gap-4 relative overflow-hidden group hover:border-[#444] cursor-pointer hover:shadow-[0_0_25px_rgba(255,255,255,0.03)] active:scale-[0.99] transition-all"
+            className="bg-[#111] border border-[#222] p-3.5 sm:p-6 rounded-2xl flex flex-col justify-between gap-2.5 sm:gap-4 relative overflow-hidden group hover:border-[#444] cursor-pointer active:scale-[0.99] transition-all"
           >
             <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 ${card.bg} blur-2xl transition-all group-hover:scale-150`}></div>
             <div className="flex justify-between items-start gap-2 relative z-10">
@@ -734,7 +734,7 @@ export default function AdminOverview() {
             <motion.div 
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-5 p-3.5 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs font-semibold flex items-center gap-2 shadow-[0_0_15px_rgba(34,197,94,0.15)]"
+              className="mb-5 p-3.5 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs font-semibold flex items-center gap-2"
             >
               <CheckCircle size={16} className="shrink-0" />
               <span>{quickLogSuccess}</span>
@@ -777,7 +777,6 @@ export default function AdminOverview() {
               <label className="text-xs font-bold uppercase tracking-widest text-[#888]">Title / Description</label>
               <input
                 type="text"
-                placeholder="e.g. Diwali Sale Promo"
                 value={logTitle}
                 onChange={(e) => setLogTitle(e.target.value)}
                 required
@@ -788,7 +787,7 @@ export default function AdminOverview() {
             <button
               type="submit"
               disabled={isLogging || !logOrderId || !logTitle}
-              className="mt-4 w-full bg-[#3428f8] disabled:bg-[#3428f8]/50 text-white p-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all rounded-xl shadow-[0_0_15px_rgba(52,40,248,0.4)] flex items-center justify-center gap-2"
+              className="mt-4 w-full bg-[#3428f8] disabled:bg-[#3428f8]/50 text-white p-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all rounded-xl flex items-center justify-center gap-2"
             >
               {isLogging ? (
                 <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
@@ -1146,7 +1145,7 @@ export default function AdminOverview() {
                       setSelectedMetric(null);
                       navigate('/admin/finances');
                     }}
-                    className="bg-green-600 hover:bg-green-500 text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)] flex items-center gap-1.5"
+                    className="bg-green-600 hover:bg-green-500 text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5"
                   >
                     Open Finances Ledger <ArrowRight size={14} />
                   </button>
@@ -1157,7 +1156,7 @@ export default function AdminOverview() {
                       setSelectedMetric(null);
                       navigate('/admin/clients');
                     }}
-                    className="bg-[#3428f8] hover:bg-[#2a1fd1] text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(52,40,248,0.3)] flex items-center gap-1.5"
+                    className="bg-[#3428f8] hover:bg-[#2a1fd1] text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5"
                   >
                     Manage All Clients <ArrowRight size={14} />
                   </button>
@@ -1168,7 +1167,7 @@ export default function AdminOverview() {
                       setSelectedMetric(null);
                       navigate('/admin/tickets');
                     }}
-                    className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)] flex items-center gap-1.5"
+                    className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5"
                   >
                     Open Support Inbox <ArrowRight size={14} />
                   </button>
@@ -1179,7 +1178,7 @@ export default function AdminOverview() {
                       setSelectedMetric(null);
                       navigate('/admin/deliverables');
                     }}
-                    className="bg-[#3428f8] hover:bg-[#2a1fd1] text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(52,40,248,0.3)] flex items-center gap-1.5"
+                    className="bg-[#3428f8] hover:bg-[#2a1fd1] text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5"
                   >
                     Open Deliverables Tab <ArrowRight size={14} />
                   </button>
@@ -1331,7 +1330,7 @@ export default function AdminOverview() {
                         setSelectedEvent(null);
                         navigate('/admin/deliverables');
                       }}
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)] flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       Deliverables Tab <ArrowRight size={13} />
                     </button>
@@ -1347,7 +1346,6 @@ export default function AdminOverview() {
                       type="text"
                       value={eventTitle}
                       onChange={(e) => setEventTitle(e.target.value)}
-                      placeholder="e.g. Weekend Special Reel #1"
                       required
                       className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
                     />
@@ -1365,7 +1363,7 @@ export default function AdminOverview() {
                     <button
                       type="submit"
                       disabled={isSubmittingWork || !eventTitle}
-                      className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(52,40,248,0.4)] flex items-center justify-center gap-1.5"
+                      className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5"
                     >
                       {isSubmittingWork ? (
                         <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></span>

@@ -235,7 +235,6 @@ export default function AdminClients() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
           <input
             type="text"
-            placeholder="Search clients..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[#0a0a0a] border border-[#222] p-3 pl-10 text-white text-sm rounded-xl focus:border-[#3428f8] outline-none transition-colors"
@@ -251,7 +250,7 @@ export default function AdminClients() {
               setFilter(f);
               if (f !== 'Leads') setLeadsSubFilter('all');
             }}
-            className={`px-3 sm:px-4 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider sm:tracking-widest rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${filter === f ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]' : 'text-[#666] hover:text-[#aaa]'}`}
+            className={`px-3 sm:px-4 py-2 text-[11px] sm:text-xs uppercase font-bold tracking-wider sm:tracking-widest rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${filter === f ? 'bg-[#3428f8] text-white' : 'text-[#666] hover:text-[#aaa]'}`}
           >
             <span>{f === 'All' ? 'All Clients' : f}</span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold ${filter === f ? 'bg-white/20 text-white' : 'bg-[#181818] text-[#777]'}`}>

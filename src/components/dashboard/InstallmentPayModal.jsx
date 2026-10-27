@@ -169,7 +169,6 @@ export default function InstallmentPayModal({ isOpen, onClose, order, installmen
                     </label>
                     <input 
                       type="text" 
-                      placeholder="e.g. 429182910281"
                       value={txnId}
                       onChange={(e) => setTxnId(e.target.value)}
                       required
@@ -200,7 +199,7 @@ export default function InstallmentPayModal({ isOpen, onClose, order, installmen
                   <button
                     type="submit"
                     disabled={isSubmitting || !txnId || !receiptFile}
-                    className="w-full bg-[#3428f8] hover:bg-[#281cd4] disabled:bg-[#3428f8]/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(52,40,248,0.3)] flex justify-center items-center gap-2"
+                    className="w-full bg-[#3428f8] hover:bg-[#281cd4] disabled:bg-[#3428f8]/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex justify-center items-center gap-2"
                   >
                     {isSubmitting ? (
                       <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

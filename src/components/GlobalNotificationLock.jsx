@@ -131,11 +131,6 @@ export default function GlobalNotificationLock() {
               : 'from-transparent via-[#3428f8] to-transparent'
           }`}></div>
 
-          {/* Background Ambient Aura */}
-          <div className={`absolute -top-24 -right-24 w-52 h-52 rounded-full blur-3xl pointer-events-none opacity-20 ${
-            isDenied ? 'bg-amber-500' : 'bg-[#3428f8]'
-          }`}></div>
-
           {/* Icon Badge */}
           <div className="flex justify-center mb-5">
             <div className={`p-4 rounded-2xl border relative ${
@@ -192,7 +187,7 @@ export default function GlobalNotificationLock() {
               <button
                 onClick={handleRecheckPermission}
                 disabled={loading}
-                className="w-full bg-amber-500 hover:bg-amber-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest shadow-[0_0_25px_rgba(245,158,11,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer mb-3"
+                className="w-full bg-amber-500 hover:bg-amber-400 text-black py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer mb-3"
               >
                 {loading ? (
                   <RefreshCw size={15} className="animate-spin" />
@@ -229,7 +224,7 @@ export default function GlobalNotificationLock() {
               <button
                 onClick={handleRequestPermission}
                 disabled={loading}
-                className="w-full bg-[#3428f8] hover:bg-[#281fe0] text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest shadow-[0_0_25px_rgba(52,40,248,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer mb-3"
+                className="w-full bg-[#3428f8] hover:bg-[#281fe0] text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer mb-3"
               >
                 {loading ? (
                   <RefreshCw size={15} className="animate-spin" />

@@ -47,7 +47,7 @@ export default function Services() {
                       onClick={() => setSelectedPlanId(pkg.id)}
                       className={`p-8 border-b border-l border-themeborder w-1/4 align-top cursor-pointer transition-all duration-500 ease-in-out relative select-none ${
                         isSelected 
-                          ? 'bg-white/[0.08] backdrop-blur-md opacity-100 z-10 shadow-[0_0_30px_rgba(37,99,235,0.1)]' 
+                          ? 'bg-white/[0.08] backdrop-blur-md opacity-100 z-10' 
                           : 'bg-transparent opacity-60 hover:opacity-90'
                       }`}
                     >
@@ -171,7 +171,6 @@ export default function Services() {
         <Link
           to="/contact"
           className="inline-block bg-[#3428f8] text-[#EEF2FF] px-10 py-5 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-105 shadow-xl rounded-2xl"
-          style={{ boxShadow: '0 0 24px var(--accent-glow)' }}
         >
           Get Your Free Audit
         </Link>

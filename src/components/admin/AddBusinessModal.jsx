@@ -358,7 +358,7 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
               onClick={() => setMode('existing')}
               className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                 mode === 'existing'
-                  ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
+                  ? 'bg-[#3428f8] text-white'
                   : 'text-[#777] hover:text-white'
               }`}
             >
@@ -369,7 +369,7 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
               onClick={() => setMode('new')}
               className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                 mode === 'new'
-                  ? 'bg-[#3428f8] text-white shadow-[0_0_15px_rgba(52,40,248,0.3)]'
+                  ? 'bg-[#3428f8] text-white'
                   : 'text-[#777] hover:text-white'
               }`}
             >
@@ -399,7 +399,6 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                     type="text"
                     value={clientSearch}
                     onChange={(e) => setClientSearch(e.target.value)}
-                    placeholder="Search client by name, email, or phone..."
                     className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 rounded-xl outline-none"
                   />
                 </div>
@@ -449,7 +448,6 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                       required
                       value={clientName}
                       onChange={(e) => setClientName(e.target.value)}
-                      placeholder="e.g. Rahul Sharma"
                       className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 rounded-xl outline-none"
                     />
                   </div>
@@ -460,7 +458,6 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                       required
                       value={clientEmail}
                       onChange={(e) => setClientEmail(e.target.value)}
-                      placeholder="e.g. rahul@brand.com"
                       className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 rounded-xl outline-none"
                     />
                   </div>
@@ -472,7 +469,6 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                     type="tel"
                     value={clientPhone}
                     onChange={(e) => setClientPhone(e.target.value)}
-                    placeholder="e.g. +91 98765 43210"
                     className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 rounded-xl outline-none"
                   />
                 </div>
@@ -494,7 +490,6 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                   required
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="e.g. Cravory Cafe, Zenith Apparel..."
                   className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-sm font-bold p-3 rounded-xl outline-none"
                 />
               </div>
@@ -525,7 +520,6 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                     type="text"
                     value={instagramHandle}
                     onChange={(e) => setInstagramHandle(e.target.value)}
-                    placeholder="e.g. @cravorycafe"
                     className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 rounded-xl outline-none"
                   />
                 </div>
@@ -546,7 +540,7 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                     onClick={() => setSelectedPlan(plan)}
                     className={`py-3 px-2 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
                       selectedPlan === plan
-                        ? 'bg-[#3428f8]/15 border-[#3428f8] text-white shadow-[0_0_10px_rgba(52,40,248,0.2)]'
+                        ? 'bg-[#3428f8]/15 border-[#3428f8] text-white'
                         : 'bg-[#0a0a0a] border-[#252525] text-[#888] hover:text-white'
                     }`}
                   >
@@ -690,7 +684,7 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex-1 bg-[#3428f8] hover:bg-[#281cd4] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] flex items-center justify-center gap-2 cursor-pointer"
+                className="flex-1 bg-[#3428f8] hover:bg-[#281cd4] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {submitting ? (
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

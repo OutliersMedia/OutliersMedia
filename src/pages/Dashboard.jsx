@@ -228,7 +228,7 @@ export default function Dashboard() {
                   onClick={() => setActiveOrder(ord)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                     isCurrent
-                      ? 'bg-accent text-white shadow-[0_0_15px_rgba(52,40,248,0.4)] border border-accent'
+                      ? 'bg-accent text-white border border-accent'
                       : 'bg-surface hover:bg-raised text-muted hover:text-primary border border-themeborder'
                   }`}
                 >
@@ -266,7 +266,7 @@ export default function Dashboard() {
         ) : activeOrder ? (
           activeOrder.status === 'pending' ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-surface/30 border border-themeborder border-dashed p-12 rounded-3xl text-center flex flex-col items-center justify-center min-h-[400px]">
-              <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mb-6 text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
+              <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mb-6 text-yellow-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
               </div>
               <h3 className="text-3xl font-serif text-primary mb-4">Waiting for Approval</h3>
@@ -281,7 +281,7 @@ export default function Dashboard() {
 
               return (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-[#111] border border-red-500/30 p-8 md:p-12 rounded-3xl text-center flex flex-col items-center justify-center max-w-2xl mx-auto shadow-2xl">
-                  <div className="w-20 h-20 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mb-6 text-red-500 shadow-[0_0_25px_rgba(239,68,68,0.2)]">
+                  <div className="w-20 h-20 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mb-6 text-red-500">
                     <ShieldAlert size={36} />
                   </div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full mb-3">
@@ -329,7 +329,7 @@ export default function Dashboard() {
                     <div className="w-full space-y-3 mb-6">
                       <button
                         onClick={() => setPayModalInstallment(overdueInst || { amount: instMetrics.balanceDue, installment_number: 2 })}
-                        className="w-full bg-[#3428f8] hover:bg-[#281cd4] text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(52,40,248,0.35)] flex items-center justify-center gap-2"
+                        className="w-full bg-[#3428f8] hover:bg-[#281cd4] text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                       >
                         <CreditCard size={16} /> Pay Installment & Submit Receipt Proof
                       </button>
@@ -367,7 +367,7 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="bg-surface/30 border border-themeborder border-dashed p-8 md:p-12 rounded-3xl flex flex-col items-center justify-center text-center min-h-[350px]"
             >
-              <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mb-6 text-accent shadow-[0_0_20px_var(--accent-glow)]">
+              <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mb-6 text-accent">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>
                 </svg>
@@ -381,7 +381,7 @@ export default function Dashboard() {
                 {/* Primary CTA */}
                 <button 
                   onClick={() => setShowPlanModal(true)}
-                  className="w-full bg-[#3428f8] text-[#EEF2FF] px-8 py-5 text-sm font-bold uppercase tracking-widest hover:opacity-90 transition-all duration-300 rounded-xl shadow-[0_0_25px_var(--accent-glow)] hover:scale-[1.02]"
+                  className="w-full bg-[#3428f8] text-[#EEF2FF] px-8 py-5 text-sm font-bold uppercase tracking-widest hover:opacity-90 transition-all duration-300 rounded-xl hover:scale-[1.02]"
                 >
                   Activate Project
                 </button>
@@ -398,7 +398,6 @@ export default function Dashboard() {
                     type="text" 
                     value={orderId}
                     onChange={(e) => setOrderId(e.target.value.toUpperCase())}
-                    placeholder="e.g. OM1002"
                     className="flex-1 bg-surface dark:bg-raised border border-themeborder p-4 text-primary text-sm focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
                   />
                   <button 

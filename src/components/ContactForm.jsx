@@ -184,7 +184,7 @@ export default function ContactForm() {
           {submitted && !isEditing ? (
             <div className="flex flex-col gap-8">
               <div className="bg-glass backdrop-blur-md border border-glass-border p-12 rounded-3xl text-center shadow-xl relative overflow-hidden">
-                <div className="w-16 h-16 bg-success/10 border border-success/30 text-success rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(22,163,74,0.3)]">
+                <div className="w-16 h-16 bg-success/10 border border-success/30 text-success rounded-full flex items-center justify-center mx-auto mb-6">
                   <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
                     <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
                   </svg>
@@ -369,7 +369,6 @@ export default function ContactForm() {
                 type="submit" 
                 disabled={isSubmitting}
                 className="bg-[#3428f8] text-[#EEF2FF] px-8 py-5 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-105 mt-4 self-start rounded-2xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3" 
-                style={{ boxShadow: '0 0 24px var(--accent-glow)' }}
               >
                 {isSubmitting && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
                 {isSubmitting ? (isEditing ? 'Updating...' : 'Sending...') : (isEditing ? 'Update Response' : 'Get My Free Audit')}

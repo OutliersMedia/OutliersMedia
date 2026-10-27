@@ -105,7 +105,6 @@ export default function TicketModal({ isOpen, onClose, order, onTicketCreated })
                 rows={4}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Describe your issue or feedback..."
                 className="w-full bg-surface dark:bg-raised border border-themeborder p-4 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl resize-none"
               />
             </div>
@@ -113,7 +112,7 @@ export default function TicketModal({ isOpen, onClose, order, onTicketCreated })
             <button 
               type="submit" 
               disabled={loading || !message.trim()}
-              className="w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl shadow-[0_0_20px_var(--accent-glow)] mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
               Submit Ticket

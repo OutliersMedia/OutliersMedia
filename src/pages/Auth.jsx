@@ -125,7 +125,6 @@ export default function Auth() {
     <div className="min-h-screen bg-base pt-32 pb-20 px-6 flex items-center justify-center relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'var(--hero-bg)', backgroundSize: '40px 40px', opacity: 0.3 }}></div>
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[120px] pointer-events-none"></div>
       
       <AnimatePresence mode="wait">
         {!showOtp ? (
@@ -191,7 +190,6 @@ export default function Auth() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full bg-surface dark:bg-raised border border-themeborder p-4 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                    placeholder="John Doe"
                   />
                 </div>
               )}
@@ -203,7 +201,6 @@ export default function Auth() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-surface dark:bg-raised border border-themeborder p-4 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                  placeholder="hello@example.com"
                 />
               </div>
               <div className="flex flex-col gap-2">
@@ -215,7 +212,6 @@ export default function Auth() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-surface dark:bg-raised border border-themeborder p-4 pr-12 text-primary focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                    placeholder="••••••••"
                   />
                   <button 
                     type="button"
@@ -243,7 +239,7 @@ export default function Auth() {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl shadow-[0_0_20px_var(--accent-glow)] mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
                 {isSignUp ? 'Create Account' : 'Sign In'}
@@ -272,7 +268,7 @@ export default function Auth() {
             className="w-full max-w-md bg-glass backdrop-blur-xl border border-glass-border p-8 rounded-3xl shadow-2xl relative z-10"
           >
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-accent/10 border border-accent/30 text-accent rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_var(--accent-glow)]">
+              <div className="w-16 h-16 bg-accent/10 border border-accent/30 text-accent rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16">
                   <path d="M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414.05 3.555ZM0 4.697v7.104l5.803-3.558L0 4.697ZM6.761 8.83l-6.57 4.027A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.027L8 9.586l-1.239-.757Zm3.436-.586L16 11.801V4.697l-5.803 3.546Z"/>
                 </svg>
@@ -306,14 +302,13 @@ export default function Auth() {
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
                   className="w-full bg-surface dark:bg-raised border border-themeborder p-4 text-primary text-center text-2xl tracking-[0.5em] font-mono focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-tint)] focus:outline-none transition-all duration-200 rounded-xl"
-                  placeholder="000000"
                 />
               </div>
 
               <button 
                 type="submit" 
                 disabled={loading || otpCode.length !== 6}
-                className="w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl shadow-[0_0_20px_var(--accent-glow)] mt-4 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-[#3428f8] text-[#EEF2FF] p-4 text-sm font-bold uppercase tracking-widest hover:opacity-80 transition-all duration-300 hover:scale-[1.02] rounded-xl mt-4 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
                 Verify & Continue

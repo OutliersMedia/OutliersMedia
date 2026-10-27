@@ -93,7 +93,7 @@ export default function AdminLayout() {
                   to={item.path}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300 ${
                     isActive 
-                      ? 'bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 shadow-[0_0_15px_rgba(52,40,248,0.15)]' 
+                      ? 'bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20' 
                       : 'text-[#888] hover:text-white hover:bg-[#1f1f1f]'
                   }`}
                 >
@@ -109,7 +109,7 @@ export default function AdminLayout() {
           <button
             type="button"
             onClick={() => setAddBusinessModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#3428f8] hover:bg-[#271bd4] text-white shadow-[0_0_15px_rgba(52,40,248,0.35)] transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#3428f8] hover:bg-[#271bd4] text-white transition-all cursor-pointer"
             title="Enroll a new business or client"
           >
             <Plus size={15} />
@@ -204,7 +204,7 @@ export default function AdminLayout() {
                     setMobileMenuOpen(false);
                     setAddBusinessModalOpen(true);
                   }}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#3428f8] text-white text-xs font-bold uppercase tracking-widest shadow-[0_0_15px_rgba(52,40,248,0.35)]"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#3428f8] text-white text-xs font-bold uppercase tracking-widest"
                 >
                   <Plus size={16} />
                   Add Business / Client

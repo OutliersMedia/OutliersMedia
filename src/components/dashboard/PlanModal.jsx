@@ -111,7 +111,7 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                       key={plan.id}
                       className={`relative flex flex-col p-8 rounded-2xl border transition-all duration-300 ${
                         isHighlighted 
-                          ? 'bg-surface border-accent shadow-[0_0_30px_rgba(52,40,248,0.2)] transform md:-translate-y-4 ring-2 ring-accent/50' 
+                          ? 'bg-surface border-accent transform md:-translate-y-4 ring-2 ring-accent/50' 
                           : 'bg-glass border-themeborder hover:border-accent/50'
                       }`}
                     >
@@ -143,7 +143,7 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                         onClick={() => setSelectedPlan(plan)}
                         className={`w-full py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
                           isHighlighted 
-                            ? 'bg-accent text-[#EEF2FF] hover:opacity-90 shadow-[0_0_20px_var(--accent-glow)]' 
+                            ? 'bg-accent text-[#EEF2FF] hover:opacity-90' 
                             : 'bg-surface text-primary border border-themeborder hover:border-accent'
                         }`}
                       >
@@ -179,7 +179,6 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                         type="text"
                         value={businessNameInput}
                         onChange={(e) => setBusinessNameInput(e.target.value)}
-                        placeholder="e.g. Cravory Bakery"
                         className="w-full bg-base border border-themeborder rounded-xl p-2.5 text-xs text-primary focus:border-accent outline-none"
                       />
                     </div>
@@ -189,7 +188,6 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                         type="text"
                         value={instagramHandleInput}
                         onChange={(e) => setInstagramHandleInput(e.target.value)}
-                        placeholder="e.g. @cravory.in"
                         className="w-full bg-base border border-themeborder rounded-xl p-2.5 text-xs text-primary focus:border-accent outline-none"
                       />
                     </div>
@@ -223,7 +221,7 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
               <button 
                 onClick={handleConfirmPayment}
                 disabled={isProcessing}
-                className="w-full bg-accent text-[#EEF2FF] py-4 rounded-xl text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-[0_0_20px_var(--accent-glow)] flex justify-center items-center gap-2"
+                className="w-full bg-accent text-[#EEF2FF] py-4 rounded-xl text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all flex justify-center items-center gap-2"
               >
                 {isProcessing ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span> : 'Payment Done & Receipt Uploaded'}
               </button>
