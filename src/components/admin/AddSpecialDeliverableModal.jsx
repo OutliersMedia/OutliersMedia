@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { saveSpecialDeliverable } from '../../utils/scheduleEngine';
-import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
+import { dispatchPushNotification } from '../../utils/pushManager';
 
 export const SPECIAL_TYPES = [
   { id: 'reel', label: 'Reel / Short', icon: Video, color: 'text-pink-400', border: 'border-pink-500/30', bg: 'bg-pink-500/10' },
@@ -179,27 +179,27 @@ export default function AddSpecialDeliverableModal({
         throw result.error;
       }
 
-      // Send Push and Local Notification to Client
-      const targetUserId = targetOrder.client_id || targetOrder.client?.auth_id;
-      if (targetUserId) {
-        try {
-          await dispatchPushNotification({
-            userId: targetUserId,
-            title: `🎉 Special Deliverable: ${title.trim()}`,
-            body: `Your custom ${categoryDisplay} has been delivered and is live on your Outliers Media dashboard!`,
-            url: '/dashboard'
-          });
-        } catch {}
-      }
-
-      triggerLocalNotification(`Special Deliverable Created: ${title.trim()}`, {
-        body: `Delivered for ${targetOrder.client?.name || targetOrder.order_id} • ₹${price.toLocaleString()}`
-      });
-
+      // 1. Immediately notify caller and close modal so UI updates without delay
       if (onSuccess) {
-        onSuccess(result.data);
+        try {
+          onSuccess(result.data);
+        } catch (callErr) {
+          console.warn("onSuccess handler notice:", callErr);
+        }
       }
       onClose();
+
+      // 2. Dispatch push notification to client in the background (non-blocking)
+      const targetUserId = targetOrder.client_id || targetOrder.client?.auth_id;
+      if (targetUserId) {
+        dispatchPushNotification({
+          targetUserId,
+          targetClientName: targetOrder.client?.name || targetOrder.order_id,
+          title: `🎉 Special Deliverable: ${title.trim()}`,
+          body: `Your custom ${categoryDisplay} has been delivered and is live on your Outliers Media dashboard!`,
+          url: '/dashboard'
+        }).catch((err) => console.warn("Notice: background push dispatch notice:", err));
+      }
     } catch (err) {
       setErrorMsg("Error saving deliverable: " + err.message);
     } finally {

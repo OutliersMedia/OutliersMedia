@@ -409,16 +409,19 @@ export async function broadcastDeliverablesSync(payload = {}) {
       deliverablesSyncChannel = supabase.channel('outliers-deliverables-live', {
         config: { broadcast: { self: true } }
       });
-      await deliverablesSyncChannel.subscribe();
+      deliverablesSyncChannel.subscribe();
     }
-    await deliverablesSyncChannel.send({
-      type: 'broadcast',
-      event: 'deliverables-updated',
-      payload: {
-        ...payload,
-        timestamp: Date.now()
-      }
-    });
+    await Promise.race([
+      deliverablesSyncChannel.send({
+        type: 'broadcast',
+        event: 'deliverables-updated',
+        payload: {
+          ...payload,
+          timestamp: Date.now()
+        }
+      }),
+      new Promise((res) => setTimeout(res, 800))
+    ]);
   } catch (err) {
     console.warn('Deliverables live broadcast notice:', err);
   }
