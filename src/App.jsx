@@ -31,6 +31,8 @@ import AdminClients from './pages/admin/AdminClients';
 import AdminFinances from './pages/admin/AdminFinances';
 import AdminDeliverables from './pages/admin/AdminDeliverables';
 import AdminNotifications from './pages/admin/AdminNotifications';
+import AdminInfluencers from './pages/admin/AdminInfluencers';
+import InfluencerConnect from './pages/InfluencerConnect';
 
 // This component acts as a global lock for clients missing phone or notification permissions.
 function GlobalOnboardingGuard({ children }) {
@@ -159,6 +161,7 @@ function App() {
                           <Route index element={<AdminOverview />} />
                           <Route path="clients" element={<AdminClients />} />
                           <Route path="deliverables" element={<AdminDeliverables />} />
+                          <Route path="influencers" element={<AdminInfluencers />} />
                           <Route path="finances" element={<AdminFinances />} />
                           <Route path="tickets" element={<AdminTickets />} />
                           <Route path="notifications" element={<AdminNotifications />} />
@@ -177,6 +180,7 @@ function App() {
                                   <Route path="/services" element={<Services />} />
                                   <Route path="/work" element={<Work />} />
                                   <Route path="/contact" element={<Contact />} />
+                                  <Route path="/influencers" element={<InfluencerConnect />} />
                                   
                                   <Route path="/auth" element={<Auth />} />
                                   <Route path="/onboarding" element={<Onboarding />} />

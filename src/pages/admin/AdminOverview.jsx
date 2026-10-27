@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase } from 'lucide-react';
+import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase, CreditCard } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable } from '../../utils/scheduleEngine';
@@ -18,6 +18,7 @@ export default function AdminOverview() {
   // Top Metrics Details Modal state
   const [selectedMetric, setSelectedMetric] = useState(null); // 'mrr' | 'retainers' | 'pending_payments' | 'due'
   const [pendingPaymentsList, setPendingPaymentsList] = useState([]);
+  const [pendingFilter, setPendingFilter] = useState('all'); // 'all' | 'emi' | 'special' | 'order'
   const [openTicketsList, setOpenTicketsList] = useState([]);
   const [detailedRetainers, setDetailedRetainers] = useState([]);
 
@@ -439,19 +440,25 @@ export default function AdminOverview() {
       });
     });
 
-    // Calculate Pending Payments (both pending orders and active orders with unpaid installments)
+    // Calculate Pending Payments (pending plan orders, individual milestone EMIs, and pending special deliverables)
     let totalPendingAmount = 0;
     const pendingList = [];
 
+    // 1. Plan Orders and Individual Milestone EMIs
     ordersList.forEach(order => {
       const clientName = profileMap[order.client_id]?.name || 'Unknown Client';
+      const bName = order.business_name || order.schedule_config?.business_name || profileMap[order.client_id]?.business_type || 'Main Brand';
       const instMetrics = computeOrderInstallmentMetrics(order);
 
       if (order.status === 'pending') {
         totalPendingAmount += instMetrics.totalAgreed;
         pendingList.push({
+          type: 'order',
+          category: 'Plan Order Approval',
+          itemType: 'New Order Approval Pending',
           orderId: order.order_id,
           clientName,
+          brandName: bName,
           planName: order.plan_name,
           amountPending: instMetrics.totalAgreed,
           status: 'New Order Approval Pending',
@@ -459,11 +466,49 @@ export default function AdminOverview() {
           instMetrics,
           created_at: order.created_at
         });
+      } else if (instMetrics.hasInstallments && Array.isArray(instMetrics.installments) && instMetrics.installments.length > 0) {
+        // Break out EACH individual unpaid installment / EMI
+        instMetrics.installments.forEach(inst => {
+          if (inst.status !== 'paid' && inst.status !== 'verified') {
+            const instAmount = Number(inst.amount || 0);
+            totalPendingAmount += instAmount;
+            
+            let instStatus = 'Installment Scheduled';
+            if (inst.status === 'pending_verification') {
+              instStatus = 'Proof Uploaded (Verification Due)';
+            } else if (inst.isOverdue || (instMetrics.isOverdue && inst.installment_number === instMetrics.nextInstallment?.installment_number)) {
+              instStatus = 'Overdue (Grace Expired)';
+            } else if (inst.inGracePeriod || (instMetrics.inGracePeriod && inst.installment_number === instMetrics.nextInstallment?.installment_number)) {
+              instStatus = `Grace Period (${instMetrics.graceDaysLeft}d left)`;
+            }
+
+            pendingList.push({
+              type: 'emi',
+              category: `Plan EMI #${inst.installment_number}`,
+              itemType: `EMI #${inst.installment_number}`,
+              orderId: order.order_id,
+              clientName,
+              brandName: bName,
+              planName: order.plan_name,
+              amountPending: instAmount,
+              dueDate: inst.due_date,
+              installmentNumber: inst.installment_number,
+              status: instStatus,
+              isNewOrder: false,
+              instMetrics,
+              created_at: order.created_at
+            });
+          }
+        });
       } else if (instMetrics.balanceDue > 0) {
         totalPendingAmount += instMetrics.balanceDue;
         pendingList.push({
+          type: 'emi',
+          category: 'Plan Milestone EMI',
+          itemType: 'Installment Milestone',
           orderId: order.order_id,
           clientName,
+          brandName: bName,
           planName: order.plan_name,
           amountPending: instMetrics.balanceDue,
           status: instMetrics.isOverdue 
@@ -472,6 +517,47 @@ export default function AdminOverview() {
           isNewOrder: false,
           instMetrics,
           created_at: order.created_at
+        });
+      }
+    });
+
+    // 2. Special Deliverables (Custom Websites, Extra Reels, Web Apps)
+    // Combine unique special deliverables from table + order configs
+    const allSpecialsMap = new Map();
+    specialList.forEach(s => { if (s && s.id) allSpecialsMap.set(s.id, s); });
+    ordersList.forEach(ord => {
+      const ordSpecials = (ord.schedule_config?.special_deliverables && Array.isArray(ord.schedule_config.special_deliverables))
+        ? ord.schedule_config.special_deliverables
+        : [];
+      ordSpecials.forEach(s => { if (s && s.id && !allSpecialsMap.has(s.id)) allSpecialsMap.set(s.id, s); });
+    });
+
+    Array.from(allSpecialsMap.values()).forEach(sd => {
+      const isPaid = sd.payment_status === 'paid';
+      const isComplimentary = sd.payment_status === 'complimentary' || Number(sd.price || 0) === 0;
+      const fee = Number(sd.price || sd.fee || 0);
+
+      if (!isPaid && !isComplimentary && fee > 0) {
+        totalPendingAmount += fee;
+        const matchingOrder = ordersList.find(o => o.order_id === sd.order_id || o.id === sd.order_id);
+        const clientName = profileMap[matchingOrder?.client_id || sd.client_id]?.name || 'Client';
+        const brandName = matchingOrder?.business_name || matchingOrder?.schedule_config?.business_name || profileMap[matchingOrder?.client_id || sd.client_id]?.business_type || 'Main Brand';
+
+        pendingList.push({
+          type: 'special',
+          category: 'Special Deliverable',
+          itemType: sd.category || sd.custom_type_name || 'Custom Project',
+          title: sd.title,
+          orderId: sd.order_id || matchingOrder?.order_id || 'SPECIAL',
+          clientName,
+          brandName,
+          amountPending: fee,
+          dueDate: sd.delivered_at || sd.scheduled_date || sd.created_at,
+          status: sd.payment_status === 'pending_verification' ? 'Proof Uploaded (Verification Due)' : 'Special Deliverable Due',
+          isNewOrder: false,
+          specialId: sd.id,
+          projectUrl: sd.project_url,
+          created_at: sd.created_at
         });
       }
     });
@@ -984,63 +1070,180 @@ export default function AdminOverview() {
                 )}
 
                 {/* 3. PENDING PAYMENTS MODAL */}
-                {selectedMetric === 'pending_payments' && (
-                  <>
-                    <div className="bg-[#0a0a0a] border border-[#222] rounded-xl p-4 flex justify-between items-center mb-1">
-                      <div>
-                        <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Total Outstanding Balance</span>
-                        <span className="text-2xl font-serif text-amber-400">₹{metrics.pendingAmount.toLocaleString()}</span>
-                      </div>
-                      <button 
-                        onClick={() => navigate('/admin/finances?filter=Pending')}
-                        className="text-xs bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-black border border-amber-500/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all"
-                      >
-                        Open in Finances <ArrowRight size={12} />
-                      </button>
-                    </div>
+                {selectedMetric === 'pending_payments' && (() => {
+                  const filteredPending = pendingPaymentsList.filter(item => {
+                    if (pendingFilter === 'emi') return item.type === 'emi';
+                    if (pendingFilter === 'special') return item.type === 'special';
+                    if (pendingFilter === 'order') return item.type === 'order';
+                    return true;
+                  });
 
-                    {pendingPaymentsList.length === 0 ? (
-                      <div className="text-center py-8">
-                        <CheckCircle size={32} className="text-green-500 mx-auto mb-2 opacity-60" />
-                        <p className="text-white text-sm font-medium">All accounts are fully paid!</p>
-                        <p className="text-[#666] text-xs">No pending orders or overdue milestone installments.</p>
-                      </div>
-                    ) : (
-                      pendingPaymentsList.map((item, i) => (
-                        <div key={i} className="bg-[#0e0e0e] border border-[#222] rounded-xl p-3.5 flex flex-col gap-2 hover:border-[#333] transition-colors">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <span className="text-white text-sm font-bold block">{item.clientName}</span>
-                              <span className="text-[#888] text-xs">{item.planName} • <span className="font-mono text-[#555]">{item.orderId}</span></span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-amber-400 font-mono font-bold text-sm block">₹{item.amountPending.toLocaleString()}</span>
-                              <span className="text-[10px] text-[#666]">Remaining</span>
-                            </div>
-                          </div>
+                  const emiCount = pendingPaymentsList.filter(i => i.type === 'emi').length;
+                  const specialCount = pendingPaymentsList.filter(i => i.type === 'special').length;
+                  const orderCount = pendingPaymentsList.filter(i => i.type === 'order').length;
 
-                          <div className="flex justify-between items-center pt-2 border-t border-[#1a1a1a]">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                              item.status.includes('Overdue') 
-                                ? 'bg-red-500/15 text-red-400 border border-red-500/30' 
-                                : item.status.includes('Grace')
-                                ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
-                                : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
-                            }`}>
-                              {item.status}
-                            </span>
-                            <button
-                              onClick={() => navigate('/admin/finances?filter=Pending')}
-                              className="text-[10px] text-[#3428f8] hover:text-white font-bold uppercase flex items-center gap-1"
-                            >
-                              Manage <ArrowRight size={10} />
-                            </button>
-                          </div>
+                  return (
+                    <>
+                      <div className="bg-[#0a0a0a] border border-[#222] rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-1">
+                        <div>
+                          <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Total Outstanding Balance</span>
+                          <span className="text-2xl font-serif text-amber-400">₹{metrics.pendingAmount.toLocaleString()}</span>
+                          <span className="text-[11px] text-[#888] block mt-0.5 font-mono">
+                            {pendingPaymentsList.length} total pending items ({emiCount} Plan EMIs, {specialCount} Special Dues)
+                          </span>
                         </div>
-                      ))
-                    )}
-                  </>
-                )}
+                        <button 
+                          onClick={() => navigate('/admin/finances?filter=Pending')}
+                          className="text-xs bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-black border border-amber-500/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          Open in Finances <ArrowRight size={12} />
+                        </button>
+                      </div>
+
+                      {/* Filter Tabs */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-b border-[#1f1f1f]">
+                        <button
+                          type="button"
+                          onClick={() => setPendingFilter('all')}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                            pendingFilter === 'all'
+                              ? 'bg-[#3428f8] text-white'
+                              : 'bg-[#141414] text-[#888] hover:text-white hover:bg-[#1a1a1a]'
+                          }`}
+                        >
+                          All ({pendingPaymentsList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingFilter('emi')}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                            pendingFilter === 'emi'
+                              ? 'bg-[#3428f8] text-white'
+                              : 'bg-[#141414] text-[#888] hover:text-white hover:bg-[#1a1a1a]'
+                          }`}
+                        >
+                          Plan EMIs ({emiCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingFilter('special')}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                            pendingFilter === 'special'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-[#141414] text-[#888] hover:text-white hover:bg-[#1a1a1a]'
+                          }`}
+                        >
+                          Special Deliverables ({specialCount})
+                        </button>
+                        {orderCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setPendingFilter('order')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                              pendingFilter === 'order'
+                                ? 'bg-amber-500 text-black'
+                                : 'bg-[#141414] text-[#888] hover:text-white hover:bg-[#1a1a1a]'
+                            }`}
+                          >
+                            New Orders ({orderCount})
+                          </button>
+                        )}
+                      </div>
+
+                      {filteredPending.length === 0 ? (
+                        <div className="text-center py-8">
+                          <CheckCircle size={32} className="text-green-500 mx-auto mb-2 opacity-60" />
+                          <p className="text-white text-sm font-medium">No pending payments under this filter!</p>
+                          <p className="text-[#666] text-xs">All selected plan EMIs or special projects are up to date.</p>
+                        </div>
+                      ) : (
+                        filteredPending.map((item, i) => (
+                          <div key={i} className="bg-[#0e0e0e] border border-[#222] rounded-xl p-3.5 flex flex-col gap-2 hover:border-[#333] transition-colors">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                  {item.type === 'special' ? (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                      <Star size={10} /> {item.category}
+                                    </span>
+                                  ) : item.type === 'emi' ? (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#3428f8]/20 text-[#8b82ff] border border-[#3428f8]/30 flex items-center gap-1">
+                                      <CreditCard size={10} /> {item.category}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                      {item.category}
+                                    </span>
+                                  )}
+                                  <span className="text-white text-xs font-bold truncate">{item.clientName}</span>
+                                  {item.brandName && (
+                                    <span className="text-[#666] text-[10px]">({item.brandName})</span>
+                                  )}
+                                </div>
+
+                                <div className="text-xs text-[#aaa]">
+                                  {item.type === 'special' ? (
+                                    <span className="font-bold text-white">{item.title}</span>
+                                  ) : (
+                                    <span>{item.planName} • <span className="font-mono text-[#666]">{item.orderId}</span></span>
+                                  )}
+                                  {item.dueDate && (
+                                    <span className="text-[#666] text-[10px] block mt-0.5">
+                                      Due: {new Date(item.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className="text-amber-400 font-mono font-bold text-base block">₹{item.amountPending.toLocaleString()}</span>
+                                <span className="text-[10px] text-[#666] uppercase tracking-wider font-bold">Pending Due</span>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-2 border-t border-[#1a1a1a]">
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                item.status.includes('Overdue') 
+                                  ? 'bg-red-500/15 text-red-400 border border-red-500/30' 
+                                  : item.status.includes('Grace')
+                                  ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                                  : item.status.includes('Proof')
+                                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                                  : item.type === 'special'
+                                  ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                  : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                              }`}>
+                                {item.status}
+                              </span>
+
+                              {item.type === 'special' ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedMetric(null);
+                                    navigate('/admin/deliverables');
+                                  }}
+                                  className="text-[10px] text-purple-400 hover:text-white font-bold uppercase flex items-center gap-1 cursor-pointer"
+                                >
+                                  Deliverables Tab <ArrowRight size={10} />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setSelectedMetric(null);
+                                    navigate('/admin/finances?filter=Pending');
+                                  }}
+                                  className="text-[10px] text-[#3428f8] hover:text-white font-bold uppercase flex items-center gap-1 cursor-pointer"
+                                >
+                                  Manage in Finances <ArrowRight size={10} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* 4. DUE TODAY MODAL */}
                 {selectedMetric === 'due' && (() => {

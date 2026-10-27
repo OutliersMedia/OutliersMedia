@@ -44,6 +44,7 @@ export default function Navbar() {
   const navLinks = [
     { name: 'Services', path: '/services' },
     { name: 'Work', path: '/work' },
+    { name: 'Influencers', path: '/influencers' },
   ];
 
   return (

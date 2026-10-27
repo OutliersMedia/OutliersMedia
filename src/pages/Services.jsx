@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Sparkles, MessageSquare, Users, CheckCircle2, ArrowRight } from 'lucide-react';
 import { faqs } from '../utils/data';
 import { usePricing } from '../context/PricingContext';
 
@@ -134,6 +135,57 @@ export default function Services() {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        {/* Influencer Marketing Special Plan Option */}
+        <div className="bg-[#101010] border border-purple-500/30 rounded-3xl p-8 sm:p-12 mb-32 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-8">
+          <div className="max-w-2xl">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/15 border border-purple-500/30 px-3 py-1 rounded-full inline-flex items-center gap-1.5 mb-4">
+              <Sparkles size={12} /> SPECIALIZED MARKETING
+            </span>
+            <h2 className="text-3xl md:text-5xl font-serif text-white mb-4">
+              Influencers & Creator Contracts
+            </h2>
+            <p className="text-[#aaa] text-base leading-relaxed mb-6">
+              Connect with vetted local creators in Tricity & North India. We manage contracts from <strong>3 to 10 reels</strong> under both barter and paid structures, overseeing creative direction, editing, and final delivery.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#ddd]">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-purple-400 shrink-0" />
+                <span>3 to 10 Reels Per Creator Contract</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-purple-400 shrink-0" />
+                <span>Barter (Product/Service) & Paid Options</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-purple-400 shrink-0" />
+                <span>Custom Scripting & Professional Editing</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-purple-400 shrink-0" />
+                <span>Live Link & Performance Tracking</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
+            <a
+              href="https://wa.me/919729714352?text=Please%20share%20the%20details%20about%20the%20influencer%20marketing%20plan"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-[#25D366] hover:bg-[#20ba59] text-white px-8 py-4 text-xs font-bold uppercase tracking-widest transition-all rounded-xl flex items-center justify-center gap-2 text-center cursor-pointer"
+            >
+              <MessageSquare size={16} /> Connect on WhatsApp
+            </a>
+            <Link
+              to="/influencers"
+              className="bg-[#181818] hover:bg-[#222] border border-[#333] hover:border-purple-500/50 text-white px-8 py-4 text-xs font-bold uppercase tracking-widest transition-all rounded-xl flex items-center justify-center gap-2 text-center"
+            >
+              <Users size={16} /> Are You A Creator? Apply Here
+            </Link>
+          </div>
         </div>
 
         {/* FAQ */}

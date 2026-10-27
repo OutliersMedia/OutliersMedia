@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, QrCode, UploadCloud } from 'lucide-react';
+import { X, CheckCircle2, QrCode, UploadCloud, Sparkles, MessageSquare } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { usePricing } from '../../context/PricingContext';
 
@@ -101,7 +101,7 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                 <p className="text-muted max-w-2xl mx-auto">Activate your project instantly. Choose the plan that best fits your brand's goals.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {plans.map((plan) => {
                   const isPreSelected = Boolean(preSelectedPlanId && plan.id.toLowerCase() === preSelectedPlanId.toLowerCase());
                   const isHighlighted = isPreSelected || plan.highlight;
@@ -152,6 +152,50 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                     </div>
                   );
                 })}
+
+                {/* Influencer Marketing Plan Option */}
+                <div className="relative flex flex-col p-8 rounded-2xl border border-purple-500/40 bg-purple-950/15 hover:border-purple-400 transition-all duration-300">
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-[10px] font-bold uppercase tracking-widest px-3.5 py-1 rounded-full whitespace-nowrap flex items-center gap-1">
+                    <Sparkles size={11} /> INFLUENCERS
+                  </div>
+                  
+                  <h3 className="text-2xl font-serif text-primary mb-2">Influencers</h3>
+                  <div className="mb-6 flex items-end gap-1">
+                    <span className="text-3xl font-bold text-primary">Custom</span>
+                    <span className="text-muted text-sm pb-1">/campaign</span>
+                  </div>
+                  <p className="text-muted text-sm mb-4">Dedicated influencer collaboration campaigns, barter & paid reels matching your brand vibe.</p>
+                  
+                  <div className="h-px w-full bg-themeborder mb-6"></div>
+                  
+                  <ul className="flex flex-col gap-4 mb-8 flex-grow">
+                    <li className="flex items-start gap-3 text-sm text-primary">
+                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <span>3 to 10 Reels Per Contract</span>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-primary">
+                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <span>Niche Creator Matching (Food, Lifestyle, Fashion)</span>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-primary">
+                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <span>Barter & Paid Compensation Options</span>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-primary">
+                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <span>Scripting, Editing & Delivery Management</span>
+                    </li>
+                  </ul>
+
+                  <a
+                    href="https://wa.me/919729714352?text=Please%20share%20the%20details%20about%20the%20influencer%20marketing%20plan"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all bg-[#25D366] hover:bg-[#20ba59] text-white flex items-center justify-center gap-2 cursor-pointer text-center"
+                  >
+                    <MessageSquare size={16} /> Connect on WhatsApp
+                  </a>
+                </div>
               </div>
             </>
           ) : (

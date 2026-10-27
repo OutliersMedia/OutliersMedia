@@ -1,7 +1,7 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare, Menu, X, Globe, Plus } from 'lucide-react';
+import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare, Menu, X, Globe, Plus, Sparkles } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import AddBusinessModal from './AddBusinessModal';
@@ -63,6 +63,7 @@ export default function AdminLayout() {
     { name: 'OVERVIEW', path: '/admin', icon: LayoutDashboard },
     { name: 'CLIENTS', path: '/admin/clients', icon: Users },
     { name: 'DELIVERABLES', path: '/admin/deliverables', icon: ImagePlus },
+    { name: 'INFLUENCERS', path: '/admin/influencers', icon: Sparkles },
     { name: 'FINANCES', path: '/admin/finances', icon: Landmark },
     { name: 'TICKETS', path: '/admin/tickets', icon: Ticket },
     { name: 'NOTIFICATIONS', path: '/admin/notifications', icon: Bell },
@@ -255,11 +256,12 @@ export default function AdminLayout() {
       </main>
 
       {/* Mobile Bottom Navigation Bar for 1-Tap Tab Switching on Phones */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1.5 py-1.5 grid grid-cols-6 gap-1">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1 py-1.5 grid grid-cols-7 gap-0.5">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
           const shortLabel =
             item.name === 'DELIVERABLES' ? 'Work' :
+            item.name === 'INFLUENCERS' ? 'Creators' :
             item.name === 'NOTIFICATIONS' ? 'Alerts' :
             item.name.charAt(0) + item.name.slice(1).toLowerCase();
           return (
