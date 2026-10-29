@@ -22,6 +22,11 @@ import {
   saveSpecialDeliverable 
 } from '../../utils/scheduleEngine';
 import { usePricing, DEFAULT_LIVE_PRICING } from '../../context/PricingContext';
+import { 
+  fetchInfluencers, 
+  computeCreatorFinances, 
+  recordCreatorPayout 
+} from '../../utils/influencerEngine';
 
 export { getStandardPlanPrice };
 
@@ -83,6 +88,16 @@ export default function AdminFinances() {
   // Quick Milestone Verification State
   const [verifyModalData, setVerifyModalData] = useState(null);
   const [verifyingMilestone, setVerifyingMilestone] = useState(false);
+
+  // Creator Payouts & Net Profit State
+  const [influencerList, setInfluencerList] = useState([]);
+  const [showCreatorLedger, setShowCreatorLedger] = useState(false);
+  const [creatorPayoutModalData, setCreatorPayoutModalData] = useState(null);
+  const [creatorPayoutAmt, setCreatorPayoutAmt] = useState('');
+  const [creatorPayoutMethod, setCreatorPayoutMethod] = useState('UPI');
+  const [creatorPayoutRef, setCreatorPayoutRef] = useState('');
+  const [creatorPayoutNotes, setCreatorPayoutNotes] = useState('');
+  const [savingCreatorPayout, setSavingCreatorPayout] = useState(false);
 
   // Helper to open multi-screenshot preview modal
   const openReceiptPreview = (urlOrUrls, initialIndex = 0, title = 'Payment Receipt Proof') => {
@@ -251,7 +266,52 @@ export default function AdminFinances() {
 
   useEffect(() => {
     fetchFinances();
+    loadInfluencers();
+
+    const handleInfluencerChanged = () => {
+      loadInfluencers();
+    };
+    window.addEventListener('om_influencer_changed', handleInfluencerChanged);
+    return () => window.removeEventListener('om_influencer_changed', handleInfluencerChanged);
   }, []);
+
+  const loadInfluencers = async () => {
+    try {
+      const data = await fetchInfluencers();
+      setInfluencerList(data || []);
+    } catch (err) {
+      console.warn("Could not load influencers in AdminFinances:", err);
+    }
+  };
+
+  const handleOpenCreatorPayoutFromFinances = (inf) => {
+    const fin = computeCreatorFinances(inf);
+    setCreatorPayoutModalData(inf);
+    setCreatorPayoutAmt(String(fin.pending || 0));
+    setCreatorPayoutMethod('UPI');
+    setCreatorPayoutRef('');
+    setCreatorPayoutNotes('');
+  };
+
+  const handleConfirmCreatorPayoutFromFinances = async (e) => {
+    if (e) e.preventDefault();
+    if (!creatorPayoutModalData) return;
+    setSavingCreatorPayout(true);
+    try {
+      await recordCreatorPayout(creatorPayoutModalData.id, {
+        amount: Number(creatorPayoutAmt || 0),
+        payout_method: creatorPayoutMethod,
+        payout_reference: creatorPayoutRef.trim(),
+        notes: creatorPayoutNotes.trim()
+      });
+      setCreatorPayoutModalData(null);
+      await loadInfluencers();
+    } catch (err) {
+      alert("Error recording creator payout: " + err.message);
+    } finally {
+      setSavingCreatorPayout(false);
+    }
+  };
 
   const fetchFinances = async () => {
     setLoading(true);
@@ -1029,6 +1089,147 @@ export default function AdminFinances() {
           </p>
         </div>
       </div>
+
+      {/* AGENCY NET PROFIT & CREATOR OUTFLOW SECTION */}
+      {(() => {
+        const creatorFinances = computeCreatorFinances(influencerList);
+        const netProfit = metrics.totalRevenue - creatorFinances.totalCommitted;
+        const profitMargin = metrics.totalRevenue > 0 ? Math.round((netProfit / metrics.totalRevenue) * 100) : 0;
+
+        return (
+          <div className="mb-6 sm:mb-8 bg-[#0a0a0a] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222] mb-5">
+              <div>
+                <h3 className="text-lg sm:text-xl md:text-2xl font-serif text-white flex items-center gap-2">
+                  <Sparkles size={20} className="text-purple-400" />
+                  Agency Net Margin & Creator Outflow
+                </h3>
+                <p className="text-[#888] text-xs sm:text-sm mt-1">
+                  Track client revenue inflow versus creator expenses and pending disbursements.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowCreatorLedger(prev => !prev)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#151515] hover:bg-[#202020] text-white border border-[#2a2a2a] transition-all cursor-pointer self-start sm:self-auto"
+              >
+                <IndianRupee size={13} /> {showCreatorLedger ? 'Hide Creator Ledger' : 'View Creator Ledger'}
+              </button>
+            </div>
+
+            {/* 3 Overview Cards: Client Inflow, Creator Outflow, Net Margin */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-2">
+              <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#888] block mb-1">
+                  Client Revenue (Inflow)
+                </span>
+                <div className="text-2xl font-serif font-bold text-white flex items-center gap-1">
+                  <IndianRupee size={18} className="text-emerald-400" />
+                  <span>{metrics.totalRevenue.toLocaleString()}</span>
+                </div>
+                <span className="text-[10px] text-[#666] block mt-1">Retainers & Special deliverables</span>
+              </div>
+
+              <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-1">
+                  Creator Costs (Outflow)
+                </span>
+                <div className="text-2xl font-serif font-bold text-white flex items-center gap-1">
+                  <IndianRupee size={18} className="text-purple-400" />
+                  <span>{creatorFinances.totalCommitted.toLocaleString()}</span>
+                </div>
+                <span className="text-[10px] text-[#888] block mt-1">
+                  ₹{creatorFinances.totalPaid.toLocaleString()} Paid • ₹{creatorFinances.totalPending.toLocaleString()} Pending
+                </span>
+              </div>
+
+              <div className="bg-[#111] border border-emerald-500/20 p-4 rounded-2xl bg-emerald-500/5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                  Net Agency Profit
+                </span>
+                <div className="text-2xl font-serif font-bold text-emerald-400 flex items-center gap-1">
+                  <IndianRupee size={18} />
+                  <span>{netProfit.toLocaleString()}</span>
+                </div>
+                <span className="text-[10px] text-emerald-400/80 block mt-1 font-bold">
+                  {metrics.totalRevenue > 0 ? `${profitMargin}% Gross Agency Margin` : '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Collapsible Creator Ledger Table */}
+            {showCreatorLedger && (
+              <div className="mt-5 pt-4 border-t border-[#222]">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[#222] text-[#888] text-[10px] uppercase font-bold tracking-wider">
+                        <th className="pb-2.5">Creator</th>
+                        <th className="pb-2.5">Niche</th>
+                        <th className="pb-2.5">Contract</th>
+                        <th className="pb-2.5">Committed Fee</th>
+                        <th className="pb-2.5">Disbursed</th>
+                        <th className="pb-2.5">Pending</th>
+                        <th className="pb-2.5">Status</th>
+                        <th className="pb-2.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1a1a1a]">
+                      {influencerList.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="py-6 text-center text-[#777] text-xs">
+                            No creators enrolled yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        influencerList.map(inf => {
+                          const fin = computeCreatorFinances(inf);
+                          return (
+                            <tr key={inf.id} className="hover:bg-[#141414] transition-colors">
+                              <td className="py-3">
+                                <span className="text-white font-bold block">{inf.name}</span>
+                                <span className="text-[#888] text-[11px]">@{inf.instagram_id}</span>
+                              </td>
+                              <td className="py-3 text-[#aaa]">{inf.niche || 'Lifestyle'}</td>
+                              <td className="py-3 text-cyan-400 font-mono font-bold">{inf.reels_count} Reels</td>
+                              <td className="py-3 font-mono text-white font-bold">₹{fin.committed.toLocaleString()}</td>
+                              <td className="py-3 font-mono text-emerald-400">₹{fin.paid.toLocaleString()}</td>
+                              <td className="py-3 font-mono text-amber-400 font-bold">₹{fin.pending.toLocaleString()}</td>
+                              <td className="py-3">
+                                <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                  fin.committed === 0
+                                    ? 'bg-[#222] text-[#888] border-[#333]'
+                                    : fin.payoutStatus === 'paid'
+                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                }`}>
+                                  {fin.committed === 0 ? 'Barter' : fin.payoutStatus === 'paid' ? 'Paid Full' : 'Pending'}
+                                </span>
+                              </td>
+                              <td className="py-3 text-right">
+                                {fin.pending > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCreatorPayoutFromFinances(inf)}
+                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer"
+                                  >
+                                    Settle
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* LIVE WEBSITE PRICING & PITCH MEMORY MANAGER */}
       <div className="mb-6 sm:mb-8 bg-[#0a0a0a] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 relative overflow-hidden">
@@ -3565,6 +3766,124 @@ export default function AdminFinances() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Creator Payout Modal from Finances */}
+      {creatorPayoutModalData && (
+        <div 
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+          onClick={() => setCreatorPayoutModalData(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#101010] border border-[#2a2a2a] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                  Finances & Ledger
+                </span>
+                <h3 className="text-xl font-serif text-white font-bold">
+                  Settle Creator Payout
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreatorPayoutModalData(null)}
+                className="text-[#888] hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#161616] border border-[#252525] mb-5 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-[#888]">Creator:</span>
+                <span className="text-white font-bold">{creatorPayoutModalData.name} (@{creatorPayoutModalData.instagram_id})</span>
+              </div>
+              {(() => {
+                const fin = computeCreatorFinances(creatorPayoutModalData);
+                return (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-[#888]">Total Committed:</span>
+                      <span className="text-white font-mono font-bold">₹{fin.committed.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#888]">Paid So Far:</span>
+                      <span className="text-emerald-400 font-mono font-bold">₹{fin.paid.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-[#222]">
+                      <span className="text-amber-400 font-bold">Balance Owed:</span>
+                      <span className="text-amber-400 font-mono font-bold text-sm">₹{fin.pending.toLocaleString()}</span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <form onSubmit={handleConfirmCreatorPayoutFromFinances} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                  Disbursement Amount (₹) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={creatorPayoutAmt}
+                  onChange={(e) => setCreatorPayoutAmt(e.target.value)}
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                  Payment Method *
+                </label>
+                <select
+                  value={creatorPayoutMethod}
+                  onChange={(e) => setCreatorPayoutMethod(e.target.value)}
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
+                >
+                  <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
+                  <option value="Bank Transfer">Bank Transfer (IMPS / NEFT)</option>
+                  <option value="Cash">Cash in Hand</option>
+                  <option value="Barter Settled">Barter Settled</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                  Transaction Reference / UTR
+                </label>
+                <input
+                  type="text"
+                  value={creatorPayoutRef}
+                  onChange={(e) => setCreatorPayoutRef(e.target.value)}
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCreatorPayoutModalData(null)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCreatorPayout}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {savingCreatorPayout ? 'Recording...' : 'Mark as Paid'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

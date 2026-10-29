@@ -11,6 +11,11 @@ import {
 } from '../../utils/scheduleEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 import AddSpecialDeliverableModal from '../../components/admin/AddSpecialDeliverableModal';
+import { 
+  fetchCreatorOrders, 
+  saveCreatorOrder, 
+  updateCreatorOrderNegotiation 
+} from '../../utils/influencerEngine';
 
 export default function AdminDeliverables() {
   const [clientsList, setClientsList] = useState([]);
@@ -19,6 +24,19 @@ export default function AdminDeliverables() {
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('active'); // 'active' | 'pending' | 'all'
   const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'logging' | 'special'
+
+  // Deliverables View Switcher: Retainers vs Creator Orders
+  const [deliverablesMode, setDeliverablesMode] = useState('retainers'); // 'retainers' | 'creator_orders'
+  const [creatorOrdersList, setCreatorOrdersList] = useState([]);
+
+  // Negotiation Modal State
+  const [negotiationOrder, setNegotiationOrder] = useState(null);
+  const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('');
+  const [negotiatedReelsInput, setNegotiatedReelsInput] = useState(3);
+  const [negotiatedStatusInput, setNegotiatedStatusInput] = useState('approved');
+  const [negotiatedTermsInput, setNegotiatedTermsInput] = useState('100% On Agreement');
+  const [negotiatedNotesInput, setNegotiatedNotesInput] = useState('');
+  const [isSavingNegotiation, setIsSavingNegotiation] = useState(false);
 
   // Special Deliverables State
   const [isSpecialModalOpen, setIsSpecialModalOpen] = useState(false);
@@ -88,15 +106,60 @@ export default function AdminDeliverables() {
 
   useEffect(() => {
     fetchData();
+    loadCreatorOrders();
 
-    const handleRefresh = () => fetchData();
+    const handleRefresh = () => {
+      fetchData();
+      loadCreatorOrders();
+    };
     window.addEventListener('om_business_added', handleRefresh);
     window.addEventListener('om_special_deliverable_changed', handleRefresh);
+    window.addEventListener('om_creator_orders_changed', handleRefresh);
     return () => {
       window.removeEventListener('om_business_added', handleRefresh);
       window.removeEventListener('om_special_deliverable_changed', handleRefresh);
+      window.removeEventListener('om_creator_orders_changed', handleRefresh);
     };
   }, []);
+
+  const loadCreatorOrders = async () => {
+    try {
+      const orders = await fetchCreatorOrders();
+      setCreatorOrdersList(orders || []);
+    } catch (err) {
+      console.warn("Could not fetch creator orders:", err);
+    }
+  };
+
+  const handleOpenNegotiation = (order) => {
+    setNegotiationOrder(order);
+    setNegotiatedPriceInput(String(order.negotiated_price || order.proposed_budget || order.initial_quoted_price || ''));
+    setNegotiatedReelsInput(order.reels_count || 3);
+    setNegotiatedStatusInput(order.status || 'approved');
+    setNegotiatedTermsInput(order.payment_terms || '100% On Agreement');
+    setNegotiatedNotesInput(order.admin_notes || '');
+  };
+
+  const handleSaveNegotiation = async (e) => {
+    if (e) e.preventDefault();
+    if (!negotiationOrder) return;
+    setIsSavingNegotiation(true);
+    try {
+      await updateCreatorOrderNegotiation(negotiationOrder.id, {
+        negotiated_price: Number(negotiatedPriceInput || 0),
+        reels_count: parseInt(negotiatedReelsInput) || 3,
+        status: negotiatedStatusInput,
+        payment_terms: negotiatedTermsInput,
+        admin_notes: negotiatedNotesInput.trim()
+      });
+      setNegotiationOrder(null);
+      await loadCreatorOrders();
+    } catch (err) {
+      alert("Error saving negotiation: " + err.message);
+    } finally {
+      setIsSavingNegotiation(false);
+    }
+  };
 
   // When selectedClient changes, prefill their saved schedule configuration
   useEffect(() => {
@@ -476,7 +539,7 @@ export default function AdminDeliverables() {
   return (
     <div className="bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 sm:mb-8 gap-3 sm:gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 sm:mb-6 gap-3 sm:gap-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-serif text-white mb-1 sm:mb-2">Deliverables & Content Pipeline</h2>
           <p className="text-[#888] text-xs sm:text-sm">Configure launch dates, customize weekly upload intervals, and track delivered assets.</p>
@@ -493,7 +556,190 @@ export default function AdminDeliverables() {
         </div>
       </div>
 
-      {loading && clientsList.length === 0 ? (
+      {/* Pipeline View Mode Switcher: Retainers vs Creator Orders */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-2 rounded-2xl bg-[#0d0d0d] border border-[#222]">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setDeliverablesMode('retainers')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              deliverablesMode === 'retainers'
+                ? 'bg-[#3428f8] text-white shadow-md'
+                : 'text-[#888] hover:text-white'
+            }`}
+          >
+            Client Retainers & Schedules
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDeliverablesMode('creator_orders')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+              deliverablesMode === 'creator_orders'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-purple-300/80 hover:text-white'
+            }`}
+          >
+            <Sparkles size={14} />
+            <span>Creator Packs & Negotiations</span>
+            {creatorOrdersList.filter(o => o.status === 'negotiating').length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-mono font-bold">
+                {creatorOrdersList.filter(o => o.status === 'negotiating').length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {deliverablesMode === 'creator_orders' && (
+          <span className="text-xs text-[#888] pr-2">
+            {creatorOrdersList.length} Total Creator Orders Enrolled
+          </span>
+        )}
+      </div>
+
+      {deliverablesMode === 'creator_orders' ? (
+        <div className="flex flex-col gap-6 flex-1">
+          {/* Metrics row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-[#0a0a0a] border border-[#222] p-4 rounded-2xl">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#888] block mb-1">
+                Total Creator Orders
+              </span>
+              <span className="text-2xl font-bold font-mono text-white">{creatorOrdersList.length}</span>
+            </div>
+
+            <div className="bg-[#0a0a0a] border border-[#222] p-4 rounded-2xl">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-1">
+                In Negotiation
+              </span>
+              <span className="text-2xl font-bold font-mono text-amber-400">
+                {creatorOrdersList.filter(o => o.status === 'negotiating').length}
+              </span>
+            </div>
+
+            <div className="bg-[#0a0a0a] border border-[#222] p-4 rounded-2xl">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                Approved / Active
+              </span>
+              <span className="text-2xl font-bold font-mono text-emerald-400">
+                {creatorOrdersList.filter(o => o.status === 'approved' || o.status === 'active').length}
+              </span>
+            </div>
+
+            <div className="bg-[#0a0a0a] border border-[#222] p-4 rounded-2xl">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-1">
+                Total Deal Volume
+              </span>
+              <span className="text-2xl font-bold font-mono text-white">
+                ₹{creatorOrdersList.reduce((acc, o) => acc + Number(o.negotiated_price || 0), 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Orders Cards Grid */}
+          {creatorOrdersList.length === 0 ? (
+            <div className="bg-[#0a0a0a] border border-[#222] p-12 rounded-3xl text-center text-[#777] flex flex-col items-center justify-center">
+              <Video size={40} className="text-[#333] mb-3" />
+              <h4 className="text-white text-base font-bold mb-1">No Creator Pack Orders Yet</h4>
+              <p className="text-xs text-[#666] max-w-sm">
+                When customers book or negotiate a Creator Reels Pack on the Home page, their proposals will appear here for you to negotiate and lock terms.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {creatorOrdersList.map(order => {
+                const isNegotiating = order.status === 'negotiating';
+                return (
+                  <div
+                    key={order.id}
+                    className={`bg-[#0a0a0a] border p-5 rounded-2xl flex flex-col justify-between gap-4 transition-all ${
+                      isNegotiating ? 'border-amber-500/40' : 'border-[#222]'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-mono text-[#888] bg-[#161616] px-2 py-0.5 rounded border border-[#262626]">
+                          {order.order_number || order.id}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                          isNegotiating
+                            ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                            : order.status === 'approved'
+                            ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                            : order.status === 'active'
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                            : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                        }`}>
+                          {order.status}
+                        </span>
+                      </div>
+
+                      <h3 className="text-white font-bold text-base truncate mb-1">
+                        {order.business_name || 'Client Order'}
+                      </h3>
+                      <p className="text-xs text-[#888] mb-3">
+                        {order.contact_name} • {order.phone}
+                        {order.instagram_handle && (
+                          <span className="block text-[#aaa] mt-0.5 font-mono">@{order.instagram_handle}</span>
+                        )}
+                      </p>
+
+                      {/* Financial & Scope Box */}
+                      <div className="p-3 rounded-xl bg-[#121212] border border-[#222] space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-[#777]">Scope:</span>
+                          <span className="text-cyan-400 font-bold font-mono">{order.reels_count} Creator Reels</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#777]">Initial Quoted:</span>
+                          <span className="text-[#888] font-mono">₹{Number(order.initial_quoted_price || 0).toLocaleString()}</span>
+                        </div>
+                        {order.proposed_budget > 0 && order.proposed_budget !== order.initial_quoted_price && (
+                          <div className="flex justify-between">
+                            <span className="text-amber-400 font-bold">Client Offer:</span>
+                            <span className="text-amber-400 font-mono font-bold">₹{Number(order.proposed_budget).toLocaleString()}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between pt-1 border-t border-[#1f1f1f]">
+                          <span className="text-white font-bold">Agreed / Current:</span>
+                          <span className="text-emerald-400 font-mono font-bold text-sm">
+                            ₹{Number(order.negotiated_price || order.initial_quoted_price || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {order.client_notes && (
+                        <div className="mt-3 p-2.5 rounded-lg bg-[#141414] border border-[#1f1f1f] text-[11px] text-[#aaa]">
+                          <span className="text-[#666] block text-[9px] uppercase font-bold mb-0.5">Client Note:</span>
+                          {order.client_notes}
+                        </div>
+                      )}
+
+                      {order.admin_notes && (
+                        <div className="mt-2 p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300">
+                          <span className="text-purple-400 block text-[9px] uppercase font-bold mb-0.5">Admin Terms:</span>
+                          {order.admin_notes}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action: Negotiate */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenNegotiation(order)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-[#1e1e1e] hover:bg-purple-600 text-white border border-[#333] hover:border-purple-500 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit3 size={13} />
+                      {isNegotiating ? 'Negotiate & Lock Price' : 'Edit Agreed Terms'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+      loading && clientsList.length === 0 ? (
         <div className="flex justify-center items-center flex-1">
           <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3428f8]"></span>
         </div>
@@ -1320,7 +1566,7 @@ export default function AdminDeliverables() {
           </div>
 
         </div>
-      )}
+      ))}
 
       {/* Add Special Deliverable Modal */}
       {selectedClient?.latestOrder && (
@@ -1331,6 +1577,153 @@ export default function AdminDeliverables() {
           initialOrder={selectedClient.latestOrder}
           onSuccess={() => fetchData()}
         />
+      )}
+
+      {/* Negotiation & Terms Editor Modal */}
+      {negotiationOrder && (
+        <div 
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+          onClick={() => setNegotiationOrder(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#101010] border border-[#2a2a2a] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block">
+                  Proposal Management
+                </span>
+                <h3 className="text-xl font-serif text-white font-bold">
+                  Negotiate Creator Pack
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNegotiationOrder(null)}
+                className="text-[#888] hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-[#161616] border border-[#252525] mb-4 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-[#888]">Business:</span>
+                <span className="text-white font-bold">{negotiationOrder.business_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#888]">Contact:</span>
+                <span className="text-white">{negotiationOrder.contact_name} ({negotiationOrder.phone})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#888]">Original Quote:</span>
+                <span className="text-[#aaa] font-mono">₹{Number(negotiationOrder.initial_quoted_price).toLocaleString()}</span>
+              </div>
+              {negotiationOrder.proposed_budget > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-amber-400 font-bold">Client Offer:</span>
+                  <span className="text-amber-400 font-mono font-bold">₹{Number(negotiationOrder.proposed_budget).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveNegotiation} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                  Agreed Package Price (₹) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="500"
+                  value={negotiatedPriceInput}
+                  onChange={(e) => setNegotiatedPriceInput(e.target.value)}
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-purple-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                    Reels Allocated *
+                  </label>
+                  <input
+                    type="number"
+                    min="3"
+                    max="50"
+                    required
+                    value={negotiatedReelsInput}
+                    onChange={(e) => setNegotiatedReelsInput(e.target.value)}
+                    className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-purple-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                    Order Status *
+                  </label>
+                  <select
+                    value={negotiatedStatusInput}
+                    onChange={(e) => setNegotiatedStatusInput(e.target.value)}
+                    className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-purple-500 outline-none"
+                  >
+                    <option value="negotiating">Negotiating</option>
+                    <option value="approved">Approved</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                  Payment Milestone Terms
+                </label>
+                <select
+                  value={negotiatedTermsInput}
+                  onChange={(e) => setNegotiatedTermsInput(e.target.value)}
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-purple-500 outline-none"
+                >
+                  <option value="100% On Agreement">100% On Agreement</option>
+                  <option value="50% Advance / 50% On Delivery">50% Advance / 50% On Delivery</option>
+                  <option value="33% x 3 Milestones">33% x 3 Milestones</option>
+                  <option value="Post-Delivery">Post-Delivery</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                  Negotiation Notes / Contract Specifics
+                </label>
+                <textarea
+                  rows="2"
+                  value={negotiatedNotesInput}
+                  onChange={(e) => setNegotiatedNotesInput(e.target.value)}
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-purple-500 outline-none resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setNegotiationOrder(null)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingNegotiation}
+                  className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingNegotiation ? 'Saving...' : 'Lock & Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
