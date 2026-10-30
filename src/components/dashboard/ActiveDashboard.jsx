@@ -529,6 +529,11 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                             <span className={`text-[9px] px-2 py-0.5 rounded border font-bold uppercase tracking-wider ${typeBadge.color}`}>
                               {typeBadge.label}
                             </span>
+                            {(item.title && (item.title.toLowerCase().includes('instead of') || item.title.toLowerCase().includes('swapped'))) && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                ⚡ Swapped Format
+                              </span>
+                            )}
                             <span className="text-[10px] text-[#666] font-mono">
                               {item.published_at
                                 ? new Date(item.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })

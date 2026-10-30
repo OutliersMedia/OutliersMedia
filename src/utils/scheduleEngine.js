@@ -359,10 +359,13 @@ export function matchPostsToScheduleSlots(schedule, orderPosts = []) {
     ...slot,
     _slotIndex: index,
     _dateKey: toLocalDateKey(slot.date),
+    originalType: slot.type,
     delivered: false,
     matchedPost: null,
     postLogId: null,
-    deliveredTitle: null
+    deliveredTitle: null,
+    deliveredType: slot.type,
+    isSwapped: false
   }));
 
   // Pass 1: Exact Date + Type Match
@@ -379,6 +382,28 @@ export function matchPostsToScheduleSlots(schedule, orderPosts = []) {
       slot.matchedPost = exactPost;
       slot.postLogId = exactPost.id;
       slot.deliveredTitle = exactPost.title;
+      slot.deliveredType = exactPost.post_type || slot.type;
+    }
+  }
+
+  // Pass 1.5: Exact Date Match with Swapped Deliverable Type (e.g. client wanted a Reel instead of a Post on this date)
+  for (const slot of slotsWithMeta) {
+    if (slot.delivered) continue;
+    const sameDatePost = sortedPosts.find(
+      p =>
+        !usedPostIds.has(p.id) &&
+        toLocalDateKey(p.published_at) === slot._dateKey
+    );
+    if (sameDatePost) {
+      usedPostIds.add(sameDatePost.id);
+      slot.delivered = true;
+      slot.matchedPost = sameDatePost;
+      slot.postLogId = sameDatePost.id;
+      slot.deliveredTitle = sameDatePost.title;
+      slot.deliveredType = sameDatePost.post_type || slot.type;
+      slot.isSwapped = (sameDatePost.post_type !== slot.originalType);
+      slot.swappedFrom = slot.originalType;
+      slot.type = sameDatePost.post_type; // display with actual delivered format on calendar
     }
   }
 
@@ -395,9 +420,34 @@ export function matchPostsToScheduleSlots(schedule, orderPosts = []) {
       candidateSlot.matchedPost = post;
       candidateSlot.postLogId = post.id;
       candidateSlot.deliveredTitle = post.title;
+      candidateSlot.deliveredType = pType;
     }
   }
 
+  // Pass 3: Append any custom deliverable posts added by admin that didn't correspond to any scheduled slot
+  for (const post of sortedPosts) {
+    if (usedPostIds.has(post.id)) continue;
+    usedPostIds.add(post.id);
+    const postDate = new Date(post.published_at || post.created_at || Date.now());
+    slotsWithMeta.push({
+      type: post.post_type || 'static',
+      originalType: post.post_type || 'static',
+      time: 'Custom Deliverable',
+      note: post.title,
+      date: postDate,
+      _dateKey: toLocalDateKey(postDate),
+      delivered: true,
+      isCustomDeliverable: true,
+      matchedPost: post,
+      postLogId: post.id,
+      deliveredTitle: post.title,
+      deliveredType: post.post_type || 'static',
+      isSwapped: false
+    });
+  }
+
+  // Sort chronologically
+  slotsWithMeta.sort((a, b) => new Date(a.date) - new Date(b.date));
   return slotsWithMeta;
 }
 

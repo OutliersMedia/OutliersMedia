@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Users, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Flame, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase, CreditCard } from 'lucide-react';
+import { TrendingUp, Users, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Flame, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase, CreditCard, Edit3 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
-import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable } from '../../utils/scheduleEngine';
+import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable, toLocalDateKey } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
 
@@ -33,18 +33,44 @@ export default function AdminOverview() {
   // Calendar Event Card Popup state
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [eventTitle, setEventTitle] = useState('');
+  const [eventPostType, setEventPostType] = useState('static');
+  const [eventSwapNote, setEventSwapNote] = useState('');
   const [isSubmittingWork, setIsSubmittingWork] = useState(false);
   const [isRevertingWork, setIsRevertingWork] = useState(false);
 
+  // Edit Already Delivered Event state
+  const [isEditingDelivered, setIsEditingDelivered] = useState(false);
+  const [editDeliveredType, setEditDeliveredType] = useState('static');
+  const [editDeliveredTitle, setEditDeliveredTitle] = useState('');
+  const [editDeliveredSwapNote, setEditDeliveredSwapNote] = useState('');
+  const [isSavingEditDelivered, setIsSavingEditDelivered] = useState(false);
+
+  // Custom Deliverable Adder state
+  const [isAddCustomModalOpen, setIsAddCustomModalOpen] = useState(false);
+  const [customDate, setCustomDate] = useState('');
+  const [customOrderId, setCustomOrderId] = useState('');
+  const [customType, setCustomType] = useState('reel');
+  const [customTitle, setCustomTitle] = useState('');
+  const [customSwapNote, setCustomSwapNote] = useState('');
+  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
+
   const handleOpenEvent = (ev) => {
     setSelectedEvent(ev);
-    const cfg = TYPE_CONFIG[ev.type] || TYPE_CONFIG.static;
+    setIsEditingDelivered(false);
+    const initialType = ev.deliveredType || (['static', 'reel', 'story', 'poster'].includes(ev.type) ? ev.type : 'static');
+    setEventPostType(initialType);
+    setEditDeliveredType(initialType);
+    setEventSwapNote('');
+    setEditDeliveredSwapNote('');
+
+    const cfg = TYPE_CONFIG[initialType] || TYPE_CONFIG.static;
     const defaultTitle = ev.deliveredTitle
       ? ev.deliveredTitle
       : ev.note 
       ? `${cfg.label} — ${ev.note}` 
       : `${cfg.label} Delivery (${new Date(ev.date).toLocaleDateString('en-IN')})`;
     setEventTitle(defaultTitle);
+    setEditDeliveredTitle(ev.deliveredTitle || defaultTitle);
   };
 
   const handleMarkDelivered = async (e) => {
@@ -52,10 +78,9 @@ export default function AdminOverview() {
     if (!selectedEvent) return;
     setIsSubmittingWork(true);
 
-    // Include 'story' so Story events are logged with post_type='story' (not 'static')
-    const postType = ['static', 'reel', 'story', 'poster'].includes(selectedEvent.type) 
-      ? selectedEvent.type 
-      : 'static';
+    const postType = ['static', 'reel', 'story', 'poster'].includes(eventPostType) 
+      ? eventPostType 
+      : (['static', 'reel', 'story', 'poster'].includes(selectedEvent.type) ? selectedEvent.type : 'static');
 
     // Anchor published_at to the exact calendar slot date (at 12:00 local time) so it matches this exact date slot
     const slotD = new Date(selectedEvent.date);
@@ -66,7 +91,10 @@ export default function AdminOverview() {
       12, 0, 0
     ).toISOString();
 
-    const deliverableTitle = eventTitle.trim() || `${TYPE_CONFIG[selectedEvent.type]?.label || 'Deliverable'}`;
+    let deliverableTitle = eventTitle.trim() || `${TYPE_CONFIG[postType]?.label || 'Deliverable'}`;
+    if (eventSwapNote.trim() && !deliverableTitle.includes(eventSwapNote.trim())) {
+      deliverableTitle = `${deliverableTitle} (${eventSwapNote.trim()})`;
+    }
 
     const { error } = await supabase.from('posts_log').insert([{
       order_id: selectedEvent.orderId,
@@ -123,13 +151,142 @@ export default function AdminOverview() {
         console.warn("Could not dispatch deliverable push notification:", pushErr);
       }
 
-      setQuickLogSuccess(`✓ Submitted "${deliverableTitle}" for ${new Date(selectedEvent.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} & pushed live to ${clientDisplayName}!`);
+      setQuickLogSuccess(`✓ Submitted "${deliverableTitle}" as ${formattedType} for ${new Date(selectedEvent.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} & pushed live to ${clientDisplayName}!`);
       setTimeout(() => setQuickLogSuccess(null), 5000);
 
       await fetchAll();
       setSelectedEvent(null);
     }
     setIsSubmittingWork(false);
+  };
+
+  const handleSaveEditDelivered = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedEvent?.postLogId || !editDeliveredTitle.trim()) return;
+    setIsSavingEditDelivered(true);
+
+    try {
+      let finalTitle = editDeliveredTitle.trim();
+      if (editDeliveredSwapNote.trim() && !finalTitle.includes(editDeliveredSwapNote.trim())) {
+        finalTitle = `${finalTitle} (${editDeliveredSwapNote.trim()})`;
+      }
+
+      const { error } = await supabase
+        .from('posts_log')
+        .update({
+          post_type: editDeliveredType,
+          title: finalTitle
+        })
+        .eq('id', selectedEvent.postLogId);
+
+      if (error) {
+        alert("Failed to update deliverable: " + error.message);
+        setIsSavingEditDelivered(false);
+        return;
+      }
+
+      await broadcastDeliverablesSync({
+        orderId: selectedEvent.orderId,
+        action: 'edit',
+        postLogId: selectedEvent.postLogId,
+        postType: editDeliveredType,
+        title: finalTitle
+      });
+
+      setQuickLogSuccess(`✓ Deliverable updated! Swapped format to ${editDeliveredType.toUpperCase()} & synchronized live.`);
+      setTimeout(() => setQuickLogSuccess(null), 5000);
+
+      await fetchAll();
+      setIsEditingDelivered(false);
+      setSelectedEvent(null);
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingEditDelivered(false);
+    }
+  };
+
+  const handleOpenAddCustomDeliverable = (initialDateStr) => {
+    const defaultDate = initialDateStr || toLocalDateKey(new Date());
+    setCustomDate(defaultDate);
+    setCustomOrderId(activeOrders[0]?.order_id || '');
+    setCustomType('reel');
+    setCustomTitle('');
+    setCustomSwapNote('');
+    setIsAddCustomModalOpen(true);
+  };
+
+  const handleSaveCustomDeliverable = async (e) => {
+    if (e) e.preventDefault();
+    if (!customOrderId || !customTitle.trim() || !customDate) {
+      alert("Please select a client, date, and enter a title.");
+      return;
+    }
+
+    setIsSubmittingCustom(true);
+    try {
+      const parts = customDate.split('-');
+      const targetPublishedAt = new Date(
+        parseInt(parts[0], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[2], 10),
+        12, 0, 0
+      ).toISOString();
+
+      let finalTitle = customTitle.trim();
+      if (customSwapNote.trim() && !finalTitle.includes(customSwapNote.trim())) {
+        finalTitle = `${finalTitle} (${customSwapNote.trim()})`;
+      }
+
+      const { error } = await supabase.from('posts_log').insert([{
+        order_id: customOrderId,
+        post_type: customType,
+        title: finalTitle,
+        published_at: targetPublishedAt
+      }]);
+
+      if (error) {
+        alert("Error saving custom deliverable: " + error.message);
+        setIsSubmittingCustom(false);
+        return;
+      }
+
+      const targetOrder = activeOrders.find(o => o.order_id === customOrderId);
+      const targetUserId = targetOrder?.client_id;
+      const clientDisplayName = targetOrder?.clientName || 'Client';
+      const formattedType = customType.toUpperCase();
+
+      await broadcastDeliverablesSync({
+        orderId: customOrderId,
+        action: 'submit',
+        postType: customType,
+        title: finalTitle
+      });
+
+      try {
+        await dispatchPushNotification({
+          targetUserId,
+          targetClientName: clientDisplayName,
+          title: finalTitle,
+          body: `🚀 New ${formattedType} deliverable is now live on your Outliers Media dashboard.`,
+          url: '/dashboard',
+          isGlobal: false,
+          postType: customType
+        });
+      } catch (pushErr) {
+        console.warn("Could not dispatch push notification:", pushErr);
+      }
+
+      setQuickLogSuccess(`✓ Custom ${formattedType} deliverable added for ${clientDisplayName} on ${customDate}!`);
+      setTimeout(() => setQuickLogSuccess(null), 5000);
+
+      setIsAddCustomModalOpen(false);
+      await fetchAll();
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSubmittingCustom(false);
+    }
   };
 
   // Revert (Undo) a submitted deliverable and push live changes to Client Dashboard
@@ -392,6 +549,10 @@ export default function AdminOverview() {
         events.push({
           date: slot.date,
           type: slot.type,
+          originalType: slot.originalType || slot.type,
+          isSwapped: Boolean(slot.isSwapped),
+          swappedFrom: slot.swappedFrom || null,
+          isCustomDeliverable: Boolean(slot.isCustomDeliverable),
           time: slot.time,
           note: slot.note,
           clientName,
@@ -400,6 +561,7 @@ export default function AdminOverview() {
           delivered,
           postLogId: slot.postLogId || null,
           deliveredTitle: slot.deliveredTitle || null,
+          deliveredType: slot.deliveredType || slot.type,
           matchedPost: slot.matchedPost || null,
           isOverdue: !delivered && slotDate < today && ['static', 'reel', 'poster', 'story'].includes(slot.type)
         });
@@ -712,12 +874,25 @@ export default function AdminOverview() {
         >
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 sm:gap-4 mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-serif text-white">Agency Master Calendar</h2>
-            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#888]">
-              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#3428f8]"></div> Static</span>
-              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Reel</span>
-              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400"></div> Stories</span>
-              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400"></div> Special</span>
+            <div>
+              <h2 className="text-lg sm:text-xl font-serif text-white">Agency Master Calendar</h2>
+              <p className="text-[11px] text-[#666] mt-0.5">Track, edit, swap formats, or add custom deliverables directly.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#888]">
+                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#3428f8]"></div> Static</span>
+                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Reel</span>
+                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400"></div> Stories</span>
+                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400"></div> Special</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenAddCustomDeliverable()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#3428f8] hover:bg-[#2d23c9] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                title="Add custom deliverable for any client on this calendar"
+              >
+                <Plus size={14} /> Add Deliverable
+              </button>
             </div>
           </div>
 
@@ -746,13 +921,28 @@ export default function AdminOverview() {
 
               const dayEvents = getEventsForDay(day);
               const isToday = todayDate.getFullYear() === year && todayDate.getMonth() === month && todayDate.getDate() === day;
+              const cellDateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
               return (
                 <div
                   key={day}
-                  className={`min-h-[68px] sm:min-h-[85px] p-1 sm:p-1.5 rounded-lg border transition-colors ${isToday ? 'border-[#3428f8] bg-[#3428f8]/5' : 'border-[#1a1a1a] hover:border-[#333]'}`}
+                  onClick={() => handleOpenAddCustomDeliverable(cellDateKey)}
+                  className={`min-h-[68px] sm:min-h-[85px] p-1 sm:p-1.5 rounded-lg border transition-colors group relative cursor-pointer ${isToday ? 'border-[#3428f8] bg-[#3428f8]/5' : 'border-[#1a1a1a] hover:border-[#333]'}`}
                 >
-                  <div className={`text-[10px] font-bold mb-1 ${isToday ? 'text-[#3428f8]' : 'text-[#666]'}`}>{day}</div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className={`text-[10px] font-bold ${isToday ? 'text-[#3428f8]' : 'text-[#666]'}`}>{day}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenAddCustomDeliverable(cellDateKey);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-[10px] text-blue-400 hover:text-white font-bold px-1 rounded hover:bg-[#222] transition-opacity"
+                      title="Add deliverable on this date"
+                    >
+                      +
+                    </button>
+                  </div>
                   <div className="flex flex-col gap-0.5">
                     {dayEvents.slice(0, 3).map((ev, evIdx) => {
                       const cfg = TYPE_CONFIG[ev.type] || TYPE_CONFIG.static;
@@ -764,8 +954,8 @@ export default function AdminOverview() {
                             e.stopPropagation();
                             handleOpenEvent(ev);
                           }}
-                          title={`${ev.clientName} — ${cfg.label} @ ${ev.time || 'N/A'}${ev.note ? `\n🎯 ${ev.note}` : ''}${ev.delivered ? '\n✓ DELIVERED' : ev.isOverdue ? '\n⚠ OVERDUE' : ''}\n(Click to view details & submit)`}
-                          className={`text-[8px] px-1 py-0.5 rounded truncate font-bold uppercase tracking-tight sm:tracking-wider cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
+                          title={`${ev.clientName} — ${cfg.label} @ ${ev.time || 'N/A'}${ev.isSwapped ? `\n⚡ SWAPPED: ${ev.type.toUpperCase()} (was ${ev.swappedFrom || 'Post'})` : ''}${ev.note ? `\n🎯 ${ev.note}` : ''}${ev.delivered ? '\n✓ DELIVERED' : ev.isOverdue ? '\n⚠ OVERDUE' : ''}\n(Click to view, edit or swap)`}
+                          className={`text-[8px] px-1 py-0.5 rounded truncate font-bold uppercase tracking-tight sm:tracking-wider cursor-pointer hover:opacity-80 active:scale-95 transition-all flex items-center gap-0.5 ${
                             ev.delivered
                               ? 'bg-[#222] text-[#555] line-through'
                               : ev.isOverdue
@@ -773,8 +963,9 @@ export default function AdminOverview() {
                               : `${cfg.bg}/20 ${cfg.color} hover:ring-1 hover:ring-[#3428f8]/40`
                           }`}
                         >
+                          {ev.isSwapped && <span className="text-amber-400 font-bold">⚡</span>}
                           <span className="hidden sm:inline">{ev.clientName.split(' ')[0]}: </span>
-                          {cfg.shortLabel || cfg.label}
+                          <span>{cfg.shortLabel || cfg.label}</span>
                           <span className="hidden md:inline">{timeSnippet}</span>
                         </div>
                       );
@@ -1516,9 +1707,42 @@ export default function AdminOverview() {
                 </div>
               ) : !selectedEvent.delivered ? (
                 <form onSubmit={handleMarkDelivered} className="flex flex-col gap-4">
+                  {/* Format Selector for Fulfilling this Slot */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
-                      Deliverable Title / Caption
+                      Deliverable Format
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#090909] rounded-xl border border-[#222]">
+                      {[
+                        { id: 'static', label: 'Static Post' },
+                        { id: 'reel', label: 'Reel' },
+                        { id: 'story', label: 'Story' },
+                        { id: 'poster', label: 'Poster' }
+                      ].map(fmt => (
+                        <button
+                          key={fmt.id}
+                          type="button"
+                          onClick={() => setEventPostType(fmt.id)}
+                          className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                            eventPostType === fmt.id
+                              ? 'bg-[#3428f8] text-white shadow-sm'
+                              : 'text-[#777] hover:text-white'
+                          }`}
+                        >
+                          {fmt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {eventPostType !== selectedEvent.type && (
+                      <div className="mt-2 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/25 text-[11px] text-blue-300 flex items-center gap-1.5">
+                        <span>⚡ Format Swapped: Will fulfill this slot as <strong>{TYPE_CONFIG[eventPostType]?.label}</strong> instead of scheduled {TYPE_CONFIG[selectedEvent.type]?.label}.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Deliverable Title / Caption *
                     </label>
                     <input 
                       type="text"
@@ -1529,19 +1753,31 @@ export default function AdminOverview() {
                     />
                   </div>
 
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Swap / Client Note (Optional)
+                    </label>
+                    <input 
+                      type="text"
+                      value={eventSwapNote}
+                      onChange={(e) => setEventSwapNote(e.target.value)}
+                      className="w-full bg-[#0a0a0a] border border-[#222] p-2.5 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                    />
+                  </div>
+
                   {/* Two Buttons: Close and Submit */}
                   <div className="grid grid-cols-2 gap-3 mt-1">
                     <button
                       type="button"
                       onClick={() => setSelectedEvent(null)}
-                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222]"
+                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
                     >
                       Close
                     </button>
                     <button
                       type="submit"
                       disabled={isSubmittingWork || !eventTitle}
-                      className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5"
+                      className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       {isSubmittingWork ? (
                         <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></span>
@@ -1551,12 +1787,107 @@ export default function AdminOverview() {
                     </button>
                   </div>
                 </form>
+              ) : isEditingDelivered ? (
+                <form onSubmit={handleSaveEditDelivered} className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#222]">
+                    <span className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                      <Edit3 size={13} /> Edit Deliverable & Swap Format
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingDelivered(false)}
+                      className="text-xs text-[#777] hover:text-white cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Select Format (Swap Post ↔ Reel ↔ Story)
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#090909] rounded-xl border border-[#222]">
+                      {[
+                        { id: 'static', label: 'Static Post' },
+                        { id: 'reel', label: 'Reel' },
+                        { id: 'story', label: 'Story' },
+                        { id: 'poster', label: 'Poster' }
+                      ].map(fmt => (
+                        <button
+                          key={fmt.id}
+                          type="button"
+                          onClick={() => setEditDeliveredType(fmt.id)}
+                          className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                            editDeliveredType === fmt.id
+                              ? 'bg-[#3428f8] text-white shadow-sm'
+                              : 'text-[#777] hover:text-white'
+                          }`}
+                        >
+                          {fmt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Deliverable Title *
+                    </label>
+                    <input 
+                      type="text"
+                      value={editDeliveredTitle}
+                      onChange={(e) => setEditDeliveredTitle(e.target.value)}
+                      required
+                      className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Swap / Client Reason (e.g. Delivered Reel instead of Post)
+                    </label>
+                    <input 
+                      type="text"
+                      value={editDeliveredSwapNote}
+                      onChange={(e) => setEditDeliveredSwapNote(e.target.value)}
+                      className="w-full bg-[#0a0a0a] border border-[#222] p-2.5 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingDelivered(false)}
+                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingEditDelivered || !editDeliveredTitle.trim()}
+                      className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {isSavingEditDelivered ? (
+                        <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></span>
+                      ) : (
+                        <><Check size={14} /> Save Changes</>
+                      )}
+                    </button>
+                  </div>
+                </form>
               ) : (
                 <div className="flex flex-col gap-4">
                   <div className="bg-green-500/10 border border-green-500/20 p-3.5 rounded-xl flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle size={16} className="text-green-400 shrink-0" />
-                      <span className="text-green-400 text-xs font-bold">Deliverable Submitted & Live</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle size={16} className="text-green-400 shrink-0" />
+                        <span className="text-green-400 text-xs font-bold">Deliverable Submitted & Live</span>
+                      </div>
+                      {selectedEvent.isSwapped && (
+                        <span className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">
+                          ⚡ Swapped: {selectedEvent.type.toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     {selectedEvent.deliveredTitle && (
                       <p className="text-white text-xs font-medium pl-6">
@@ -1565,13 +1896,21 @@ export default function AdminOverview() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setSelectedEvent(null)}
-                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222]"
+                      className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
                     >
                       Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingDelivered(true)}
+                      className="w-full bg-[#3428f8] hover:bg-[#2d23c9] text-white p-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      title="Edit deliverable format or swap type"
+                    >
+                      <Edit3 size={12} /> Edit / Swap
                     </button>
                     <button
                       type="button"
@@ -1580,17 +1919,158 @@ export default function AdminOverview() {
                         orderId: selectedEvent.orderId,
                         title: selectedEvent.deliveredTitle
                       })}
-                      className="w-full bg-red-500/15 hover:bg-red-500/25 disabled:opacity-50 text-red-400 border border-red-500/30 p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5"
+                      className="w-full bg-red-500/15 hover:bg-red-500/25 disabled:opacity-50 text-red-400 border border-red-500/30 p-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
                     >
                       {isRevertingWork ? (
                         <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-red-400"></span>
                       ) : (
-                        <><RotateCcw size={14} /> Revert Submission</>
+                        <><RotateCcw size={12} /> Revert</>
                       )}
                     </button>
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Deliverable Adder Modal */}
+      <AnimatePresence>
+        {isAddCustomModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setIsAddCustomModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111] border border-[#2a2a2a] rounded-2xl p-6 max-w-lg w-full shadow-2xl relative"
+            >
+              <div className="flex justify-between items-center pb-3 border-b border-[#222] mb-4">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 block">Custom Deliverable Adder</span>
+                  <h3 className="text-white text-base font-bold mt-0.5">Add Deliverable Directly to Calendar</h3>
+                </div>
+                <button
+                  onClick={() => setIsAddCustomModalOpen(false)}
+                  className="text-[#666] hover:text-white p-1 rounded-lg hover:bg-[#222] transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveCustomDeliverable} className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Target Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => setCustomDate(e.target.value)}
+                      required
+                      className="w-full bg-[#0a0a0a] border border-[#222] p-2.5 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                      Client / Order *
+                    </label>
+                    <select
+                      value={customOrderId}
+                      onChange={(e) => setCustomOrderId(e.target.value)}
+                      required
+                      className="w-full bg-[#0a0a0a] border border-[#222] p-2.5 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none"
+                    >
+                      <option value="">Select a client...</option>
+                      {activeOrders.map(ord => (
+                        <option key={ord.order_id} value={ord.order_id}>
+                          {ord.clientName} ({ord.business_name || ord.plan_name})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                    Deliverable Format *
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#090909] rounded-xl border border-[#222]">
+                    {[
+                      { id: 'reel', label: 'Reel / Short' },
+                      { id: 'static', label: 'Static Post' },
+                      { id: 'story', label: 'Story' },
+                      { id: 'poster', label: 'Poster' }
+                    ].map(fmt => (
+                      <button
+                        key={fmt.id}
+                        type="button"
+                        onClick={() => setCustomType(fmt.id)}
+                        className={`py-2 px-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                          customType === fmt.id
+                            ? 'bg-[#3428f8] text-white shadow-sm'
+                            : 'text-[#777] hover:text-white'
+                        }`}
+                      >
+                        {fmt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                    Deliverable Title / Description *
+                  </label>
+                  <input
+                    type="text"
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value)}
+                    required
+                    className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                    Swap / Special Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={customSwapNote}
+                    onChange={(e) => setCustomSwapNote(e.target.value)}
+                    className="w-full bg-[#0a0a0a] border border-[#222] p-2.5 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCustomModalOpen(false)}
+                    className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingCustom || !customOrderId || !customTitle.trim()}
+                    className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {isSubmittingCustom ? (
+                      <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></span>
+                    ) : (
+                      <><Plus size={14} /> Add Deliverable</>
+                    )}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

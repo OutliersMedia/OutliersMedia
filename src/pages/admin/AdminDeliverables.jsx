@@ -3,7 +3,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { 
   Search, Image as ImageIcon, Video, Layout, Plus, CheckCircle, Clock, 
   Calendar as CalendarIcon, Flame, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw, Briefcase,
-  Star, Globe, ExternalLink, Trash2, IndianRupee, Link as LinkIcon
+  Star, Globe, ExternalLink, Trash2, IndianRupee, Link as LinkIcon, Edit3, X
 } from 'lucide-react';
 import { 
   getClientSchedule, saveClientSchedule, generateCustomSchedule, TYPE_CONFIG, broadcastDeliverablesSync,
@@ -59,6 +59,13 @@ export default function AdminDeliverables() {
   const [postTitle, setPostTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [revertingId, setRevertingId] = useState(null);
+
+  // Edit Logged Deliverable State
+  const [editingPost, setEditingPost] = useState(null);
+  const [editingPostType, setEditingPostType] = useState('static');
+  const [editingPostTitle, setEditingPostTitle] = useState('');
+  const [editingSwapNote, setEditingSwapNote] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Dedicated refs for right panel scrolling isolation
   const rightPanelContainerRef = useRef(null);
@@ -486,6 +493,61 @@ export default function AdminDeliverables() {
 
     await fetchData();
     setRevertingId(null);
+  };
+
+  const handleOpenEditDeliverable = (post) => {
+    setEditingPost(post);
+    setEditingPostType(post.post_type || 'static');
+    setEditingPostTitle(post.title || '');
+    setEditingSwapNote('');
+  };
+
+  const handleSaveEditDeliverable = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingPost || !editingPostTitle.trim()) return;
+
+    setIsSavingEdit(true);
+    try {
+      let finalTitle = editingPostTitle.trim();
+      if (editingSwapNote.trim() && !finalTitle.includes(editingSwapNote.trim())) {
+        finalTitle = `${finalTitle} (${editingSwapNote.trim()})`;
+      }
+
+      const { error } = await supabase
+        .from('posts_log')
+        .update({
+          post_type: editingPostType,
+          title: finalTitle
+        })
+        .eq('id', editingPost.id);
+
+      if (error) {
+        alert("Error updating deliverable: " + error.message);
+        setIsSavingEdit(false);
+        return;
+      }
+
+      try {
+        await broadcastDeliverablesSync({
+          action: 'edit',
+          orderId: editingPost.order_id,
+          postLogId: editingPost.id,
+          newType: editingPostType,
+          newTitle: finalTitle
+        });
+      } catch (err) {
+        console.warn("Realtime broadcast error:", err);
+      }
+
+      setScheduleSavedSuccess(`Deliverable updated to ${editingPostType.toUpperCase()}! Counts synchronized live.`);
+      setTimeout(() => setScheduleSavedSuccess(null), 4000);
+      setEditingPost(null);
+      await fetchData();
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const handleToggleSpecialPayment = async (deliverable) => {
@@ -1339,24 +1401,39 @@ export default function AdminDeliverables() {
                                       <p className="text-white text-sm truncate">{post.title}</p>
                                       <div className="flex items-center gap-2 mt-1">
                                         <span className="text-[#666] text-[9px] font-bold uppercase tracking-widest">{post.post_type}</span>
+                                        {(post.title.includes('(') && (post.title.toLowerCase().includes('instead of') || post.title.toLowerCase().includes('swapped') || post.title.toLowerCase().includes('reel') || post.title.toLowerCase().includes('post'))) && (
+                                          <span className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                                            ⚡ Swapped
+                                          </span>
+                                        )}
                                         <span className="text-[#444] text-[9px] flex items-center gap-1">
                                           <Clock size={10} /> {new Date(post.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                         </span>
                                       </div>
                                     </div>
-                                    <button
-                                      type="button"
-                                      disabled={revertingId === post.id}
-                                      onClick={() => handleRevertDeliverable(post)}
-                                      className="shrink-0 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 text-red-400 border border-red-500/25 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all"
-                                      title="Revert this submission and update client live"
-                                    >
-                                      {revertingId === post.id ? (
-                                        <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
-                                      ) : (
-                                        <><RotateCcw size={11} /> Revert</>
-                                      )}
-                                    </button>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenEditDeliverable(post)}
+                                        className="bg-[#1e1e1e] hover:bg-[#2a2a2a] text-blue-400 hover:text-white border border-[#333] px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                                        title="Edit deliverable format (e.g. swap to Reel) or title"
+                                      >
+                                        <Edit3 size={11} /> Edit / Swap
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={revertingId === post.id}
+                                        onClick={() => handleRevertDeliverable(post)}
+                                        className="bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 text-red-400 border border-red-500/25 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                                        title="Revert this submission and update client live"
+                                      >
+                                        {revertingId === post.id ? (
+                                          <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
+                                        ) : (
+                                          <><RotateCcw size={11} /> Revert</>
+                                        )}
+                                      </button>
+                                    </div>
                                   </div>
                                 );
                               })
@@ -1719,6 +1796,112 @@ export default function AdminDeliverables() {
                   className="flex-1 py-3 px-4 rounded-xl bg-[#3428f8] hover:bg-[#2d23c9] text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSavingNegotiation ? 'Saving...' : 'Lock & Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Deliverable & Swap Format Modal */}
+      {editingPost && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setEditingPost(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#111] border border-[#2a2a2a] rounded-2xl p-6 max-w-md w-full shadow-2xl relative"
+          >
+            <div className="flex justify-between items-center pb-3 border-b border-[#222] mb-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 block">Deliverable Editor</span>
+                <h3 className="text-white text-base font-bold mt-0.5">Edit Deliverable & Swap Format</h3>
+              </div>
+              <button
+                onClick={() => setEditingPost(null)}
+                className="text-[#666] hover:text-white p-1 rounded-lg hover:bg-[#222] transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditDeliverable} className="flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                  Select Format (Swap Post ↔ Reel ↔ Story)
+                </label>
+                <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#090909] rounded-xl border border-[#222]">
+                  {[
+                    { id: 'static', label: 'Static Post' },
+                    { id: 'reel', label: 'Reel' },
+                    { id: 'story', label: 'Story' },
+                    { id: 'poster', label: 'Poster' }
+                  ].map(fmt => (
+                    <button
+                      key={fmt.id}
+                      type="button"
+                      onClick={() => setEditingPostType(fmt.id)}
+                      className={`py-2 px-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                        editingPostType === fmt.id
+                          ? 'bg-[#3428f8] text-white shadow-sm'
+                          : 'text-[#777] hover:text-white'
+                      }`}
+                    >
+                      {fmt.label}
+                    </button>
+                  ))}
+                </div>
+                {editingPost.post_type !== editingPostType && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/25 text-[11px] text-blue-300">
+                    ⚡ Swapping format from <strong>{editingPost.post_type.toUpperCase()}</strong> to <strong>{editingPostType.toUpperCase()}</strong>. This will automatically adjust the overall deliverables tally.
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                  Deliverable Title *
+                </label>
+                <input
+                  type="text"
+                  value={editingPostTitle}
+                  onChange={(e) => setEditingPostTitle(e.target.value)}
+                  required
+                  className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-1.5">
+                  Swap / Revision Reason (e.g. Delivered Reel instead of Post)
+                </label>
+                <input
+                  type="text"
+                  value={editingSwapNote}
+                  onChange={(e) => setEditingSwapNote(e.target.value)}
+                  className="w-full bg-[#0a0a0a] border border-[#222] p-2.5 text-white text-xs rounded-xl focus:border-[#3428f8] outline-none transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPost(null)}
+                  className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all border border-[#222] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit || !editingPostTitle.trim()}
+                  className="w-full bg-[#3428f8] hover:bg-[#2a1fd1] disabled:bg-[#3428f8]/50 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isSavingEdit ? (
+                    <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></span>
+                  ) : (
+                    <><Check size={14} /> Save Changes</>
+                  )}
                 </button>
               </div>
             </form>
