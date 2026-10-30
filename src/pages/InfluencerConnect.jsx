@@ -132,9 +132,9 @@ export default function InfluencerConnect() {
         
         {/* Header Banner */}
         <div className="text-center mb-10 sm:mb-14">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#3428f8]/15 border border-[#3428f8]/30 text-blue-400 text-xs font-bold uppercase tracking-widest mb-4">
+          <span className="inline-flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-widest mb-3">
             <Flame size={14} /> Creator Partnerships • Outliers Media
-          </div>
+          </span>
           <h1 className="text-4xl sm:text-6xl font-serif text-primary mb-4 leading-tight">
             Connect as an Influencer
           </h1>

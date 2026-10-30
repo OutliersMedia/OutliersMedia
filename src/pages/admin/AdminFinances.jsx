@@ -1049,7 +1049,7 @@ export default function AdminFinances() {
           </div>
           <p className="text-emerald-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest mb-1.5 sm:mb-2 flex items-center justify-between gap-1 leading-tight">
             <span className="truncate">Discounts</span>
-            <span className="text-[9px] sm:text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-1.5 sm:px-2 py-0.5 rounded-full font-bold shrink-0">
+            <span className="text-[9px] sm:text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-1.5 sm:px-2 py-0.5 rounded-md font-bold shrink-0">
               {transactions.filter(t => (t.instMetrics?.discountAmount || t.discountAmount || 0) > 0).length}
             </span>
           </p>
@@ -1072,14 +1072,14 @@ export default function AdminFinances() {
           </div>
           <p className="text-[#3428f8] text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest mb-1.5 sm:mb-2 flex items-center justify-between gap-1 leading-tight">
             <span className="truncate">Retainers</span>
-            <span className="text-[9px] sm:text-[10px] bg-[#3428f8]/15 border border-[#3428f8]/30 px-1.5 sm:px-2 py-0.5 rounded-full font-bold shrink-0">
+            <span className="text-[9px] sm:text-[10px] bg-[#3428f8]/15 border border-[#3428f8]/30 px-1.5 sm:px-2 py-0.5 rounded-md font-bold shrink-0">
               {metrics.totalTransactions}
             </span>
           </p>
           <div className="flex items-baseline gap-2">
             <h3 className="text-xl sm:text-3xl font-serif text-white">{metrics.totalTransactions}</h3>
             {metrics.activeEmis > 0 && (
-              <span className="text-[10px] sm:text-xs bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-1.5 sm:px-2 py-0.5 rounded-full font-bold truncate">
+              <span className="text-[10px] sm:text-xs bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-1.5 sm:px-2 py-0.5 rounded-md font-bold truncate">
                 {metrics.activeEmis} EMI
               </span>
             )}
@@ -1239,12 +1239,12 @@ export default function AdminFinances() {
               <h3 className="text-lg sm:text-xl md:text-2xl font-serif text-white">
                 Live Website Pricing & Pitch Memory
               </h3>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Live Sync Active
               </span>
               {livePricing.activePitchClient && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest bg-[#1a1a1a] text-[#ccc] border border-[#333] px-2.5 py-1 rounded-full">
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-widest text-[#aaa]">
                   Pitching: {livePricing.activePitchClient}
                 </span>
               )}
@@ -1907,22 +1907,22 @@ export default function AdminFinances() {
 
                     <div className="shrink-0 flex flex-col items-end gap-1">
                       {txn.status === 'active' && (
-                        <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                        <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                           <CheckCircle size={10} /> Active
                         </span>
                       )}
                       {txn.status === 'pending' && (
-                        <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
+                        <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
                           <Clock size={10} /> Pending
                         </span>
                       )}
                       {txn.status === 'paused' && (
-                        <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                        <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                           <PauseCircle size={10} /> Paused
                         </span>
                       )}
                       {txn.status === 'cancelled' && (
-                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                           <XCircle size={10} /> Cancelled
                         </span>
                       )}
@@ -2213,41 +2213,41 @@ export default function AdminFinances() {
                       <div className="flex flex-col gap-1.5 items-start">
                         {/* Account Status Pill */}
                         {txn.status === 'active' && (
-                          <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                             <CheckCircle size={10} /> Active Retainer
                           </span>
                         )}
                         {txn.status === 'pending' && (
-                          <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
+                          <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
                             <Clock size={10} /> Pending Approval
                           </span>
                         )}
                         {txn.status === 'paused' && (
-                          <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                             <PauseCircle size={10} /> Suspended / Paused
                           </span>
                         )}
                         {txn.status === 'cancelled' && (
-                          <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                             <XCircle size={10} /> Cancelled
                           </span>
                         )}
 
                         {/* Milestone State Details */}
                         {pendingVerificationInst && (
-                          <span className="bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider animate-pulse">
+                          <span className="bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30 px-2.5 py-0.5 rounded-md text-[10px] font-bold tracking-wider animate-pulse">
                             EMI #{pendingVerificationInst.installment_number} Proof Uploaded
                           </span>
                         )}
 
                         {!pendingVerificationInst && inst.isOverdue && (
-                          <span className="bg-red-500/15 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-1">
+                          <span className="bg-red-500/15 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-md text-[10px] font-bold tracking-wider flex items-center gap-1">
                             <AlertTriangle size={10} /> Overdue ({inst.daysOverdue}d)
                           </span>
                         )}
 
                         {!pendingVerificationInst && !inst.isOverdue && inst.inGracePeriod && (
-                          <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-1">
+                          <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-md text-[10px] font-bold tracking-wider flex items-center gap-1">
                             <Clock size={10} /> Grace Period ({inst.graceDaysLeft}d left)
                           </span>
                         )}
@@ -3703,10 +3703,10 @@ export default function AdminFinances() {
 
                           {/* Status Badge */}
                           <div>
-                            {t.status === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
-                            {t.status === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
-                            {t.status === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
-                            {t.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
+                            {t.status === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">Active</span>}
+                            {t.status === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                            {t.status === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">Paused</span>}
+                            {t.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
                           </div>
                         </div>
 

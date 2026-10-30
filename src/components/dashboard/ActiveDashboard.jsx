@@ -327,7 +327,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
       >
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="bg-accent/10 text-accent border border-accent/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <span className="text-accent text-xs font-bold uppercase tracking-widest flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
               {planName}
             </span>
@@ -336,9 +336,9 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
               <Copy size={16} />
             </button>
 
-            {/* Days Left for Next Payment (Without Grace Period) Pill */}
+            {/* Days Left for Next Payment (Without Grace Period) Badge */}
             {nextMilestone && daysUntilNextPayment !== null ? (
-              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
                 isNextPaymentOverdue 
                   ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                   : isNextPaymentDueToday 
@@ -353,7 +353,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   : `${daysUntilNextPayment} Day${daysUntilNextPayment !== 1 ? 's' : ''} Left for Next Payment`}
               </span>
             ) : instMetrics.isFullyPaid ? (
-              <span className="bg-green-500/15 text-green-400 border border-green-500/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="bg-green-500/15 text-green-400 border border-green-500/30 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <CheckCircle size={12} /> Retainer Paid in Full
               </span>
             ) : null}
@@ -433,7 +433,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-serif text-primary">Deliverables Tracker</h3>
               <div className="flex items-center gap-2.5">
-                <span className="bg-green-500/10 text-green-400 border border-green-500/25 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <span className="text-green-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
                   Live Sync
                 </span>
@@ -572,7 +572,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   </p>
                 </div>
 
-                <span className="text-[10px] font-mono font-bold bg-[#3428f8]/10 text-blue-400 border border-[#3428f8]/30 px-3 py-1 rounded-full uppercase tracking-wider">
+                <span className="text-xs font-mono font-bold text-blue-400 uppercase tracking-wider">
                   {specialDeliverables.length} Special Item{specialDeliverables.length > 1 ? 's' : ''}
                 </span>
               </div>
@@ -596,7 +596,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                             {item.type || 'Custom Deliverable'}
                           </span>
 
-                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1 ${
                             item.status === 'delivered'
                               ? 'bg-green-500/15 text-green-400 border border-green-500/30'
                               : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
@@ -746,7 +746,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                 <CreditCard size={20} className="text-accent" />
                 Billing & Retainer
               </h3>
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
                 instMetrics.isFullyPaid 
                   ? 'bg-green-500/10 text-green-400 border-green-500/20' 
                   : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
@@ -795,18 +795,18 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                     </h4>
                   </div>
 
-                  {/* Days Left Countdown Pill (Without Grace Period) */}
+                  {/* Days Left Countdown (Without Grace Period) */}
                   <div>
                     {isNextPaymentOverdue ? (
-                      <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider flex items-center gap-1">
                         <AlertTriangle size={12} /> Due {Math.abs(daysUntilNextPayment)}d Ago
                       </span>
                     ) : isNextPaymentDueToday ? (
-                      <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse">
+                      <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse">
                         <Clock size={12} /> Due Today
                       </span>
                     ) : (
-                      <span className="bg-[#3428f8]/20 text-[#3428f8] border border-[#3428f8]/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span className="bg-[#3428f8]/20 text-[#3428f8] border border-[#3428f8]/30 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider flex items-center gap-1">
                         <Calendar size={12} /> {daysUntilNextPayment} Day{daysUntilNextPayment !== 1 ? 's' : ''} Left
                       </span>
                     )}
@@ -870,11 +870,11 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
 
                       <div>
                         {isPaid ? (
-                          <span className="text-green-500 bg-green-500/10 border border-green-500/20 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="text-green-500 bg-green-500/10 border border-green-500/20 text-[9px] font-bold uppercase px-2 py-0.5 rounded-md flex items-center gap-1">
                             <CheckCircle size={10} /> Paid
                           </span>
                         ) : isPendingReview ? (
-                          <span className="text-amber-400 bg-amber-500/10 border border-amber-500/20 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="text-amber-400 bg-amber-500/10 border border-amber-500/20 text-[9px] font-bold uppercase px-2 py-0.5 rounded-md flex items-center gap-1">
                             <Clock size={10} /> In Review
                           </span>
                         ) : (
@@ -918,10 +918,10 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
             >
               <div className="p-6 border-b border-[#20222e] flex justify-between items-center bg-[#14151e]">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-[#3428f8]/15 px-2.5 py-0.5 rounded-full border border-[#3428f8]/30">
+                  <span className="text-xs font-bold uppercase tracking-widest text-blue-400 block mb-1">
                     Special Deliverable Add-on
                   </span>
-                  <h3 className="text-lg font-serif text-white mt-1">
+                  <h3 className="text-lg font-serif text-white">
                     Pay for {selectedSpecialForPayment.title}
                   </h3>
                 </div>

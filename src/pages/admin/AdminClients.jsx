@@ -323,15 +323,15 @@ export default function AdminClients() {
 
                     <div className="shrink-0">
                       {client.isAdmin ? (
-                        <span className="bg-[#3428f8]/15 text-[#8b82ff] border border-[#3428f8]/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Admin Account</span>
+                        <span className="bg-[#3428f8]/15 text-[#8b82ff] border border-[#3428f8]/30 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Admin Account</span>
                       ) : (
                         <>
-                          {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Active</span>}
-                          {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
-                          {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Paused</span>}
-                          {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Expired</span>}
-                          {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
-                          {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Lead</span>}
+                          {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Active</span>}
+                          {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                          {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Paused</span>}
+                          {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Expired</span>}
+                          {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Cancelled</span>}
+                          {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Lead</span>}
                         </>
                       )}
                     </div>
@@ -531,15 +531,15 @@ export default function AdminClients() {
                     {/* Status */}
                     <td className="p-4">
                       {client.isAdmin ? (
-                        <span className="bg-[#3428f8]/15 text-[#8b82ff] border border-[#3428f8]/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Admin Account</span>
+                        <span className="bg-[#3428f8]/15 text-[#8b82ff] border border-[#3428f8]/30 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Admin Account</span>
                       ) : (
                         <>
-                          {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Active</span>}
-                          {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">Pending</span>}
-                          {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Paused</span>}
-                          {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Expired</span>}
-                          {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Cancelled</span>}
-                          {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Lead</span>}
+                          {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Active</span>}
+                          {client.calculatedStatus === 'pending' && <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider animate-pulse">Pending</span>}
+                          {client.calculatedStatus === 'paused' && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Paused</span>}
+                          {client.calculatedStatus === 'expired' && <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Expired</span>}
+                          {client.calculatedStatus === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Cancelled</span>}
+                          {client.calculatedStatus === 'lead' && <span className="bg-[#222] text-[#888] border border-[#333] px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Lead</span>}
                         </>
                       )}
                     </td>

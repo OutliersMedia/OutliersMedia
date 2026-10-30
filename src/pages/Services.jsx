@@ -140,8 +140,8 @@ export default function Services() {
         {/* Influencer Marketing Special Plan Option */}
         <div className="bg-[#101010] border border-[#3428f8]/30 rounded-3xl p-8 sm:p-12 mb-32 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-8">
           <div className="max-w-2xl">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-[#3428f8]/15 border border-[#3428f8]/30 px-3 py-1 rounded-full inline-flex items-center gap-1.5 mb-4">
-              <Flame size={12} /> SPECIALIZED MARKETING
+            <span className="text-xs font-bold uppercase tracking-widest text-blue-400 inline-flex items-center gap-1.5 mb-3">
+              <Flame size={14} /> Specialized Marketing
             </span>
             <h2 className="text-3xl md:text-5xl font-serif text-white mb-4">
               Influencers & Creator Contracts

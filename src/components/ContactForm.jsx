@@ -193,7 +193,7 @@ export default function ContactForm() {
                 
                 {submittedLeadId && (
                   <div className="flex items-center justify-center gap-2 mb-4">
-                    <p className="text-muted text-xs font-bold uppercase tracking-widest border border-themeborder px-3 py-1 rounded-full bg-raised">
+                    <p className="text-muted text-xs font-bold uppercase tracking-widest border border-themeborder px-3 py-1 rounded-md bg-raised">
                       ID: <span className="text-primary">{submittedLeadId}</span>
                     </p>
                     <button 

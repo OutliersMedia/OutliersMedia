@@ -234,7 +234,7 @@ export default function Dashboard() {
                 >
                   <Briefcase size={14} className={isCurrent ? 'text-white' : 'text-accent'} />
                   <span className="capitalize">{bName}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full uppercase font-mono font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-md uppercase font-mono font-bold ${
                     isActive ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
                     isPending ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
                     isPaused ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
@@ -284,7 +284,7 @@ export default function Dashboard() {
                   <div className="w-20 h-20 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mb-6 text-red-500">
                     <ShieldAlert size={36} />
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full mb-3">
+                  <span className="text-xs font-bold uppercase tracking-widest text-red-400 block mb-2">
                     Account Temporarily Paused
                   </span>
                   <h3 className="text-3xl font-serif text-white mb-3">Overdue Milestone Payment</h3>

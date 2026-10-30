@@ -116,7 +116,7 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                       }`}
                     >
                       {(isPreSelected || plan.badge) && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-accent text-[#EEF2FF] text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg whitespace-nowrap">
+                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-accent text-[#EEF2FF] text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md shadow-lg whitespace-nowrap">
                           {isPreSelected ? 'YOUR SELECTED PLAN' : plan.badge}
                         </div>
                       )}
@@ -155,7 +155,7 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
 
                 {/* Influencer Marketing Plan Option */}
                 <div className="relative flex flex-col p-8 rounded-2xl border border-[#3428f8]/40 bg-[#3428f8]/10 hover:border-[#3428f8] transition-all duration-300">
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#3428f8] text-white text-[10px] font-bold uppercase tracking-widest px-3.5 py-1 rounded-full whitespace-nowrap flex items-center gap-1">
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#3428f8] text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md whitespace-nowrap flex items-center gap-1">
                     <Flame size={11} /> INFLUENCERS
                   </div>
                   

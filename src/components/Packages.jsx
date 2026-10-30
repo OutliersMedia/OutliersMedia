@@ -175,8 +175,8 @@ export default function Packages() {
                     <div className="lg:col-span-3 flex flex-col justify-start">
                       <h3 className="text-3xl font-serif mb-2 text-primary">{pkg.name}</h3>
                       {pkg.id === "Growth" && (
-                        <span className="text-xs font-bold uppercase tracking-widest mt-2 flex items-center gap-2 px-3 py-1 rounded-full w-max" style={{ background: 'var(--accent-tint)', border: '1px solid var(--accent-border)', color: 'var(--accent)' }}>
-                          <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
+                        <span className="text-xs font-bold uppercase tracking-widest mt-2 flex items-center gap-2 text-accent">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
                           Most Selected
                         </span>
                       )}
@@ -224,7 +224,7 @@ export default function Packages() {
             <div className="bg-[#0e0e0e] border border-[#222] rounded-3xl p-6 sm:p-10 lg:p-14">
               <div className="max-w-4xl mx-auto">
                 <div className="text-center mb-10">
-                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/30 text-xs font-bold uppercase tracking-widest mb-3">
+                  <span className="inline-flex items-center gap-2 text-[#3428f8] text-xs font-bold uppercase tracking-widest mb-3">
                     <Video size={13} /> Influencer & Creator Marketing
                   </span>
                   <h3 className="text-3xl sm:text-4xl font-serif text-white mb-3">
@@ -263,7 +263,7 @@ export default function Packages() {
                         : 'bg-[#121212] border-[#242424] text-[#888] hover:text-white hover:border-[#383838]'
                     }`}
                   >
-                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#3428f8] text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#3428f8] text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
                       Popular
                     </span>
                     <span className="text-xs font-bold uppercase tracking-wider block mb-1">Growth Pack</span>
@@ -471,7 +471,7 @@ export default function Packages() {
                       navigate(`/dashboard?plan=${selectedPlan.id.toLowerCase()}`);
                     }
                   }}
-                  className="w-full bg-[#2d23c9] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-[#3c06cf] transition-colors text-sm cursor-pointer"
+                  className="w-full bg-[#2d23c9] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-[#2015a8] transition-colors text-sm cursor-pointer"
                 >
                   Activate This Plan
                 </button>
@@ -707,7 +707,7 @@ export default function Packages() {
                 <h3 className="text-2xl font-serif text-white font-bold mb-1">
                   {orderSuccessData.status === 'negotiating' ? 'Proposal Received' : 'Order Placed Successfully'}
                 </h3>
-                <span className="text-xs font-mono text-[#3428f8] bg-[#3428f8]/10 px-3 py-1 rounded-full inline-block mb-4">
+                <span className="text-xs font-mono text-[#3428f8] bg-[#3428f8]/10 px-3 py-1 rounded-md inline-block mb-4">
                   Order ID: {orderSuccessData.order_number}
                 </span>
 

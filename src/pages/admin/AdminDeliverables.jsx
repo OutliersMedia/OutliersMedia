@@ -645,7 +645,7 @@ export default function AdminDeliverables() {
             <Flame size={14} />
             <span>Creator Packs & Negotiations</span>
             {creatorOrdersList.filter(o => o.status === 'negotiating').length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-mono font-bold">
+              <span className="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[10px] font-mono font-bold">
                 {creatorOrdersList.filter(o => o.status === 'negotiating').length}
               </span>
             )}
@@ -723,7 +723,7 @@ export default function AdminDeliverables() {
                         <span className="text-[10px] font-mono text-[#888] bg-[#161616] px-2 py-0.5 rounded border border-[#262626]">
                           {order.order_number || order.id}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
                           isNegotiating
                             ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
                             : order.status === 'approved'
@@ -941,7 +941,7 @@ export default function AdminDeliverables() {
                             </span>
                           )}
                         </h3>
-                        <span className="text-[11px] sm:text-xs bg-[#1f1f1f] text-[#3428f8] border border-[#333] px-2.5 py-0.5 rounded-full font-bold">
+                        <span className="text-[11px] sm:text-xs bg-[#1f1f1f] text-[#3428f8] border border-[#333] px-2.5 py-0.5 rounded-md font-bold">
                           {selectedClient.latestOrder.plan_name}
                         </span>
                       </div>
@@ -984,7 +984,7 @@ export default function AdminDeliverables() {
                           <Star size={13} className="text-blue-400" />
                           <span>Special</span>
                           {selectedClient.specialDeliverables?.length > 0 && (
-                            <span className="ml-1 px-1.5 py-0.2 bg-[#3428f8]/20 text-blue-200 rounded-full text-[9px] font-mono font-bold">
+                            <span className="ml-1 px-1.5 py-0.2 bg-[#3428f8]/20 text-blue-200 rounded text-[9px] font-mono font-bold">
                               {selectedClient.specialDeliverables.length}
                             </span>
                           )}
@@ -1457,7 +1457,7 @@ export default function AdminDeliverables() {
                             <h4 className="text-white font-bold text-sm uppercase tracking-wider">
                               Special Deliverables & Custom Add-ons
                             </h4>
-                            <span className="text-[10px] font-mono font-bold bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-2 py-0.5 rounded-full">
+                            <span className="text-[10px] font-mono font-bold bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-2 py-0.5 rounded-md">
                               {selectedClient.specialDeliverables?.length || 0} Total
                             </span>
                           </div>

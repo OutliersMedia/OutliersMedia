@@ -844,7 +844,6 @@ export default function AdminOverview() {
             onClick={() => setSelectedMetric(card.id)}
             className="bg-[#111] border border-[#222] p-3.5 sm:p-6 rounded-2xl flex flex-col justify-between gap-2.5 sm:gap-4 relative overflow-hidden group hover:border-[#444] cursor-pointer active:scale-[0.99] transition-all"
           >
-            <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 ${card.bg} blur-2xl transition-all group-hover:scale-150`}></div>
             <div className="flex justify-between items-start gap-2 relative z-10">
               <span className="text-[#888] text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest leading-tight">{card.label}</span>
               <div className={`${card.bg} ${card.color} p-1.5 sm:p-2 rounded-lg shrink-0`}>
@@ -1174,7 +1173,7 @@ export default function AdminOverview() {
                         <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Total Monthly Retainer Pool</span>
                         <span className="text-2xl font-serif text-green-400">₹{metrics.mrr.toLocaleString()}</span>
                       </div>
-                      <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full font-bold">
+                      <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-md font-bold">
                         {detailedRetainers.length} Active Plan{detailedRetainers.length === 1 ? '' : 's'}
                       </span>
                     </div>
@@ -1209,7 +1208,7 @@ export default function AdminOverview() {
                         <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Client Subscription Status</span>
                         <span className="text-2xl font-serif text-[#3428f8]">{detailedRetainers.length} Retainers</span>
                       </div>
-                      <span className="text-xs bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 px-2.5 py-1 rounded-full font-bold">
+                      <span className="text-xs bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 px-2.5 py-1 rounded-md font-bold">
                         100% In Good Standing
                       </span>
                     </div>
@@ -1439,7 +1438,7 @@ export default function AdminOverview() {
                           <span className="text-[#666] text-[10px] font-bold uppercase tracking-wider block">Today's Schedule</span>
                           <span className="text-2xl font-serif text-yellow-400">{todayEvents.length} Task{todayEvents.length === 1 ? '' : 's'}</span>
                         </div>
-                        <span className="text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full font-bold">
+                        <span className="text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-md font-bold">
                           {metrics.pendingToday} Pending
                         </span>
                       </div>

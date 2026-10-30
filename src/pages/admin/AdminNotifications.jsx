@@ -371,7 +371,7 @@ export default function AdminNotifications() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                           <h3 className="font-bold text-sm text-white truncate">{client.name}</h3>
-                          <span className="text-[10px] bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-2 py-0.2 rounded-full font-bold uppercase">
+                          <span className="text-[10px] bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-2 py-0.5 rounded font-bold uppercase">
                             {client.plan}
                           </span>
                         </div>
@@ -420,7 +420,7 @@ export default function AdminNotifications() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                           <h3 className="font-bold text-sm text-white truncate">{inf.name}</h3>
-                          <span className="text-[10px] bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.2 rounded-full font-bold font-mono">
+                          <span className="text-[10px] bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold font-mono">
                             @{inf.instagram}
                           </span>
                         </div>

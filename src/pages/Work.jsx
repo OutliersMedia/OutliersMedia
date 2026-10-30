@@ -88,7 +88,7 @@ export default function Work() {
             href="https://pashvinderphotoshop.my.canva.site/"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block px-8 py-5 text-sm font-bold uppercase tracking-widest transition-all duration-300 rounded-2xl border-2 bg-[#3c06cf] border-[#3c06cf] text-white hover:bg-transparent hover:text-[#3c06cf] whitespace-nowrap"
+            className="inline-block px-8 py-5 text-sm font-bold uppercase tracking-widest transition-all duration-300 rounded-2xl border-2 bg-[#3428f8] border-[#3428f8] text-white hover:bg-transparent hover:text-[#3428f8] whitespace-nowrap"
           >
             View Design Portfolio
           </a>

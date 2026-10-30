@@ -50,7 +50,7 @@ export default function AdminLayout() {
             <img src="/icon.png" alt="Outliers Media" className="h-7 w-7 sm:h-8 sm:w-8 object-contain transition-transform group-hover:scale-110 shrink-0" />
             <span className="font-serif text-base sm:text-xl tracking-wide truncate">COMMAND CENTER</span>
             {isTester && (
-              <span className="hidden sm:flex text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider items-center gap-1.5 shadow-sm shrink-0">
+              <span className="hidden sm:flex text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider items-center gap-1.5 shadow-sm shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                 Tester Mode
               </span>

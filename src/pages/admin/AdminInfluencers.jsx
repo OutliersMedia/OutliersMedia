@@ -833,11 +833,11 @@ export default function AdminInfluencers() {
                     </p>
                   </div>
                   {editForm.status === 'approved' ? (
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
                       <CheckCircle2 size={12} /> Rate Approved
                     </span>
                   ) : (
-                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-md font-bold uppercase tracking-wider">
                       Pending Approval
                     </span>
                   )}
