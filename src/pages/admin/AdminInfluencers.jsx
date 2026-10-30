@@ -49,6 +49,11 @@ export default function AdminInfluencers() {
   const [editForm, setEditForm] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Rate Approval Modal State
+  const [rateApprovalCreator, setRateApprovalCreator] = useState(null);
+  const [rateApprovalInput, setRateApprovalInput] = useState('');
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
   // Payout Settlement Modal State
   const [payoutModalCreator, setPayoutModalCreator] = useState(null);
   const [payoutAmountInput, setPayoutAmountInput] = useState('');
@@ -74,9 +79,51 @@ export default function AdminInfluencers() {
     setLoading(false);
   };
 
+  const handleOpenRateApproval = (inf) => {
+    setRateApprovalCreator(inf);
+    const suggestedRate = Number(inf.final_rate_per_reel || inf.rate_per_reel || 0);
+    setRateApprovalInput(String(suggestedRate));
+  };
+
+  const handleConfirmRateApproval = async (e) => {
+    if (e) e.preventDefault();
+    if (!rateApprovalCreator) return;
+    const finalRate = Number(rateApprovalInput || 0);
+
+    setIsSubmittingApproval(true);
+    try {
+      const reelsCount = parseInt(rateApprovalCreator.reels_count) || 3;
+      const updatedReels = (rateApprovalCreator.reels || generateDefaultReels(reelsCount, finalRate)).map(r => ({
+        ...r,
+        is_paid: finalRate > 0,
+        paid_amount: finalRate > 0 ? finalRate : 0,
+        final_rate_per_reel: finalRate
+      }));
+
+      await saveInfluencer({
+        ...rateApprovalCreator,
+        status: 'approved',
+        contract_type: finalRate > 0 ? (rateApprovalCreator.contract_type === 'barter' ? 'paid' : rateApprovalCreator.contract_type) : rateApprovalCreator.contract_type,
+        final_rate_per_reel: finalRate,
+        total_price: finalRate * reelsCount,
+        apply_to_all_reels: true,
+        reels: updatedReels
+      });
+      setRateApprovalCreator(null);
+      await loadData();
+    } catch (err) {
+      alert("Error approving rate: " + err.message);
+    } finally {
+      setIsSubmittingApproval(false);
+    }
+  };
+
   const handleOpenEdit = (inf) => {
     setSelectedInfluencer(inf);
-    setEditForm(JSON.parse(JSON.stringify(inf)));
+    const parsed = JSON.parse(JSON.stringify(inf));
+    parsed.rate_per_reel = Number(parsed.rate_per_reel !== undefined ? parsed.rate_per_reel : (parsed.reels?.[0]?.rate_per_reel || 0));
+    parsed.final_rate_per_reel = Number(parsed.final_rate_per_reel !== undefined ? parsed.final_rate_per_reel : (parsed.reels?.[0]?.final_rate_per_reel || 0));
+    setEditForm(parsed);
     setIsEditingModalOpen(true);
   };
 
@@ -90,7 +137,9 @@ export default function AdminInfluencers() {
       niche: 'Food & Cafes',
       follower_count: '',
       reels_count: 3,
-      contract_type: 'barter',
+      contract_type: 'paid',
+      rate_per_reel: 0,
+      final_rate_per_reel: 0,
       total_price: 0,
       status: 'pending',
       notes: '',
@@ -98,6 +147,43 @@ export default function AdminInfluencers() {
     };
     setEditForm(blank);
     setIsNewModalOpen(true);
+  };
+
+  const handleApplyFinalRateToAllReels = () => {
+    if (!editForm) return;
+    const finalRate = Number(editForm.final_rate_per_reel || 0);
+    const updatedReels = (editForm.reels || []).map(r => ({
+      ...r,
+      paid_amount: finalRate,
+      final_rate_per_reel: finalRate,
+      is_paid: finalRate > 0
+    }));
+    setEditForm(prev => ({
+      ...prev,
+      reels: updatedReels,
+      total_price: finalRate * (parseInt(prev.reels_count) || 3)
+    }));
+  };
+
+  const handleApproveContractInModal = () => {
+    if (!editForm) return;
+    const finalRate = Number(editForm.final_rate_per_reel !== undefined && editForm.final_rate_per_reel > 0 
+      ? editForm.final_rate_per_reel 
+      : (editForm.rate_per_reel || 0)
+    );
+    const updatedReels = (editForm.reels || []).map(r => ({
+      ...r,
+      paid_amount: finalRate > 0 ? finalRate : r.paid_amount,
+      final_rate_per_reel: finalRate,
+      is_paid: finalRate > 0 ? true : r.is_paid
+    }));
+    setEditForm(prev => ({
+      ...prev,
+      status: 'approved',
+      final_rate_per_reel: finalRate,
+      reels: updatedReels,
+      total_price: finalRate * (parseInt(prev.reels_count) || 3)
+    }));
   };
 
   const handleSaveForm = async (e) => {
@@ -457,6 +543,49 @@ export default function AdminInfluencers() {
                     </div>
                   </div>
 
+                  {/* Per-Reel Pricing & Final Rate Approval Box */}
+                  <div className="bg-[#121212] border border-[#242424] p-3 rounded-xl mb-3 flex flex-col gap-2 text-xs">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-[#777] font-medium">Influencer Quoted:</span>
+                      <span className="font-mono font-bold text-white">
+                        {inf.rate_per_reel > 0 ? `₹${Number(inf.rate_per_reel).toLocaleString()} / reel` : 'Barter / Free'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[#1e1e1e]">
+                      <div>
+                        <span className="text-[9px] text-[#777] uppercase font-bold block">Final Per-Reel Rate:</span>
+                        {inf.final_rate_per_reel > 0 ? (
+                          <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1">
+                            ₹{Number(inf.final_rate_per_reel).toLocaleString()} / reel ✓
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
+                            Pending Approval
+                          </span>
+                        )}
+                      </div>
+
+                      {inf.final_rate_per_reel > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRateApproval(inf)}
+                          className="text-[10px] text-blue-400 hover:text-white font-bold uppercase px-2.5 py-1 rounded bg-[#181818] hover:bg-[#252525] border border-[#2c2c2c] transition-all cursor-pointer"
+                        >
+                          Edit Rate
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRateApproval(inf)}
+                          className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500 hover:bg-emerald-400 text-black px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer font-bold"
+                        >
+                          <CheckCircle2 size={11} /> Approve Rate
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Reels Progress Tracker */}
                   <div className="bg-[#0a0a0a] p-2.5 rounded-xl border border-[#1f1f1f]">
                     <div className="flex justify-between items-center text-[10px] mb-1.5 font-bold uppercase">
@@ -689,6 +818,109 @@ export default function AdminInfluencers() {
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              {/* PER-REEL PRICING & FINAL RATE APPROVAL PANEL */}
+              <div className="bg-[#121212] border border-[#2b2b2b] rounded-2xl p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-[#222]">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+                      <IndianRupee size={14} /> Final Per-Reel Pricing & Rate Approval
+                    </h4>
+                    <p className="text-[11px] text-[#777] mt-0.5">
+                      Influencer enters their quote; Admin approves the final money per reel.
+                    </p>
+                  </div>
+                  {editForm.status === 'approved' ? (
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle2 size={12} /> Rate Approved
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+                      Pending Approval
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                  {/* Creator's Quoted Rate */}
+                  <div className="bg-[#0b0c10] border border-[#222] rounded-xl p-3.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#777] block mb-1">
+                      Influencer Quoted Cost / Reel
+                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg font-mono font-bold text-white">
+                        ₹{Number(editForm.rate_per_reel || 0).toLocaleString()} <span className="text-xs text-[#777]">/ reel</span>
+                      </span>
+                      {Number(editForm.rate_per_reel || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditForm(prev => ({
+                              ...prev,
+                              final_rate_per_reel: prev.rate_per_reel
+                            }));
+                          }}
+                          className="text-[10px] font-bold text-blue-400 hover:text-white px-2 py-1 rounded bg-[#161616] hover:bg-[#222] border border-[#333] transition-colors cursor-pointer"
+                        >
+                          Use Quoted Rate
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-[#555] block mt-1">
+                      Estimated quote: ₹{(Number(editForm.rate_per_reel || 0) * (parseInt(editForm.reels_count) || 3)).toLocaleString()} for {editForm.reels_count} reels
+                    </span>
+                  </div>
+
+                  {/* Final Approved Rate Input */}
+                  <div className="bg-[#0b0c10] border border-emerald-500/30 rounded-xl p-3.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                      Final Approved Money Per Reel (₹) *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#777] font-mono">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editForm.final_rate_per_reel !== undefined ? editForm.final_rate_per_reel : ''}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? '' : Number(e.target.value);
+                          setEditForm(prev => ({
+                            ...prev,
+                            final_rate_per_reel: val,
+                            total_price: Number(val || 0) * (parseInt(prev.reels_count) || 3)
+                          }));
+                        }}
+                        className="w-full bg-[#161616] border border-[#333] focus:border-emerald-500 text-white pl-8 pr-3 py-2 rounded-lg text-sm font-mono font-bold outline-none"
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-2 text-[10px]">
+                      <span className="text-[#888]">Total Payout ({editForm.reels_count} reels):</span>
+                      <span className="font-mono font-bold text-emerald-400 text-xs">
+                        ₹{(Number(editForm.final_rate_per_reel || 0) * (parseInt(editForm.reels_count) || 3)).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick actions for Rate */}
+                <div className="flex flex-wrap items-center gap-2.5 mt-3 pt-3 border-t border-[#1e1e1e]">
+                  <button
+                    type="button"
+                    onClick={handleApplyFinalRateToAllReels}
+                    className="text-[11px] font-bold text-blue-400 hover:text-white px-3 py-1.5 rounded-lg bg-[#181818] hover:bg-[#252525] border border-[#2e2e2e] transition-colors cursor-pointer"
+                  >
+                    Apply Rate to All Reel Slots
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleApproveContractInModal}
+                    className="text-[11px] font-bold uppercase tracking-wider text-black bg-emerald-500 hover:bg-emerald-400 px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 size={13} /> Approve Contract with This Rate
+                  </button>
                 </div>
               </div>
 
@@ -1146,6 +1378,91 @@ export default function AdminInfluencers() {
                   className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingPayout ? 'Recording...' : 'Mark as Paid'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Rate Approval Modal */}
+      {rateApprovalCreator && (
+        <div 
+          className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setRateApprovalCreator(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#111] border border-[#333] rounded-3xl p-6 max-w-md w-full shadow-2xl relative"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-[#222]">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Rate Approval</span>
+                <h3 className="text-base font-bold text-white mt-0.5">Approve Final Money Per Reel</h3>
+              </div>
+              <button
+                onClick={() => setRateApprovalCreator(null)}
+                className="text-[#666] hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRateApproval} className="space-y-4 pt-4">
+              <div className="bg-[#0b0c10] p-3 rounded-xl border border-[#222] text-xs space-y-1.5">
+                <div className="flex justify-between text-[#888]">
+                  <span>Creator:</span>
+                  <span className="font-bold text-white">{rateApprovalCreator.name} (@{rateApprovalCreator.instagram_id})</span>
+                </div>
+                <div className="flex justify-between text-[#888]">
+                  <span>Reels Signed:</span>
+                  <span className="font-mono font-bold text-white">{rateApprovalCreator.reels_count} reels</span>
+                </div>
+                <div className="flex justify-between text-[#888]">
+                  <span>Quoted by Creator:</span>
+                  <span className="font-mono font-bold text-amber-400">
+                    {rateApprovalCreator.rate_per_reel > 0 ? `₹${Number(rateApprovalCreator.rate_per_reel).toLocaleString()} / reel` : 'Barter / Free'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                  Final Approved Money Per Reel (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-[#777] font-mono">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={rateApprovalInput}
+                    onChange={(e) => setRateApprovalInput(e.target.value)}
+                    className="w-full bg-[#181818] border border-[#2e2e2e] focus:border-emerald-500 rounded-xl pl-8 pr-4 py-3 text-sm text-white font-mono font-bold outline-none"
+                  />
+                </div>
+                <div className="flex justify-between items-center mt-2 text-[11px] text-[#777]">
+                  <span>Total Final Payout:</span>
+                  <span className="font-mono font-bold text-emerald-400 text-xs">
+                    ₹{(Number(rateApprovalInput || 0) * (parseInt(rateApprovalCreator.reels_count) || 3)).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRateApprovalCreator(null)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingApproval || !rateApprovalInput}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold uppercase tracking-wider text-black transition-colors cursor-pointer disabled:opacity-50 font-bold"
+                >
+                  {isSubmittingApproval ? 'Approving...' : 'Lock & Approve'}
                 </button>
               </div>
             </form>

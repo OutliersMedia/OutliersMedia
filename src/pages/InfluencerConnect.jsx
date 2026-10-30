@@ -18,7 +18,7 @@ export default function InfluencerConnect() {
   const [followerCount, setFollowerCount] = useState('');
   const [reelsCount, setReelsCount] = useState(3); // 3 to 10
   const [contractType, setContractType] = useState('barter'); // 'barter' | 'paid' | 'hybrid'
-  const [expectedRate, setExpectedRate] = useState('');
+  const [ratePerReel, setRatePerReel] = useState('');
   const [screenshotFile, setScreenshotFile] = useState(null);
   const [screenshotPreview, setScreenshotPreview] = useState(null);
   const [portfolioLinks, setPortfolioLinks] = useState('');
@@ -75,13 +75,18 @@ export default function InfluencerConnect() {
         }
       }
 
-      const defaultReels = generateDefaultReels(reelsCount);
+      const costPerReel = Number(ratePerReel || 0);
+      const calculatedTotal = costPerReel * reelsCount;
+
+      const defaultReels = generateDefaultReels(reelsCount, costPerReel);
       // Pre-set barter vs paid preferences on reels
-      const customizedReels = defaultReels.map((r, idx) => ({
+      const customizedReels = defaultReels.map((r) => ({
         ...r,
         is_barter: contractType === 'barter' || contractType === 'hybrid',
         is_paid: contractType === 'paid' || contractType === 'hybrid',
-        paid_amount: contractType === 'paid' ? Math.round(Number(expectedRate || 0) / reelsCount) : 0
+        paid_amount: (contractType === 'paid' || contractType === 'hybrid') ? costPerReel : 0,
+        rate_per_reel: costPerReel,
+        final_rate_per_reel: 0
       }));
 
       const payload = {
@@ -95,7 +100,9 @@ export default function InfluencerConnect() {
         reels_count: parseInt(reelsCount) || 3,
         dashboard_screenshot_url: uploadedScreenshotUrl,
         contract_type: contractType,
-        total_price: Number(expectedRate || 0),
+        rate_per_reel: costPerReel,
+        final_rate_per_reel: 0,
+        total_price: calculatedTotal,
         status: 'pending',
         notes: [
           portfolioLinks ? `Portfolio: ${portfolioLinks.trim()}` : '',
@@ -152,13 +159,30 @@ export default function InfluencerConnect() {
 
             <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 text-left mb-8 space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-[#777]">Contract Tier:</span>
+                <span className="text-[#777]">Contract Scope:</span>
                 <span className="text-white font-bold">{reelsCount} Reels in Contract</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#777]">Collaboration Model:</span>
                 <span className="text-blue-400 font-bold capitalize">{contractType} Partnership</span>
               </div>
+              {Number(ratePerReel) > 0 ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-[#777]">Quoted Per Reel:</span>
+                    <span className="text-emerald-400 font-mono font-bold">₹{Number(ratePerReel).toLocaleString()} / reel</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#777]">Total Proposed Payout:</span>
+                    <span className="text-white font-mono font-bold">₹{(Number(ratePerReel) * reelsCount).toLocaleString()}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-[#777]">Compensation:</span>
+                  <span className="text-emerald-400 font-bold">Barter Exchange (₹0 cash)</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-[#777]">Contact WhatsApp:</span>
                 <span className="text-white font-mono">{phone}</span>
@@ -416,14 +440,26 @@ export default function InfluencerConnect() {
 
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-2">
-                    Expected Total Commercial Budget (₹) {contractType === 'barter' ? '(Optional)' : '*'}
+                    Your Cost Per Reel (₹) {contractType === 'barter' ? '(Optional for Barter)' : '*'}
                   </label>
                   <input
                     type="number"
-                    value={expectedRate}
-                    onChange={(e) => setExpectedRate(e.target.value)}
+                    min="0"
+                    required={contractType === 'paid'}
+                    value={ratePerReel}
+                    onChange={(e) => setRatePerReel(e.target.value)}
                     className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white font-mono focus:border-[#3428f8] outline-none transition-colors"
                   />
+                  {Number(ratePerReel) > 0 && (
+                    <div className="mt-2.5 p-2.5 rounded-xl bg-[#0f0f0f] border border-[#3428f8]/30 flex items-center justify-between text-xs">
+                      <span className="text-[#888]">
+                        Quote: <strong className="text-white">₹{Number(ratePerReel).toLocaleString()}</strong> × <strong className="text-white">{reelsCount} reels</strong>
+                      </span>
+                      <span className="font-mono font-bold text-blue-400">
+                        = ₹{(Number(ratePerReel) * reelsCount).toLocaleString()} Total
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

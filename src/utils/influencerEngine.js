@@ -5,7 +5,7 @@ const INFLUENCERS_CACHE_KEY = 'om_influencers_cache_v1';
 /**
  * Generates initial empty reels for a contract based on reels_count (3 to 10)
  */
-export function generateDefaultReels(count = 3) {
+export function generateDefaultReels(count = 3, defaultPaidAmount = 0) {
   const safeCount = Math.max(3, Math.min(10, parseInt(count) || 3));
   const reels = [];
   for (let i = 1; i <= safeCount; i++) {
@@ -15,8 +15,8 @@ export function generateDefaultReels(count = 3) {
       is_barter: true,
       barter_item: '',
       barter_price: 0,
-      is_paid: false,
-      paid_amount: 0,
+      is_paid: defaultPaidAmount > 0,
+      paid_amount: defaultPaidAmount > 0 ? Number(defaultPaidAmount) : 0,
       payout_status: 'unpaid', // 'unpaid' | 'paid'
       payout_amount: 0,
       payout_date: null,
@@ -71,10 +71,30 @@ export async function fetchInfluencers() {
       .order('created_at', { ascending: false });
 
     if (!error && Array.isArray(data)) {
+      // Normalize data with rate_per_reel and final_rate_per_reel
+      const normalizedData = data.map(inf => {
+        const reels = Array.isArray(inf.reels) ? inf.reels : [];
+        const rate_per_reel = Number(
+          inf.rate_per_reel !== undefined 
+            ? inf.rate_per_reel 
+            : (reels[0]?.rate_per_reel || (inf.total_price && inf.reels_count ? Math.round(Number(inf.total_price) / Number(inf.reels_count)) : 0))
+        );
+        const final_rate_per_reel = Number(
+          inf.final_rate_per_reel !== undefined 
+            ? inf.final_rate_per_reel 
+            : (reels[0]?.final_rate_per_reel || 0)
+        );
+        return {
+          ...inf,
+          rate_per_reel,
+          final_rate_per_reel
+        };
+      });
+
       // Merge with any offline cached items that aren't in data yet
-      const dbIds = new Set(data.map(i => i.id));
+      const dbIds = new Set(normalizedData.map(i => i.id));
       const localOnly = cached.filter(i => !dbIds.has(i.id));
-      const combined = [...data, ...localOnly];
+      const combined = [...normalizedData, ...localOnly];
       setCachedInfluencers(combined);
       return combined;
     }
@@ -92,21 +112,41 @@ export async function saveInfluencer(influencerData) {
   const now = new Date().toISOString();
   const reelsCount = Math.max(3, Math.min(10, parseInt(influencerData.reels_count) || 3));
 
+  // Determine rate_per_reel (influencer quote) and final_rate_per_reel (admin final approved rate)
+  const ratePerReel = Number(
+    influencerData.rate_per_reel !== undefined 
+      ? influencerData.rate_per_reel 
+      : (influencerData.reels?.[0]?.rate_per_reel || 0)
+  );
+  const finalRatePerReel = Number(
+    influencerData.final_rate_per_reel !== undefined 
+      ? influencerData.final_rate_per_reel 
+      : (influencerData.reels?.[0]?.final_rate_per_reel || 0)
+  );
+
+  // Compute total price: finalRate takes precedence once approved
+  let totalPrice = Number(influencerData.total_price || 0);
+  if (finalRatePerReel > 0) {
+    totalPrice = finalRatePerReel * reelsCount;
+  } else if (ratePerReel > 0 && (totalPrice === 0 || influencerData.recalculate_total)) {
+    totalPrice = ratePerReel * reelsCount;
+  }
+
   // Ensure reels array matches reels_count
   let reels = Array.isArray(influencerData.reels) ? [...influencerData.reels] : [];
   if (reels.length === 0) {
-    reels = generateDefaultReels(reelsCount);
+    reels = generateDefaultReels(reelsCount, finalRatePerReel || ratePerReel);
   } else if (reels.length < reelsCount) {
     // Add extra reels if count increased
     for (let i = reels.length + 1; i <= reelsCount; i++) {
       reels.push({
         reel_number: i,
         title: `Reel #${i}`,
-        is_barter: true,
+        is_barter: influencerData.contract_type === 'barter' || influencerData.contract_type === 'hybrid',
         barter_item: '',
         barter_price: 0,
-        is_paid: false,
-        paid_amount: 0,
+        is_paid: influencerData.contract_type === 'paid' || influencerData.contract_type === 'hybrid',
+        paid_amount: finalRatePerReel || ratePerReel || 0,
         editor: 'me',
         final_reel_url: '',
         status: 'pending',
@@ -116,6 +156,16 @@ export async function saveInfluencer(influencerData) {
   } else if (reels.length > reelsCount) {
     reels = reels.slice(0, reelsCount);
   }
+
+  // Stamp rate metadata onto reels
+  reels = reels.map(r => ({
+    ...r,
+    rate_per_reel: ratePerReel,
+    final_rate_per_reel: finalRatePerReel,
+    paid_amount: (influencerData.apply_to_all_reels && finalRatePerReel > 0 && r.is_paid)
+      ? finalRatePerReel
+      : (r.paid_amount !== undefined ? Number(r.paid_amount) : (finalRatePerReel || ratePerReel || 0))
+  }));
 
   const record = {
     id,
@@ -129,7 +179,9 @@ export async function saveInfluencer(influencerData) {
     reels_count: reelsCount,
     dashboard_screenshot_url: influencerData.dashboard_screenshot_url || null,
     contract_type: influencerData.contract_type || 'barter', // 'barter' | 'paid' | 'hybrid'
-    total_price: Number(influencerData.total_price || 0),
+    rate_per_reel: ratePerReel,
+    final_rate_per_reel: finalRatePerReel,
+    total_price: totalPrice,
     status: influencerData.status || 'pending', // 'pending' | 'negotiating' | 'approved' | 'active' | 'rejected' | 'completed'
     notes: (influencerData.notes || '').trim(),
     reels,
@@ -151,12 +203,25 @@ export async function saveInfluencer(influencerData) {
 
   // 2. Dual-write to Supabase
   try {
-    const { error } = await supabase
+    // Attempt upsert with all fields
+    const { error: fullError } = await supabase
       .from('influencers')
       .upsert([record], { onConflict: 'id' });
 
-    if (error) {
-      console.warn("Notice: public.influencers upsert warning (stored in local cache):", error.message);
+    if (fullError) {
+      // If error is PGRST204 (column not found in schema cache), retry without top-level rate_per_reel / final_rate_per_reel
+      // (The rates are still 100% securely saved in the 'reels' JSONB column!)
+      if (fullError.code === 'PGRST204' || String(fullError.message).includes('column')) {
+        const { rate_per_reel, final_rate_per_reel, ...fallbackRecord } = record;
+        const { error: fallbackErr } = await supabase
+          .from('influencers')
+          .upsert([fallbackRecord], { onConflict: 'id' });
+        if (fallbackErr) {
+          console.warn("Notice: public.influencers fallback upsert warning:", fallbackErr.message);
+        }
+      } else {
+        console.warn("Notice: public.influencers upsert warning (stored in local cache):", fullError.message);
+      }
     }
   } catch (err) {
     console.warn("Notice: Supabase influencers upsert error:", err);
@@ -237,9 +302,13 @@ export function computeCreatorFinances(influencerOrList) {
     }
   });
 
-  // If contract has a fixed total_price overriding reels
-  if (committed === 0 && Number(inf.total_price) > 0) {
-    committed = Number(inf.total_price);
+  // If contract has a final_rate_per_reel or fixed total_price overriding individual reels
+  if (committed === 0) {
+    if (Number(inf.final_rate_per_reel) > 0) {
+      committed = Number(inf.final_rate_per_reel) * (parseInt(inf.reels_count) || reels.length || 3);
+    } else if (Number(inf.total_price) > 0) {
+      committed = Number(inf.total_price);
+    }
   }
 
   const pending = Math.max(0, committed - paid);
