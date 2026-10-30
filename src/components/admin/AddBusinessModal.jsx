@@ -596,7 +596,7 @@ export default function AddBusinessModal({ isOpen, onClose, onSuccess }) {
                   <div className="flex justify-between items-center mb-1">
                     <label className="text-[11px] text-[#888] font-medium">Payment Proof Screenshots</label>
                     {receiptFiles.length > 0 && (
-                      <span className="text-[10px] text-purple-400 font-mono font-bold">
+                      <span className="text-[10px] text-blue-400 font-mono font-bold">
                         {receiptFiles.length} attached
                       </span>
                     )}

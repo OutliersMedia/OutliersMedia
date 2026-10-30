@@ -25,8 +25,6 @@ export const ThemeContext = createContext();
 export const SplashContext = createContext();
 
 import GlobalPhoneLock from './components/GlobalPhoneLock';
-import GlobalNotificationLock from './components/GlobalNotificationLock';
-import AdminTickets from './pages/admin/AdminTickets';
 import AdminClients from './pages/admin/AdminClients';
 import AdminFinances from './pages/admin/AdminFinances';
 import AdminDeliverables from './pages/admin/AdminDeliverables';
@@ -34,13 +32,12 @@ import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminInfluencers from './pages/admin/AdminInfluencers';
 import InfluencerConnect from './pages/InfluencerConnect';
 
-// This component acts as a global lock for clients missing phone or notification permissions.
+// This component acts as a global lock for clients missing phone number.
 function GlobalOnboardingGuard({ children }) {
   return (
     <>
       {children}
       <GlobalPhoneLock />
-      <GlobalNotificationLock />
     </>
   );
 }
@@ -163,7 +160,8 @@ function App() {
                           <Route path="deliverables" element={<AdminDeliverables />} />
                           <Route path="influencers" element={<AdminInfluencers />} />
                           <Route path="finances" element={<AdminFinances />} />
-                          <Route path="tickets" element={<AdminTickets />} />
+                          <Route path="tickets" element={<Navigate to="/admin" replace />} />
+                          <Route path="whatsapp" element={<Navigate to="/admin/notifications" replace />} />
                           <Route path="notifications" element={<AdminNotifications />} />
                           <Route path="email" element={<Navigate to="/admin/notifications" replace />} />
                         </Route>

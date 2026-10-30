@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 import { usePricing } from '../context/PricingContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Video, Sparkles, Check, ArrowRight, ShieldCheck, Minus, Plus, FileText, CheckCircle2 } from 'lucide-react';
+import { Video, Flame, Check, ArrowRight, ShieldCheck, Minus, Plus, FileText, CheckCircle2 } from 'lucide-react';
 import { saveCreatorOrder } from '../utils/influencerEngine';
 import FadeSection from './FadeSection';
 
@@ -147,7 +147,7 @@ export default function Packages() {
                     : 'text-[#888] hover:text-white'
                 }`}
               >
-                <Sparkles size={14} className={activeTab === 'creators' ? 'text-cyan-300' : 'text-[#888]'} />
+                <Flame size={14} className={activeTab === 'creators' ? 'text-cyan-300' : 'text-[#888]'} />
                 Creator Reels Pack
               </button>
             </div>
@@ -300,7 +300,7 @@ export default function Packages() {
                   >
                     <span className="text-xs font-bold uppercase tracking-wider block mb-1">Custom Pack</span>
                     <span className="text-2xl sm:text-3xl font-serif font-bold text-white block">Custom</span>
-                    <span className="text-base sm:text-lg font-mono font-bold text-purple-400 mt-2 block">₹1,500/ea</span>
+                    <span className="text-base sm:text-lg font-mono font-bold text-blue-400 mt-2 block">₹1,500/ea</span>
                     <span className="text-[10px] text-[#666] block mt-1">Min. 3 reels</span>
                   </button>
                 </div>
@@ -628,8 +628,8 @@ export default function Packages() {
 
                   {/* Proposed Budget if Negotiating */}
                   {isNegotiatingMode && (
-                    <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/25">
-                      <label className="text-xs font-bold uppercase tracking-wider text-purple-300 block mb-1">
+                    <div className="p-3.5 rounded-xl bg-[#3428f8]/10 border border-[#3428f8]/25">
+                      <label className="text-xs font-bold uppercase tracking-wider text-blue-300 block mb-1">
                         Your Proposed Budget (₹) *
                       </label>
                       <input
@@ -637,7 +637,7 @@ export default function Packages() {
                         min="1000"
                         value={proposedBudget}
                         onChange={(e) => setProposedBudget(e.target.value)}
-                        className="w-full bg-[#161616] border border-purple-500/30 rounded-xl p-3 text-sm text-white font-mono focus:border-purple-500 outline-none"
+                        className="w-full bg-[#161616] border border-[#3428f8]/30 rounded-xl p-3 text-sm text-white font-mono focus:border-[#3428f8] outline-none"
                       />
                       <span className="text-[11px] text-[#888] mt-1 block">
                         Enter your desired offer. Our team will review and respond with a finalized quote.

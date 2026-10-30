@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, CheckCheck, Video, Image as ImageIcon, Layout, Sparkles, Clock, X, ChevronRight } from 'lucide-react';
+import { Bell, CheckCheck, Video, Image as ImageIcon, Layout, Flame, Clock, X, ChevronRight } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
 export default function NotificationBell({ user, order }) {
@@ -150,15 +150,15 @@ export default function NotificationBell({ user, order }) {
   const getTypeBadge = (type) => {
     switch (type) {
       case 'reel':
-        return { label: 'Reel', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', icon: Video };
+        return { label: 'Reel', color: 'text-pink-400 bg-pink-500/10 border-pink-500/20', icon: Video };
       case 'static':
         return { label: 'Static Post', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20', icon: ImageIcon };
       case 'story':
         return { label: 'Story', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', icon: Layout };
       case 'poster':
-        return { label: 'Poster', color: 'text-pink-400 bg-pink-500/10 border-pink-500/20', icon: Sparkles };
+        return { label: 'Poster', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20', icon: Layout };
       case 'broadcast':
-        return { label: 'Announcement', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', icon: Sparkles };
+        return { label: 'Announcement', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', icon: Flame };
       default:
         return { label: 'Update', color: 'text-[#3428f8] bg-[#3428f8]/10 border-[#3428f8]/20', icon: Bell };
     }

@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Video, Layout, Sparkles, BookOpen, Globe, Star } from 'lucide-react';
+import { Image as ImageIcon, Video, Layout, Flame, BookOpen, Globe, Star } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 /**
@@ -9,8 +9,8 @@ export const TYPE_CONFIG = {
   static:  { label: 'Static Post', shortLabel: 'Post',   icon: ImageIcon, color: 'text-[#3428f8]', bg: 'bg-[#3428f8]', dot: 'bg-[#3428f8]' },
   reel:    { label: 'Reel',        shortLabel: 'Reel',   icon: Video,     color: 'text-pink-500',   bg: 'bg-pink-500',   dot: 'bg-pink-500' },
   poster:  { label: 'Poster',      shortLabel: 'Poster', icon: Layout,    color: 'text-green-500',  bg: 'bg-green-500',  dot: 'bg-green-500' },
-  story:   { label: 'Story',       shortLabel: 'Story',  icon: Sparkles,  color: 'text-amber-400',  bg: 'bg-amber-400',  dot: 'bg-amber-400' },
-  special: { label: 'Special Project', shortLabel: 'Special', icon: Star, color: 'text-purple-400', bg: 'bg-purple-500', dot: 'bg-purple-400' },
+  story:   { label: 'Story',       shortLabel: 'Story',  icon: Flame,     color: 'text-amber-400',  bg: 'bg-amber-400',  dot: 'bg-amber-400' },
+  special: { label: 'Special Project', shortLabel: 'Special', icon: Star, color: 'text-blue-400',  bg: 'bg-[#3428f8]',  dot: 'bg-blue-400' },
   website: { label: 'Website / App', shortLabel: 'Web',  icon: Globe,     color: 'text-cyan-400',   bg: 'bg-cyan-500',   dot: 'bg-cyan-400' },
 };
 

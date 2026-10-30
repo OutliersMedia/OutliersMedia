@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { 
-  Download, Copy, LifeBuoy, CheckCircle, Clock, AlertTriangle, 
+  Download, Copy, CheckCircle, Clock, AlertTriangle, 
   IndianRupee, CreditCard, ShieldCheck, Image as ImageIcon, Video, 
-  Layout, Sparkles, Calendar, ExternalLink, Globe, X, UploadCloud, Check
+  Layout, Flame, Calendar, ExternalLink, Globe, X, UploadCloud, Check
 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
-import TicketModal from './TicketModal';
 import { generateSingleInvoicePDF } from '../../utils/invoiceGenerator';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { 
@@ -20,8 +19,6 @@ import { triggerLocalNotification } from '../../utils/pushManager';
 
 export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpenPayModal }) {
   const [posts, setPosts] = useState([]);
-  const [tickets, setTickets] = useState([]);
-  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
 
   // Special Deliverables & Add-ons state
   const [specialDeliverables, setSpecialDeliverables] = useState([]);
@@ -177,18 +174,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
       }
     };
 
-    // Fetch Tickets
-    const fetchTickets = async () => {
-      const { data } = await supabase
-        .from('support_tickets')
-        .select('*')
-        .eq('order_id', order.order_id)
-        .order('created_at', { ascending: false });
-      if (data && isMounted) setTickets(data);
-    };
-
     fetchPosts();
-    fetchTickets();
 
     // 1. Real-time broadcast channel (instant submit & revert updates from Admin)
     const broadcastChannel = supabase
@@ -484,7 +470,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   label="Stories" 
                   current={currentStories} 
                   target={targetStories} 
-                  icon={Sparkles}
+                  icon={Flame}
                   barColor="bg-amber-400"
                   textColor="text-amber-400"
                 />
@@ -566,13 +552,13 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
-              className="bg-glass backdrop-blur-md border border-purple-500/25 p-6 md:p-8 rounded-3xl relative overflow-hidden"
+              className="bg-glass backdrop-blur-md border border-[#3428f8]/30 p-6 md:p-8 rounded-3xl relative overflow-hidden"
             >
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 relative z-10">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      <Sparkles size={16} />
+                    <span className="p-1.5 rounded-lg bg-[#3428f8]/15 text-blue-400 border border-[#3428f8]/30">
+                      <Flame size={16} />
                     </span>
                     <h3 className="text-xl font-serif text-white">Special Deliverables & Custom Projects</h3>
                   </div>
@@ -581,7 +567,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   </p>
                 </div>
 
-                <span className="text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full uppercase tracking-wider">
+                <span className="text-[10px] font-mono font-bold bg-[#3428f8]/10 text-blue-400 border border-[#3428f8]/30 px-3 py-1 rounded-full uppercase tracking-wider">
                   {specialDeliverables.length} Special Item{specialDeliverables.length > 1 ? 's' : ''}
                 </span>
               </div>
@@ -596,12 +582,12 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                   return (
                     <div
                       key={item.id}
-                      className="bg-[#0b0c10] border border-[#232634] hover:border-purple-500/40 rounded-2xl p-5 flex flex-col justify-between transition-all group"
+                      className="bg-[#0b0c10] border border-[#232634] hover:border-[#3428f8]/40 rounded-2xl p-5 flex flex-col justify-between transition-all group"
                     >
                       <div>
                         {/* Top row: Type Badge + Status */}
                         <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-[#3428f8]/15 text-blue-400 border border-[#3428f8]/30">
                             {item.type || 'Custom Deliverable'}
                           </span>
 
@@ -616,7 +602,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                         </div>
 
                         {/* Title & Description */}
-                        <h4 className="text-white font-bold text-base group-hover:text-purple-300 transition-colors mb-1.5">
+                        <h4 className="text-white font-bold text-base group-hover:text-blue-400 transition-colors mb-1.5">
                           {item.title}
                         </h4>
                         {item.description && (
@@ -628,7 +614,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                         {/* Delivery Date */}
                         {item.delivery_date && (
                           <div className="flex items-center gap-1.5 text-[11px] text-[#666] mb-4">
-                            <Calendar size={12} className="text-purple-400" />
+                            <Calendar size={12} className="text-blue-400" />
                             <span>Delivery Date: <strong className="text-[#aaa]">{new Date(item.delivery_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
                           </div>
                         )}
@@ -642,7 +628,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                               href={item.project_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-400 hover:text-white bg-purple-500/15 hover:bg-purple-600 px-3 py-1.5 rounded-xl border border-purple-500/30 transition-all cursor-pointer shadow-sm"
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 hover:text-white bg-[#3428f8]/15 hover:bg-[#3428f8] px-3 py-1.5 rounded-xl border border-[#3428f8]/30 transition-all cursor-pointer shadow-sm"
                             >
                               <ExternalLink size={13} /> Open Project ↗
                             </a>
@@ -661,7 +647,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                               <CheckCircle size={12} /> ₹{fee.toLocaleString()} Paid
                             </span>
                           ) : isReview ? (
-                            <span className="text-[10px] font-bold text-purple-300 bg-purple-500/20 border border-purple-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-blue-400 bg-[#3428f8]/15 border border-[#3428f8]/30 px-2.5 py-1 rounded-lg flex items-center gap-1">
                               <Clock size={11} className="animate-spin" /> Verifying Payment
                             </span>
                           ) : (
@@ -740,7 +726,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
           </motion.div>
         </div>
 
-        {/* Right Column: Billing & Ticketing */}
+        {/* Right Column: Billing & Invoices */}
         <div className="lg:col-span-1 flex flex-col gap-8">
           
           {/* Milestone Payment & Billing Card */}
@@ -908,58 +894,8 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
               <Download size={14} /> Download Tax Invoice PDF
             </button>
           </motion.div>
-
-          {/* Support Ticket Section */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-surface border border-themeborder rounded-3xl p-6 md:p-8"
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-serif text-primary flex items-center gap-2">
-                <LifeBuoy size={20} className="text-accent" />
-                Support
-              </h3>
-              <button 
-                onClick={() => setIsTicketModalOpen(true)}
-                className="text-xs bg-accent/10 text-accent hover:bg-accent hover:text-white px-3 py-1.5 rounded-full font-bold uppercase tracking-widest transition-colors cursor-pointer"
-              >
-                + New Ticket
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              {tickets.length === 0 ? (
-                <div className="text-center p-6 bg-raised rounded-2xl border border-themeborder border-dashed">
-                  <p className="text-muted text-sm">No open tickets. Need a revision or have a question? Raise a ticket!</p>
-                </div>
-              ) : (
-                tickets.map(ticket => (
-                  <div key={ticket.id} className="p-4 bg-raised border border-themeborder rounded-2xl flex flex-col gap-2">
-                    <div className="flex justify-between items-start">
-                      <span className="text-xs font-bold uppercase tracking-widest text-primary truncate pr-2">{ticket.category}</span>
-                      {ticket.status === 'resolved' ? (
-                        <span className="text-green-500 flex items-center gap-1 text-xs font-bold uppercase"><CheckCircle size={12} /> Resolved</span>
-                      ) : (
-                        <span className="text-yellow-500 flex items-center gap-1 text-xs font-bold uppercase"><Clock size={12} /> Open</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-body line-clamp-2">{ticket.message}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </motion.div>
         </div>
       </div>
-
-      <TicketModal 
-        isOpen={isTicketModalOpen} 
-        onClose={() => setIsTicketModalOpen(false)} 
-        order={order} 
-        onTicketCreated={(newTicket) => setTickets([newTicket, ...tickets])}
-      />
 
       {/* Pay Due Modal for Special Deliverables */}
       <AnimatePresence>
@@ -977,7 +913,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
             >
               <div className="p-6 border-b border-[#20222e] flex justify-between items-center bg-[#14151e]">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-[#3428f8]/15 px-2.5 py-0.5 rounded-full border border-[#3428f8]/30">
                     Special Deliverable Add-on
                   </span>
                   <h3 className="text-lg font-serif text-white mt-1">
@@ -1011,7 +947,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                           {Number(selectedSpecialForPayment.price || selectedSpecialForPayment.fee || 0).toLocaleString('en-IN')}
                         </span>
                       </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-[#3428f8]/15 text-blue-400 border border-[#3428f8]/30">
                         {selectedSpecialForPayment.type || 'Custom'}
                       </span>
                     </div>
@@ -1041,7 +977,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                           value={specialPayTxnId}
                           onChange={(e) => setSpecialPayTxnId(e.target.value)}
                           required
-                          className="w-full bg-[#14151e] border border-[#2d3045] text-white p-3 rounded-xl text-sm font-mono focus:border-purple-500 outline-none transition-colors"
+                          className="w-full bg-[#14151e] border border-[#2d3045] text-white p-3 rounded-xl text-sm font-mono focus:border-[#3428f8] outline-none transition-colors"
                         />
                       </div>
 
@@ -1049,7 +985,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                         <label className="block text-[11px] font-bold uppercase tracking-wider text-[#aaa] mb-1.5">
                           Upload Payment Screenshot *
                         </label>
-                        <div className="relative border-2 border-dashed border-[#2d3045] hover:border-purple-500 rounded-2xl p-4 text-center cursor-pointer transition-colors bg-[#14151e]">
+                        <div className="relative border-2 border-dashed border-[#2d3045] hover:border-[#3428f8] rounded-2xl p-4 text-center cursor-pointer transition-colors bg-[#14151e]">
                           <input
                             type="file"
                             accept="image/*"
@@ -1068,7 +1004,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
                       <button
                         type="submit"
                         disabled={payingSpecial || !specialPayTxnId || !specialPayReceiptFile}
-                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex justify-center items-center gap-2 cursor-pointer"
+                        className="w-full bg-[#3428f8] hover:bg-[#2d23c9] disabled:bg-[#3428f8]/40 text-white p-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex justify-center items-center gap-2 cursor-pointer"
                       >
                         {payingSpecial ? (
                           <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

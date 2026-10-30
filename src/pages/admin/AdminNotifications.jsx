@@ -1,560 +1,573 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../utils/supabaseClient';
-import { useAuth } from '../../context/AuthContext';
 import { 
-  Bell, BellRing, Send, Users, User, Sparkles, CheckCircle, Clock, 
-  ExternalLink, Eye, AlertCircle, RefreshCw, Layers, ShieldCheck, Tag, Lock
+  MessageCircle, Users, Flame, Search, ExternalLink, Send, 
+  CheckCircle2, Clock, Phone, Building2, Check, RefreshCw
 } from 'lucide-react';
-import { 
-  dispatchPushNotification, 
-  triggerLocalNotification, 
-  subscribeClientToPush, 
-  getNotificationPermission 
-} from '../../utils/pushManager';
+import { fetchInfluencers } from '../../utils/influencerEngine';
+
+const CLIENT_TEMPLATES = [
+  {
+    id: 'package_over',
+    title: 'Package Expired / Renewal Notice',
+    badge: 'Renewal',
+    generate: (name) => 
+      `Hi ${name || 'there'}, your monthly marketing package with Outliers Media has completed. We’d love to review this month’s performance and align on renewing your growth strategy for the next cycle. Let us know a convenient time to connect!`
+  },
+  {
+    id: 'half_package',
+    title: 'Half Package Done (50% Milestone Reached)',
+    badge: 'Milestone',
+    generate: (name) => 
+      `Hi ${name || 'there'}, quick update from Outliers Media! We have successfully completed 50% of your campaign deliverables for this month. Our creative team is actively optimizing reach and engagement for the remaining deliverables.`
+  },
+  {
+    id: 'strategy_session',
+    title: 'Monthly Strategy & Review Call',
+    badge: 'Strategy',
+    generate: (name) => 
+      `Hi ${name || 'there'}, hope you're having a productive week! It's time for our monthly strategy alignment. Please let us know a convenient time this week for a brief call to discuss our creative direction for next month.`
+  },
+  {
+    id: 'payment_reminder',
+    title: 'Payment / Installment Reminder',
+    badge: 'Finance',
+    generate: (name) => 
+      `Hi ${name || 'there'}, this is a gentle reminder regarding the upcoming payment / milestone installment for your marketing package with Outliers Media. Please feel free to check your client dashboard or let us know if you need any assistance.`
+  },
+  {
+    id: 'deliverables_review',
+    title: 'Campaign Content Ready for Review',
+    badge: 'Review',
+    generate: (name) => 
+      `Hi ${name || 'there'}, fresh creative deliverables have been uploaded to your Outliers Media dashboard! Please review them at your earliest convenience and let us know your feedback.`
+  },
+  {
+    id: 'custom',
+    title: 'Custom Message',
+    badge: 'Custom',
+    generate: (name) => `Hi ${name || 'there'}, `
+  }
+];
+
+const INFLUENCER_TEMPLATES = [
+  {
+    id: 'contract_brief',
+    title: 'Campaign Brief & Guidelines',
+    badge: 'Brief',
+    generate: (name) => 
+      `Hi ${name || 'there'}, excited to collaborate with you! Please review your campaign brief and shoot guidelines for your upcoming reels with Outliers Media. Let us know once you've reviewed the concept hooks.`
+  },
+  {
+    id: 'footage_checkin',
+    title: 'Editing & Footage Status Check',
+    badge: 'Editing',
+    generate: (name) => 
+      `Hi ${name || 'there'}, checking in from Outliers Media regarding your contracted reels. Please share the raw footage / draft at your earliest convenience so our editing team can finalize review.`
+  },
+  {
+    id: 'live_upload',
+    title: 'Reel Approved - Live Upload Confirmation',
+    badge: 'Upload',
+    generate: (name) => 
+      `Hi ${name || 'there'}, your reel has been reviewed and approved! Please confirm once it is posted live on Instagram and share the live URL with us so we can feature it.`
+  },
+  {
+    id: 'payout_settled',
+    title: 'Commercial Fee / Payout Disbursed',
+    badge: 'Payout',
+    generate: (name) => 
+      `Hi ${name || 'there'}, your creator payout has been processed and disbursed. Thank you for partnering with Outliers Media! Looking forward to our next collaboration.`
+  },
+  {
+    id: 'barter_terms',
+    title: 'Barter Delivery & Collaboration Agreement',
+    badge: 'Barter',
+    generate: (name) => 
+      `Hi ${name || 'there'}, please confirm receipt of your barter items and terms for our upcoming campaign with Outliers Media. Let's make this collaboration viral!`
+  },
+  {
+    id: 'custom',
+    title: 'Custom Message',
+    badge: 'Custom',
+    generate: (name) => `Hi ${name || 'there'}, `
+  }
+];
 
 export default function AdminNotifications() {
-  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('clients'); // 'clients' | 'influencers'
+  
+  // Data states
   const [clients, setClients] = useState([]);
-  const [loadingClients, setLoadingClients] = useState(true);
+  const [influencers, setInfluencers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Device Permission State
-  const [devicePermission, setDevicePermission] = useState('default');
-  const [deviceRegistering, setDeviceRegistering] = useState(false);
-
-  // Form State
-  const [targetType, setTargetType] = useState('global'); // 'global' | 'client'
-  const [selectedClientId, setSelectedClientId] = useState('');
-  const [notifCategory, setNotifCategory] = useState('offer'); // 'offer' | 'upload' | 'account' | 'general'
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [targetUrl, setTargetUrl] = useState('/dashboard');
-
-  // Status State
-  const [sending, setSending] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [sentHistory, setSentHistory] = useState([]);
-
-  const checkDevicePermission = () => {
-    if (typeof Notification !== 'undefined') {
-      setDevicePermission(Notification.permission);
+  // Selected Recipient & Composer State
+  const [selectedRecipient, setSelectedRecipient] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('half_package');
+  const [messageText, setMessageText] = useState('');
+  const [sentLog, setSentLog] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('outliers_wa_sent_log') || '[]');
+    } catch {
+      return [];
     }
-  };
+  });
 
   useEffect(() => {
-    fetchClients();
-    loadSentHistory();
-    checkDevicePermission();
-
-    const handleFocus = () => checkDevicePermission();
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    loadAllData();
   }, []);
 
-  const fetchClients = async () => {
-    setLoadingClients(true);
+  const loadAllData = async () => {
+    setLoading(true);
     try {
+      // 1. Fetch Clients
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('auth_id, name, email, phone, business_type, role')
+        .select('auth_id, name, email, phone, business_type, instagram_handle, role')
         .order('name', { ascending: true });
 
-      if (profiles) {
-        setClients(profiles);
-        if (profiles.length > 0 && !selectedClientId) {
-          setSelectedClientId(profiles[0].auth_id);
-        }
+      const { data: orders } = await supabase
+        .from('orders')
+        .select('client_id, plan_name, status, created_at')
+        .order('created_at', { ascending: false });
+
+      const clientList = (profiles || [])
+        .filter(p => p.role !== 'admin' && p.role !== 'tester')
+        .map(p => {
+          const clientOrders = (orders || []).filter(o => o.client_id === p.auth_id);
+          const latestOrder = clientOrders[0];
+          return {
+            id: p.auth_id,
+            name: p.name || 'Client',
+            business_name: p.business_type || 'Local Business',
+            phone: p.phone || '',
+            email: p.email || '',
+            instagram: p.instagram_handle || '',
+            plan: latestOrder?.plan_name || 'Active Client',
+            status: latestOrder?.status || 'active',
+            type: 'client'
+          };
+        });
+
+      setClients(clientList);
+
+      // 2. Fetch Influencers
+      const infList = await fetchInfluencers();
+      const formattedInf = (infList || []).map(inf => ({
+        id: inf.id,
+        name: inf.name || 'Creator',
+        business_name: `@${inf.instagram_id || 'creator'}`,
+        phone: inf.phone || '',
+        email: inf.email || '',
+        instagram: inf.instagram_id || '',
+        niche: inf.niche || 'Lifestyle',
+        reels_count: inf.reels_count || 3,
+        status: inf.status || 'active',
+        type: 'influencer'
+      }));
+
+      setInfluencers(formattedInf);
+
+      // Default select first available
+      if (clientList.length > 0 && !selectedRecipient) {
+        selectRecipient(clientList[0], 'clients');
       }
     } catch (err) {
-      console.error('Error fetching clients:', err);
+      console.error("Error loading messaging data:", err);
     } finally {
-      setLoadingClients(false);
+      setLoading(false);
     }
   };
 
-  const loadSentHistory = () => {
-    try {
-      const logs = JSON.parse(localStorage.getItem('outliers_sent_notifications') || '[]');
-      setSentHistory(logs);
-    } catch (e) {
-      setSentHistory([]);
+  const selectRecipient = (recipient, tab = activeTab) => {
+    setSelectedRecipient(recipient);
+    const templates = tab === 'clients' ? CLIENT_TEMPLATES : INFLUENCER_TEMPLATES;
+    const defaultTpl = templates[0];
+    setSelectedTemplateId(defaultTpl.id);
+    setMessageText(defaultTpl.generate(recipient.name));
+  };
+
+  const handleTemplateChange = (templateId) => {
+    setSelectedTemplateId(templateId);
+    const templates = activeTab === 'clients' ? CLIENT_TEMPLATES : INFLUENCER_TEMPLATES;
+    const tpl = templates.find(t => t.id === templateId);
+    if (tpl && selectedRecipient) {
+      setMessageText(tpl.generate(selectedRecipient.name));
     }
   };
 
-  const applyPreset = (presetTitle, presetBody, category = 'offer') => {
-    setTitle(presetTitle);
-    setBody(presetBody);
-    setNotifCategory(category);
-  };
-
-  const handleEnableDevicePush = async () => {
-    setDeviceRegistering(true);
-    const res = await subscribeClientToPush(user);
-    checkDevicePermission();
-    setDeviceRegistering(false);
-
-    if (res.success) {
-      alert("✓ Browser notifications enabled! Your device is now active and will receive push notifications.");
+  const cleanPhoneNumber = (phone) => {
+    if (!phone) return '';
+    let cleaned = phone.replace(/[^0-9]/g, '');
+    if (cleaned.length === 10) {
+      cleaned = '91' + cleaned;
     }
+    return cleaned;
   };
 
-  const handleTestLocal = async () => {
-    const testTitle = title.trim() || '🎉 Outliers Media Test Alert';
-    const testBody = body.trim() || 'This is how notifications appear on your screen and mobile device!';
-    
-    const sent = await triggerLocalNotification(testTitle, {
-      body: testBody,
-      url: targetUrl || '/dashboard'
-    });
-    
-    checkDevicePermission();
-    if (sent) {
-      setSuccessMsg('✓ Test notification popped up on your screen!');
-      setTimeout(() => setSuccessMsg(''), 4000);
-    }
-  };
-
-  const handleSendNotification = async (e) => {
-    e.preventDefault();
-    if (!title.trim() || !body.trim()) {
-      alert("Please fill in both a notification title and message body.");
+  const handleOpenWhatsApp = (recipient = selectedRecipient, text = messageText) => {
+    if (!recipient?.phone) {
+      alert(`No phone number recorded for ${recipient?.name || 'this recipient'}. Please update their profile.`);
       return;
     }
 
-    const isGlobal = targetType === 'global';
-    let targetUserId = null;
-    let targetClientName = 'All Clients';
+    const cleanedPhone = cleanPhoneNumber(recipient.phone);
+    const encoded = encodeURIComponent(text);
+    const waUrl = `https://wa.me/${cleanedPhone}?text=${encoded}`;
+    
+    // Log transmission
+    const logItem = {
+      id: `wa_${Date.now()}`,
+      recipient_name: recipient.name,
+      recipient_type: recipient.type,
+      phone: recipient.phone,
+      timestamp: new Date().toISOString(),
+      template: selectedTemplateId
+    };
 
-    if (!isGlobal) {
-      if (!selectedClientId) {
-        alert("Please select a target client.");
-        return;
-      }
-      targetUserId = selectedClientId;
-      const targetClient = clients.find(c => c.auth_id === selectedClientId);
-      targetClientName = targetClient?.name || targetClient?.email || 'Specific Client';
+    const updatedLog = [logItem, ...sentLog.slice(0, 19)];
+    setSentLog(updatedLog);
+    try {
+      localStorage.setItem('outliers_wa_sent_log', JSON.stringify(updatedLog));
+    } catch (e) {
+      console.warn("Could not save sent log:", e);
     }
 
-    setSending(true);
-    setSuccessMsg('');
-
-    const res = await dispatchPushNotification({
-      targetUserId,
-      targetClientName,
-      title: title.trim(),
-      body: body.trim(),
-      url: targetUrl.trim() || '/dashboard',
-      isGlobal
-    });
-
-    setSending(false);
-
-    if (res.success) {
-      setSuccessMsg(
-        isGlobal 
-          ? `✓ Global Notification broadcasted successfully to all active clients!`
-          : `✓ Targeted notification dispatched directly to ${targetClientName}!`
-      );
-      loadSentHistory();
-
-      // If the admin broadcasted globally or sent to their own account, trigger immediate test preview
-      const targetClient = clients.find(c => c.auth_id === selectedClientId);
-      const isTargetingMe = isGlobal || 
-        targetUserId === user?.id || 
-        targetUserId === user?.email || 
-        (targetClient && user?.email && targetClient.email === user.email);
-
-      if (isTargetingMe && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        await triggerLocalNotification(title.trim(), {
-          body: body.trim(),
-          url: targetUrl || '/dashboard'
-        });
-      }
-
-      setTimeout(() => setSuccessMsg(''), 5000);
-    } else {
-      alert(`Error sending notification: ${res.error}`);
-    }
+    window.open(waUrl, '_blank');
   };
 
-  const selectedClientObj = clients.find(c => c.auth_id === selectedClientId);
+  // Quick 1-click sender from table
+  const handleQuickSend = (recipient, templateKey) => {
+    const templates = recipient.type === 'client' ? CLIENT_TEMPLATES : INFLUENCER_TEMPLATES;
+    const tpl = templates.find(t => t.id === templateKey) || templates[0];
+    const text = tpl.generate(recipient.name);
+    handleOpenWhatsApp(recipient, text);
+  };
+
+  // Search filtered lists
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => 
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.phone.includes(searchTerm)
+    );
+  }, [clients, searchTerm]);
+
+  const filteredInfluencers = useMemo(() => {
+    return influencers.filter(i => 
+      i.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      i.instagram.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      i.phone.includes(searchTerm)
+    );
+  }, [influencers, searchTerm]);
+
+  const activeTemplates = activeTab === 'clients' ? CLIENT_TEMPLATES : INFLUENCER_TEMPLATES;
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 min-h-[calc(100vh-140px)] shadow-2xl flex flex-col gap-5 sm:gap-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 pb-5 sm:pb-6 border-b border-[#222]">
-        <div>
-          <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
-            <div className="p-2 sm:p-2.5 rounded-xl bg-[#3428f8]/10 text-[#3428f8] border border-[#3428f8]/20 shrink-0">
-              <BellRing size={20} />
-            </div>
-            <h2 className="text-xl sm:text-3xl font-serif text-white">Push Notification Broadcaster</h2>
-          </div>
-          <p className="text-[#888] text-xs sm:text-sm">
-            Send instant desktop and mobile notifications to all clients for offers, or send targeted alerts to specific accounts.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleTestLocal}
-          className="w-full sm:w-auto justify-center inline-flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333] px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
-        >
-          <Eye size={14} className="text-[#3428f8]" />
-          Test Notification on My Screen
-        </button>
-      </div>
-
-      {/* Device Notification Status Card */}
-      <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
-        devicePermission === 'granted'
-          ? 'bg-emerald-950/20 border-emerald-500/30'
-          : devicePermission === 'denied'
-          ? 'bg-red-950/20 border-red-500/30'
-          : 'bg-amber-950/20 border-amber-500/30'
-      }`}>
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className={`p-2.5 rounded-xl border shrink-0 ${
-            devicePermission === 'granted'
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-              : devicePermission === 'denied'
-              ? 'bg-red-500/20 text-red-400 border-red-500/30'
-              : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-          }`}>
-            <BellRing size={20} />
+    <div className="max-w-7xl mx-auto flex flex-col gap-6">
+      
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#111] border border-[#222] p-5 sm:p-6 rounded-3xl">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 rounded-2xl">
+            <MessageCircle size={24} />
           </div>
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-sm font-bold text-white">This Device Notification Status:</h4>
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
-                devicePermission === 'granted'
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : devicePermission === 'denied'
-                  ? 'bg-red-500/20 text-red-300 border-red-500/40'
-                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-              }`}>
-                {devicePermission === 'granted' ? 'Active & Ready ✓' : devicePermission === 'denied' ? 'Blocked in Browser ❌' : 'Not Enabled Yet ⚠️'}
-              </span>
-            </div>
-            <p className="text-xs text-[#888] mt-0.5">
-              {devicePermission === 'granted' 
-                ? 'This device is listening for live broadcasts and deliverable upload alerts.'
-                : devicePermission === 'denied'
-                ? 'Notifications are blocked in this browser. Click the lock icon 🔒 next to the website URL to Allow.'
-                : 'To test and receive notifications on this device, click Enable Notifications below.'}
+            <h1 className="text-xl sm:text-2xl font-serif text-white flex items-center gap-2">
+              WhatsApp Communication Hub
+            </h1>
+            <p className="text-xs text-[#888]">
+              Connect directly with clients and creators on WhatsApp using verified agency message templates.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-          {devicePermission !== 'granted' && (
+        <button
+          type="button"
+          onClick={loadAllData}
+          className="bg-[#181818] hover:bg-[#222] border border-[#2a2a2a] text-white px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer self-start sm:self-auto"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          Refresh Contacts
+        </button>
+      </div>
+
+      {/* Main Tabs: Clients vs Influencers */}
+      <div className="flex gap-2 p-1.5 rounded-2xl bg-[#0e0e0e] border border-[#222] self-start">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('clients');
+            if (clients.length > 0) selectRecipient(clients[0], 'clients');
+          }}
+          className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === 'clients'
+              ? 'bg-[#3428f8] text-white shadow-md'
+              : 'text-[#888] hover:text-white'
+          }`}
+        >
+          <Users size={14} />
+          <span>Clients Directory ({clients.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('influencers');
+            if (influencers.length > 0) selectRecipient(influencers[0], 'influencers');
+          }}
+          className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === 'influencers'
+              ? 'bg-[#3428f8] text-white shadow-md'
+              : 'text-[#888] hover:text-white'
+          }`}
+        >
+          <Flame size={14} />
+          <span>Influencers & Creators ({influencers.length})</span>
+        </button>
+      </div>
+
+      {/* Workspace: Left List + Right Composer */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* Left Side: Directory Table / List */}
+        <div className="lg:col-span-7 bg-[#0f0f0f] border border-[#222] rounded-3xl p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-white">
+              {activeTab === 'clients' ? 'Select Client' : 'Select Creator'}
+            </h2>
+            
+            <div className="relative w-56">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#161616] border border-[#282828] rounded-xl py-1.5 pl-8 pr-3 text-xs text-white focus:border-[#3428f8] outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Contact Cards List */}
+          <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
+            {activeTab === 'clients' ? (
+              filteredClients.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[#666]">No clients found matching search.</div>
+              ) : (
+                filteredClients.map((client) => {
+                  const isSelected = selectedRecipient?.id === client.id;
+                  return (
+                    <div
+                      key={client.id}
+                      onClick={() => selectRecipient(client, 'clients')}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                        isSelected
+                          ? 'bg-[#181818] border-[#3428f8] text-white shadow-md'
+                          : 'bg-[#121212] border-[#222] text-[#aaa] hover:border-[#333] hover:text-white'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <h3 className="font-bold text-sm text-white truncate">{client.name}</h3>
+                          <span className="text-[10px] bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/30 px-2 py-0.2 rounded-full font-bold uppercase">
+                            {client.plan}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#777] truncate">
+                          {client.business_name} • {client.phone || 'No phone'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {client.phone ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickSend(client, 'half_package');
+                            }}
+                            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all cursor-pointer"
+                            title="Quick Send 50% Milestone via WhatsApp"
+                          >
+                            <Send size={13} />
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-[#666]">No Phone</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )
+            ) : (
+              filteredInfluencers.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[#666]">No creators found matching search.</div>
+              ) : (
+                filteredInfluencers.map((inf) => {
+                  const isSelected = selectedRecipient?.id === inf.id;
+                  return (
+                    <div
+                      key={inf.id}
+                      onClick={() => selectRecipient(inf, 'influencers')}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                        isSelected
+                          ? 'bg-[#181818] border-[#3428f8] text-white shadow-md'
+                          : 'bg-[#121212] border-[#222] text-[#aaa] hover:border-[#333] hover:text-white'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <h3 className="font-bold text-sm text-white truncate">{inf.name}</h3>
+                          <span className="text-[10px] bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.2 rounded-full font-bold font-mono">
+                            @{inf.instagram}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#777] truncate">
+                          {inf.niche} • {inf.reels_count} Reels Contract • {inf.phone || 'No phone'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {inf.phone ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickSend(inf, 'footage_checkin');
+                            }}
+                            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all cursor-pointer"
+                            title="Quick Send Footage Status via WhatsApp"
+                          >
+                            <Send size={13} />
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-[#666]">No Phone</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )
+            )}
+          </div>
+        </div>
+
+        {/* Right Side: WhatsApp Message Composer */}
+        <div className="lg:col-span-5 bg-[#0f0f0f] border border-[#222] rounded-3xl p-6 flex flex-col justify-between gap-5">
+          <div className="space-y-4">
+            <div className="pb-3 border-b border-[#222]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#3428f8] block mb-0.5">
+                Active Recipient
+              </span>
+              {selectedRecipient ? (
+                <div>
+                  <h3 className="text-lg font-serif font-bold text-white">
+                    {selectedRecipient.name}
+                  </h3>
+                  <p className="text-xs text-[#888]">
+                    {selectedRecipient.business_name} • Phone: <span className="text-white font-mono">{selectedRecipient.phone || 'Not recorded'}</span>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-[#666]">Select a recipient from the left list.</p>
+              )}
+            </div>
+
+            {/* Template Selector Dropdown */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1.5">
+                Choose Message Template
+              </label>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => handleTemplateChange(e.target.value)}
+                className="w-full bg-[#161616] border border-[#2a2a2a] rounded-xl p-3 text-xs text-white focus:border-[#3428f8] outline-none"
+              >
+                {activeTemplates.map(tpl => (
+                  <option key={tpl.id} value={tpl.id}>
+                    [{tpl.badge}] {tpl.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Message Textarea */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa]">
+                  WhatsApp Message Text
+                </label>
+                <span className="text-[10px] text-[#666]">Editable before sending</span>
+              </div>
+              <textarea
+                rows="7"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                className="w-full bg-[#161616] border border-[#2a2a2a] rounded-xl p-3.5 text-xs text-white focus:border-[#3428f8] outline-none resize-none leading-relaxed"
+              />
+            </div>
+          </div>
+
+          {/* Action Button: Send to WhatsApp */}
+          <div>
             <button
               type="button"
-              onClick={handleEnableDevicePush}
-              disabled={deviceRegistering}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#3428f8] hover:bg-[#281fe0] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+              disabled={!selectedRecipient || !selectedRecipient.phone || !messageText.trim()}
+              onClick={() => handleOpenWhatsApp()}
+              className="w-full py-4 px-6 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] disabled:opacity-40 text-black text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg font-sans"
             >
-              {deviceRegistering ? <RefreshCw size={13} className="animate-spin" /> : <Bell size={13} />}
-              Enable on This Device
+              <MessageCircle size={16} />
+              Open In WhatsApp Chat
+              <ExternalLink size={14} />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleTestLocal}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#1c1c1c] hover:bg-[#252525] text-white border border-[#333] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <Eye size={13} className="text-[#3428f8]" />
-            Test Screen Popup
-          </button>
+            <p className="text-[10px] text-[#666] text-center mt-2">
+              Opens WhatsApp directly with the pre-written message formatted and ready to deliver.
+            </p>
+          </div>
         </div>
+
       </div>
 
-      {/* Top Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-5">
-        <div className="bg-[#0a0a0a] border border-[#222] p-4 sm:p-6 rounded-2xl relative overflow-hidden">
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-1">Broadcast Channels</p>
-          <h3 className="text-xl sm:text-2xl font-serif text-white flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></span>
-            Realtime Push Active
-          </h3>
-          <p className="text-[#666] text-xs mt-1.5 sm:mt-2">Zero-latency background delivery</p>
-        </div>
-
-        <div className="bg-[#0a0a0a] border border-[#222] p-4 sm:p-6 rounded-2xl relative overflow-hidden">
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-1">Registered Clients</p>
-          <h3 className="text-xl sm:text-2xl font-serif text-white flex items-center gap-2">
-            <Users size={20} className="text-[#3428f8]" />
-            {clients.length} Clients
-          </h3>
-          <p className="text-[#666] text-xs mt-2">Eligible for global broadcasts</p>
-        </div>
-
-        <div className="bg-[#0a0a0a] border border-[#222] p-6 rounded-2xl relative overflow-hidden">
-          <p className="text-[#888] text-xs font-bold uppercase tracking-widest mb-1">Total Dispatched</p>
-          <h3 className="text-2xl font-serif text-white flex items-center gap-2">
-            <Clock size={20} className="text-amber-400" />
-            {sentHistory.length} Alerts Sent
-          </h3>
-          <p className="text-[#666] text-xs mt-2">Historical push logs recorded</p>
-        </div>
-      </div>
-
-      {/* Main Broadcaster Form & Live Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Form: 7 Columns */}
-        <div className="lg:col-span-7 bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 md:p-8 flex flex-col gap-6">
-          <h3 className="text-lg font-serif text-white flex items-center gap-2">
-            <Send size={18} className="text-[#3428f8]" /> Compose Notification
-          </h3>
-
-          <form onSubmit={handleSendNotification} className="flex flex-col gap-5">
-            {/* 1. Target Audience Selection */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
-                1. Select Recipient Audience
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTargetType('global')}
-                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                    targetType === 'global'
-                      ? 'bg-[#3428f8]/15 border-[#3428f8] text-white'
-                      : 'bg-[#141414] border-[#222] text-[#888] hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider mb-1">
-                    <Users size={16} className={targetType === 'global' ? 'text-[#3428f8]' : 'text-[#666]'} />
-                    All Clients (Global)
-                  </div>
-                  <p className="text-[11px] text-[#777]">
-                    Broadcast offers, announcements, and discounts to all clients at once.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTargetType('client')}
-                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                    targetType === 'client'
-                      ? 'bg-[#3428f8]/15 border-[#3428f8] text-white'
-                      : 'bg-[#141414] border-[#222] text-[#888] hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider mb-1">
-                    <User size={16} className={targetType === 'client' ? 'text-[#3428f8]' : 'text-[#666]'} />
-                    Specific Client
-                  </div>
-                  <p className="text-[11px] text-[#777]">
-                    Target only one client account (e.g. Cravory or personal update).
-                  </p>
-                </button>
-              </div>
-
-              {/* Specific Client Dropdown */}
-              {targetType === 'client' && (
-                <div className="mt-3">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-[#888] block mb-1.5">
-                    Choose Client Account:
-                  </label>
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full bg-[#141414] border border-[#333] text-white p-3 rounded-xl text-xs font-bold outline-none focus:border-[#3428f8]"
-                  >
-                    {clients.map(c => (
-                      <option key={c.auth_id} value={c.auth_id}>
-                        {c.name || 'Unnamed'} ({c.email}) {c.business_type ? `• ${c.business_type}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Presets */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
-                Quick Notification Templates
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => applyPreset(
-                    "🎉 Special Offer: 20% Off Extra Reels This Weekend!",
-                    "Upgrade your schedule or add extra reels with an exclusive 20% discount. Limited slots available!",
-                    "offer"
-                  )}
-                  className="bg-[#161616] hover:bg-[#222] text-[#ccc] border border-[#262626] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                >
-                  🏷️ Weekend Special Offer
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset(
-                    "🚀 Fresh Content Live on Your Dashboard!",
-                    "Your new content deliverable has been uploaded and is ready for review.",
-                    "upload"
-                  )}
-                  className="bg-[#161616] hover:bg-[#222] text-[#ccc] border border-[#262626] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                >
-                  🎬 Upload Alert
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset(
-                    "⏰ Monthly Retainer Renewal Reminder",
-                    "Your monthly content plan renewal is approaching. Check your schedule to ensure uninterrupted uploads.",
-                    "account"
-                  )}
-                  className="bg-[#161616] hover:bg-[#222] text-[#ccc] border border-[#262626] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                >
-                  💳 Plan Renewal Reminder
-                </button>
-              </div>
-            </div>
-
-            {/* 2. Notification Title */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
-                2. Notification Title
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full bg-[#141414] border border-[#333] text-white p-3.5 rounded-xl text-sm font-bold outline-none focus:border-[#3428f8] transition-colors"
-              />
-            </div>
-
-            {/* 3. Notification Message Body */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-2">
-                3. Notification Message Body
-              </label>
-              <textarea
-                rows={3}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                className="w-full bg-[#141414] border border-[#333] text-white p-3.5 rounded-xl text-sm outline-none focus:border-[#3428f8] transition-colors resize-none"
-              />
-            </div>
-
-            {/* Destination URL */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#aaa] block mb-1.5">
-                Destination URL on Click
-              </label>
-              <input
-                type="text"
-                value={targetUrl}
-                onChange={(e) => setTargetUrl(e.target.value)}
-                className="w-full bg-[#141414] border border-[#333] text-white font-mono p-3 rounded-xl text-xs outline-none focus:border-[#3428f8]"
-              />
-            </div>
-
-            {/* Success Feedback Alert */}
-            {successMsg && (
-              <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-2">
-                <CheckCircle size={15} />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={sending}
-              className="w-full bg-[#3428f8] hover:bg-[#281fe0] text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-            >
-              {sending ? (
-                <RefreshCw size={16} className="animate-spin" />
-              ) : (
-                <>
-                  <Send size={16} />
-                  {targetType === 'global' ? 'Send Global Push Broadcast' : 'Dispatch Client Notification'}
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Right Preview & Live Cards: 5 Columns */}
-        <div className="lg:col-span-5 flex flex-col gap-6">
-          {/* Live Screen Preview */}
-          <div className="bg-[#0a0a0a] border border-[#222] rounded-3xl p-6">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#888] block mb-4 flex items-center gap-2">
-              <Eye size={14} className="text-[#3428f8]" /> Live Notification Preview
+      {/* Sent Transmission History */}
+      {sentLog.length > 0 && (
+        <div className="bg-[#0f0f0f] border border-[#222] rounded-3xl p-5">
+          <div className="flex items-center justify-between pb-3 border-b border-[#222] mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#888] flex items-center gap-1.5">
+              <Clock size={13} /> Recent WhatsApp Dispatches
             </span>
-
-            {/* Simulated Windows/Android Notification Banner */}
-            <div className="bg-[#181818] border border-[#333] rounded-2xl p-4 shadow-2xl relative overflow-hidden">
-              <div className="flex items-start gap-3">
-                <img src="/icon.png" alt="App Icon" className="w-10 h-10 rounded-xl bg-black p-1 object-contain border border-[#333]" />
-                <div className="flex-1">
-                  <div className="flex justify-between items-center mb-0.5">
-                    <span className="text-[11px] font-bold text-[#888] uppercase tracking-wider">OUTLIERS MEDIA</span>
-                    <span className="text-[10px] text-[#666]">Just now</span>
-                  </div>
-                  <h4 className="text-sm font-bold text-white mb-1">
-                    {title || "🎉 Notification Title Preview"}
-                  </h4>
-                  <p className="text-xs text-[#bbb] leading-relaxed line-clamp-3">
-                    {body || "Your notification message will appear here in the system action center and lock screen."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t border-[#262626] flex justify-between items-center text-[10px] text-[#777]">
-                <span className="flex items-center gap-1 font-mono">
-                  Target: {targetType === 'global' ? 'All Clients' : (selectedClientObj?.name || 'Client')}
-                </span>
-                <span className="text-[#3428f8] font-bold">Click to open</span>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSentLog([]);
+                localStorage.removeItem('outliers_wa_sent_log');
+              }}
+              className="text-[10px] text-[#666] hover:text-white uppercase font-bold"
+            >
+              Clear Log
+            </button>
           </div>
 
-          {/* Recent Dispatches Feed */}
-          <div className="bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 flex-1 flex flex-col">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-[#888] mb-3 flex items-center justify-between">
-              <span>Recent Dispatches</span>
-              <span className="text-[10px] bg-[#1a1a1a] px-2 py-0.5 rounded border border-[#262626]">
-                {sentHistory.length} Total
-              </span>
-            </h4>
-
-            {sentHistory.length === 0 ? (
-              <div className="p-8 text-center text-[#555] text-xs flex-1 flex items-center justify-center">
-                No notifications sent in this session yet.
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {sentLog.slice(0, 4).map(item => (
+              <div key={item.id} className="p-2.5 rounded-xl bg-[#141414] border border-[#222] text-xs">
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="font-bold text-white truncate">{item.recipient_name}</span>
+                  <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 rounded">
+                    Sent
+                  </span>
+                </div>
+                <span className="text-[10px] text-[#777] block font-mono">{item.phone}</span>
+                <span className="text-[9px] text-[#555] block mt-1">
+                  {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
-            ) : (
-              <div className="flex flex-col gap-3 overflow-y-auto max-h-[300px] pr-1 custom-scrollbar">
-                {sentHistory.slice(0, 10).map((log, idx) => (
-                  <div key={idx} className="bg-[#141414] border border-[#222] rounded-xl p-3 flex flex-col gap-1 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-white text-[11px] truncate max-w-[200px]">
-                        {log.title}
-                      </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                        log.isGlobal 
-                          ? 'bg-[#3428f8]/15 text-[#3428f8] border border-[#3428f8]/25' 
-                          : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
-                      }`}>
-                        {log.isGlobal ? 'Global' : 'Client'}
-                      </span>
-                    </div>
-                    <p className="text-[#888] text-[10px] line-clamp-2">{log.body}</p>
-                    <span className="text-[#555] text-[9px] font-mono mt-0.5">
-                      {new Date(log.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} • {log.targetClientName}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
         </div>
-      </div>
+      )}
+
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Sparkles, Users, Video, Search, Plus, Filter, 
+  Flame, Users, Video, Search, Plus, Filter, 
   CheckCircle2, XCircle, Clock, MessageSquare, ExternalLink, 
   Trash2, Edit3, Eye, ArrowRight, Phone, 
   IndianRupee, Gift, Scissors, Link as LinkIcon, Check, 
@@ -260,8 +260,8 @@ export default function AdminInfluencers() {
       {/* Header Banner & Title */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#111] border border-[#222] p-5 sm:p-6 rounded-3xl">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-purple-500/15 text-purple-400 border border-purple-500/30 rounded-2xl">
-            <Sparkles size={24} />
+          <div className="p-3 bg-[#3428f8]/15 text-blue-400 border border-[#3428f8]/30 rounded-2xl">
+            <Flame size={24} />
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-serif text-white flex items-center gap-2">
@@ -276,7 +276,7 @@ export default function AdminInfluencers() {
         <button
           type="button"
           onClick={handleOpenNew}
-          className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shrink-0"
+          className="bg-[#3428f8] hover:bg-[#2d23c9] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shrink-0"
         >
           <Plus size={15} /> Add Creator Manually
         </button>
@@ -289,7 +289,7 @@ export default function AdminInfluencers() {
             Total Creators
           </span>
           <span className="text-2xl font-bold font-mono text-white">{totalCount}</span>
-          <span className="text-[10px] text-purple-400 block mt-0.5">{activeCount} Active Contracts</span>
+          <span className="text-[10px] text-blue-400 block mt-0.5">{activeCount} Active Contracts</span>
         </div>
 
         <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
@@ -343,7 +343,7 @@ export default function AdminInfluencers() {
               onClick={() => setStatusFilter(tab.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
                 statusFilter === tab.id
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-[#3428f8] text-white'
                   : 'bg-[#141414] text-[#888] hover:text-white hover:bg-[#1a1a1a] border border-[#222]'
               }`}
             >
@@ -359,7 +359,7 @@ export default function AdminInfluencers() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#111] border border-[#222] rounded-xl py-2 pl-9 pr-4 text-xs text-white focus:border-purple-500 outline-none transition-colors"
+            className="w-full bg-[#111] border border-[#222] rounded-xl py-2 pl-9 pr-4 text-xs text-white focus:border-[#3428f8] outline-none transition-colors"
           />
         </div>
       </div>
@@ -367,11 +367,11 @@ export default function AdminInfluencers() {
       {/* Creator Cards Grid */}
       {loading ? (
         <div className="flex justify-center items-center py-20">
-          <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></span>
+          <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3428f8]"></span>
         </div>
       ) : filteredInfluencers.length === 0 ? (
         <div className="bg-[#111] border border-[#222] border-dashed rounded-3xl p-12 text-center">
-          <Sparkles size={36} className="text-purple-400 mx-auto mb-3 opacity-50" />
+          <Flame size={36} className="text-blue-400 mx-auto mb-3 opacity-50" />
           <h3 className="text-lg font-serif text-white mb-1">No Creators Found</h3>
           <p className="text-xs text-[#777] max-w-md mx-auto mb-5">
             No influencers match your current filter. You can add one manually or share the public connection link with creators.
@@ -379,7 +379,7 @@ export default function AdminInfluencers() {
           <button
             type="button"
             onClick={handleOpenNew}
-            className="bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+            className="bg-[#3428f8] hover:bg-[#2d23c9] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
           >
             + Add First Influencer
           </button>
@@ -408,7 +408,7 @@ export default function AdminInfluencers() {
                         : inf.status === 'rejected'
                         ? 'bg-red-500/15 text-red-400 border-red-500/30'
                         : inf.status === 'completed'
-                        ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                        ? 'bg-[#3428f8]/15 text-blue-300 border-[#3428f8]/30'
                         : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                     }`}>
                       {inf.status}
@@ -418,7 +418,7 @@ export default function AdminInfluencers() {
                       <button
                         type="button"
                         onClick={() => setZoomScreenshotUrl(inf.dashboard_screenshot_url)}
-                        className="text-[10px] text-purple-400 hover:text-purple-300 font-bold uppercase flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded cursor-pointer"
+                        className="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase flex items-center gap-1 bg-[#3428f8]/10 border border-[#3428f8]/20 px-2 py-0.5 rounded cursor-pointer"
                       >
                         <Eye size={11} /> Screenshot
                       </button>
@@ -431,7 +431,7 @@ export default function AdminInfluencers() {
                     href={`https://instagram.com/${inf.instagram_id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 hover:underline mb-3"
+                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 hover:underline mb-3"
                   >
                     <InstagramIcon size={12} /> @{inf.instagram_id}
                     <ExternalLink size={10} />
@@ -453,7 +453,7 @@ export default function AdminInfluencers() {
                     </div>
                     <div>
                       <span className="text-[#666] block text-[9px] uppercase font-bold">Model</span>
-                      <span className="text-purple-400 font-bold capitalize">{inf.contract_type || 'Barter'}</span>
+                      <span className="text-blue-400 font-bold capitalize">{inf.contract_type || 'Barter'}</span>
                     </div>
                   </div>
 
@@ -505,7 +505,7 @@ export default function AdminInfluencers() {
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(inf)}
-                    className="flex-1 bg-purple-600/15 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="flex-1 bg-[#3428f8]/15 hover:bg-[#3428f8] text-blue-300 hover:text-white border border-[#3428f8]/30 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Edit3 size={13} /> Manage Reels
                   </button>
@@ -554,7 +554,7 @@ export default function AdminInfluencers() {
             <div className="flex justify-between items-center pb-4 border-b border-[#222]">
               <div>
                 <h3 className="text-lg sm:text-xl font-serif text-white flex items-center gap-2">
-                  <Sparkles size={20} className="text-purple-400" />
+                  <Flame size={20} className="text-blue-400" />
                   {isNewModalOpen ? 'Add New Influencer Contract' : `Manage Creator: ${editForm.name}`}
                 </h3>
                 <p className="text-xs text-[#888]">
@@ -588,7 +588,7 @@ export default function AdminInfluencers() {
                     required
                     value={editForm.name}
                     onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-purple-500 outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-[#3428f8] outline-none"
                   />
                 </div>
 
@@ -601,7 +601,7 @@ export default function AdminInfluencers() {
                     required
                     value={editForm.instagram_id}
                     onChange={(e) => setEditForm(prev => ({ ...prev, instagram_id: e.target.value.replace(/^@/, '') }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-purple-500 outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-[#3428f8] outline-none"
                   />
                 </div>
 
@@ -612,7 +612,7 @@ export default function AdminInfluencers() {
                   <select
                     value={editForm.status}
                     onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-purple-500 outline-none font-bold capitalize"
+                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-[#3428f8] outline-none font-bold capitalize"
                   >
                     <option value="pending">Pending Review</option>
                     <option value="negotiating">Negotiating Terms</option>
@@ -631,7 +631,7 @@ export default function AdminInfluencers() {
                     type="tel"
                     value={editForm.phone}
                     onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-purple-500 outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-[#3428f8] outline-none"
                   />
                 </div>
 
@@ -643,7 +643,7 @@ export default function AdminInfluencers() {
                     type="text"
                     value={editForm.city}
                     onChange={(e) => setEditForm(prev => ({ ...prev, city: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-purple-500 outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-[#3428f8] outline-none"
                   />
                 </div>
 
@@ -655,7 +655,7 @@ export default function AdminInfluencers() {
                     type="text"
                     value={editForm.follower_count}
                     onChange={(e) => setEditForm(prev => ({ ...prev, follower_count: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-purple-500 outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2c2c2c] rounded-xl p-2.5 text-xs text-white focus:border-[#3428f8] outline-none"
                   />
                 </div>
               </div>
@@ -664,7 +664,7 @@ export default function AdminInfluencers() {
               <div className="bg-[#141414] p-4 rounded-2xl border border-[#222]">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
                       <Video size={14} /> Contract Reels Quantity (Range: 3 to 10)
                     </h4>
                     <p className="text-[11px] text-[#777]">
@@ -681,7 +681,7 @@ export default function AdminInfluencers() {
                         onClick={() => handleReelsCountChange(n)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           editForm.reels_count === n
-                            ? 'bg-purple-600 text-white'
+                            ? 'bg-[#3428f8] text-white'
                             : 'bg-[#222] text-[#888] hover:text-white'
                         }`}
                       >
@@ -707,7 +707,7 @@ export default function AdminInfluencers() {
                       {/* Reel Header */}
                       <div className="flex flex-wrap justify-between items-center gap-2 pb-2.5 border-b border-[#202020]">
                         <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-lg bg-purple-600/20 text-purple-400 font-bold font-mono text-xs flex items-center justify-center border border-purple-500/30">
+                          <span className="w-6 h-6 rounded-lg bg-[#3428f8]/20 text-blue-400 font-bold font-mono text-xs flex items-center justify-center border border-[#3428f8]/30">
                             #{reel.reel_number}
                           </span>
                           <span className="text-xs font-bold text-white">Reel #{reel.reel_number}</span>
@@ -745,7 +745,7 @@ export default function AdminInfluencers() {
                               }}
                               className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
                                 reel.is_barter && !reel.is_paid
-                                  ? 'bg-purple-600 text-white'
+                                  ? 'bg-[#3428f8] text-white'
                                   : 'bg-[#181818] text-[#777]'
                               }`}
                             >
@@ -807,7 +807,7 @@ export default function AdminInfluencers() {
                               onClick={() => handleUpdateReelItem(idx, 'editor', 'they')}
                               className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-1 cursor-pointer ${
                                 reel.editor === 'they'
-                                  ? 'bg-purple-600 text-white'
+                                  ? 'bg-[#3428f8] text-white'
                                   : 'bg-[#181818] text-[#777]'
                               }`}
                             >
@@ -827,7 +827,7 @@ export default function AdminInfluencers() {
                                 type="text"
                                 value={reel.barter_item || ''}
                                 onChange={(e) => handleUpdateReelItem(idx, 'barter_item', e.target.value)}
-                                className="w-full bg-[#161616] border border-[#282828] rounded-lg p-2 text-xs text-white focus:border-purple-500 outline-none"
+                                className="w-full bg-[#161616] border border-[#282828] rounded-lg p-2 text-xs text-white focus:border-[#3428f8] outline-none"
                               />
                             </div>
                             <div>
@@ -838,7 +838,7 @@ export default function AdminInfluencers() {
                                 type="number"
                                 value={reel.barter_price || ''}
                                 onChange={(e) => handleUpdateReelItem(idx, 'barter_price', Number(e.target.value || 0))}
-                                className="w-full bg-[#161616] border border-[#282828] rounded-lg p-2 text-xs text-white font-mono focus:border-purple-500 outline-none"
+                                className="w-full bg-[#161616] border border-[#282828] rounded-lg p-2 text-xs text-white font-mono focus:border-[#3428f8] outline-none"
                               />
                             </div>
                           </div>
@@ -981,7 +981,7 @@ export default function AdminInfluencers() {
                       <button
                         type="button"
                         onClick={() => setZoomScreenshotUrl(editForm.dashboard_screenshot_url)}
-                        className="text-xs bg-purple-600/20 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer"
+                        className="text-xs bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer"
                       >
                         <Eye size={12} /> View Full Screenshot
                       </button>
@@ -1007,7 +1007,7 @@ export default function AdminInfluencers() {
                 type="button"
                 onClick={handleSaveForm}
                 disabled={isSaving}
-                className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="flex-1 bg-[#3428f8] hover:bg-[#2d23c9] disabled:bg-[#3428f8]/50 text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSaving ? (
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

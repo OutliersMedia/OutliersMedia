@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Users, Ticket, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Sparkles, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase, CreditCard } from 'lucide-react';
+import { TrendingUp, Users, CheckCircle, Plus, ChevronLeft, ChevronRight, Image as ImageIcon, Video, Layout, AlertTriangle, Clock, X, Check, ArrowRight, ExternalLink, Flame, IndianRupee, MessageSquare, RotateCcw, Trash2, Star, Globe, Briefcase, CreditCard } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable } from '../../utils/scheduleEngine';
@@ -19,7 +19,6 @@ export default function AdminOverview() {
   const [selectedMetric, setSelectedMetric] = useState(null); // 'mrr' | 'retainers' | 'pending_payments' | 'due'
   const [pendingPaymentsList, setPendingPaymentsList] = useState([]);
   const [pendingFilter, setPendingFilter] = useState('all'); // 'all' | 'emi' | 'special' | 'order'
-  const [openTicketsList, setOpenTicketsList] = useState([]);
   const [detailedRetainers, setDetailedRetainers] = useState([]);
 
   // Quick Post Logger state
@@ -199,15 +198,6 @@ export default function AdminOverview() {
     const { data: orders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
     const { data: rawPosts } = await supabase.from('posts_log').select('*').order('published_at', { ascending: false });
     
-    // Fetch open support tickets list
-    const { data: openTicketsData } = await supabase
-      .from('support_tickets')
-      .select('*', { count: 'exact' })
-      .eq('status', 'open')
-      .order('created_at', { ascending: false });
-    
-    if (openTicketsData) setOpenTicketsList(openTicketsData);
-
     const ordersList = orders || [];
     let postsList = rawPosts || [];
 
@@ -727,7 +717,7 @@ export default function AdminOverview() {
               <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#3428f8]"></div> Static</span>
               <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Reel</span>
               <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400"></div> Stories</span>
-              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400"></div> Special</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400"></div> Special</span>
             </div>
           </div>
 
@@ -954,25 +944,21 @@ export default function AdminOverview() {
                   <div className={`p-2.5 rounded-xl ${
                     selectedMetric === 'mrr' ? 'bg-green-400/10 text-green-400' :
                     selectedMetric === 'retainers' ? 'bg-[#3428f8]/10 text-[#3428f8]' :
-                    selectedMetric === 'tickets' ? 'bg-red-400/10 text-red-400' :
                     'bg-yellow-400/10 text-yellow-400'
                   }`}>
                     {selectedMetric === 'mrr' && <TrendingUp size={22} />}
                     {selectedMetric === 'retainers' && <Users size={22} />}
-                    {selectedMetric === 'tickets' && <Ticket size={22} />}
                     {selectedMetric === 'due' && <AlertTriangle size={22} />}
                   </div>
                   <div>
                     <h3 className="text-white text-lg font-serif">
                       {selectedMetric === 'mrr' && 'Monthly Recurring Revenue'}
                       {selectedMetric === 'retainers' && 'Active Client Retainers'}
-                      {selectedMetric === 'tickets' && 'Open Support Tickets'}
                       {selectedMetric === 'due' && "Today's Deliverables"}
                     </h3>
                     <p className="text-[#666] text-xs">
                       {selectedMetric === 'mrr' && 'Live subscription retainers breakdown'}
                       {selectedMetric === 'retainers' && 'Contract pacing & deliverable completion'}
-                      {selectedMetric === 'tickets' && 'Customer queries pending resolution'}
                       {selectedMetric === 'due' && 'Content scheduled to be published today'}
                     </p>
                   </div>
@@ -1129,7 +1115,7 @@ export default function AdminOverview() {
                           onClick={() => setPendingFilter('special')}
                           className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
                             pendingFilter === 'special'
-                              ? 'bg-purple-600 text-white'
+                              ? 'bg-[#3428f8] text-white'
                               : 'bg-[#141414] text-[#888] hover:text-white hover:bg-[#1a1a1a]'
                           }`}
                         >
@@ -1163,7 +1149,7 @@ export default function AdminOverview() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-1.5 mb-1">
                                   {item.type === 'special' ? (
-                                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 flex items-center gap-1">
                                       <Star size={10} /> {item.category}
                                     </span>
                                   ) : item.type === 'emi' ? (
@@ -1210,7 +1196,7 @@ export default function AdminOverview() {
                                   : item.status.includes('Proof')
                                   ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
                                   : item.type === 'special'
-                                  ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                  ? 'bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30'
                                   : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
                               }`}>
                                 {item.status}
@@ -1222,7 +1208,7 @@ export default function AdminOverview() {
                                     setSelectedMetric(null);
                                     navigate('/admin/deliverables');
                                   }}
-                                  className="text-[10px] text-purple-400 hover:text-white font-bold uppercase flex items-center gap-1 cursor-pointer"
+                                  className="text-[10px] text-blue-400 hover:text-white font-bold uppercase flex items-center gap-1 cursor-pointer"
                                 >
                                   Deliverables Tab <ArrowRight size={10} />
                                 </button>
@@ -1364,17 +1350,6 @@ export default function AdminOverview() {
                     Manage All Clients <ArrowRight size={14} />
                   </button>
                 )}
-                {selectedMetric === 'tickets' && (
-                  <button
-                    onClick={() => {
-                      setSelectedMetric(null);
-                      navigate('/admin/tickets');
-                    }}
-                    className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5"
-                  >
-                    Open Support Inbox <ArrowRight size={14} />
-                  </button>
-                )}
                 {selectedMetric === 'due' && (
                   <button
                     onClick={() => {
@@ -1477,10 +1452,10 @@ export default function AdminOverview() {
               {/* Submission Form / Status */}
               {selectedEvent.isSpecialDeliverable ? (
                 <div className="flex flex-col gap-3">
-                  <div className="p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-xl space-y-2.5">
+                  <div className="p-3.5 bg-[#3428f8]/10 border border-[#3428f8]/25 rounded-xl space-y-2.5">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-[#888] font-bold uppercase tracking-wider">Project Type</span>
-                      <span className="text-purple-300 font-bold">{selectedEvent.specialDeliverable?.category || 'Special Project'}</span>
+                      <span className="text-blue-300 font-bold">{selectedEvent.specialDeliverable?.category || 'Special Project'}</span>
                     </div>
 
                     <div className="flex justify-between items-center text-xs">
@@ -1496,7 +1471,7 @@ export default function AdminOverview() {
                         selectedEvent.specialDeliverable?.payment_status === 'paid'
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                           : selectedEvent.specialDeliverable?.payment_status === 'complimentary'
-                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                          ? 'bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30'
                           : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       }`}>
                         {selectedEvent.specialDeliverable?.payment_status === 'paid' ? 'Paid ✓' : selectedEvent.specialDeliverable?.payment_status === 'complimentary' ? 'Included' : 'Payment Due ⚠️'}
@@ -1504,7 +1479,7 @@ export default function AdminOverview() {
                     </div>
 
                     {selectedEvent.specialDeliverable?.project_url && (
-                      <div className="pt-2 border-t border-purple-500/20">
+                      <div className="pt-2 border-t border-[#3428f8]/20">
                         <a
                           href={selectedEvent.specialDeliverable.project_url.startsWith('http') ? selectedEvent.specialDeliverable.project_url : `https://${selectedEvent.specialDeliverable.project_url}`}
                           target="_blank"
@@ -1533,7 +1508,7 @@ export default function AdminOverview() {
                         setSelectedEvent(null);
                         navigate('/admin/deliverables');
                       }}
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full bg-[#3428f8] hover:bg-[#2d23c9] text-white p-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       Deliverables Tab <ArrowRight size={13} />
                     </button>

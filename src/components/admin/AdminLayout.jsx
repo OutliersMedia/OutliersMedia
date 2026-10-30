@@ -1,7 +1,7 @@
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth, checkIsAdmin, checkIsTester } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Users, ImagePlus, Landmark, Ticket, Bell, LogOut, MessageSquare, Menu, X, Globe, Plus, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Users, ImagePlus, Landmark, LogOut, Menu, X, Globe, Plus, Flame, MessageCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import AddBusinessModal from './AddBusinessModal';
@@ -12,7 +12,6 @@ export default function AdminLayout() {
   const isTester = Boolean(authIsTester || checkIsTester(user, profile));
   const canAccessAdmin = isAdmin || isTester;
   const location = useLocation();
-  const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [addBusinessModalOpen, setAddBusinessModalOpen] = useState(false);
 
@@ -20,32 +19,6 @@ export default function AdminLayout() {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    if (canAccessAdmin) {
-      fetchTicketCount();
-      
-      // Subscribe to new tickets to update the badge live
-      const subscription = supabase
-        .channel('support_tickets_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
-          fetchTicketCount();
-        })
-        .subscribe();
-        
-      return () => {
-        supabase.removeChannel(subscription);
-      };
-    }
-  }, [canAccessAdmin]);
-
-  const fetchTicketCount = async () => {
-    const { count } = await supabase
-      .from('support_tickets')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'open');
-    setOpenTicketsCount(count || 0);
-  };
 
   if (loading) {
     return (
@@ -63,10 +36,9 @@ export default function AdminLayout() {
     { name: 'OVERVIEW', path: '/admin', icon: LayoutDashboard },
     { name: 'CLIENTS', path: '/admin/clients', icon: Users },
     { name: 'DELIVERABLES', path: '/admin/deliverables', icon: ImagePlus },
-    { name: 'INFLUENCERS', path: '/admin/influencers', icon: Sparkles },
+    { name: 'INFLUENCERS', path: '/admin/influencers', icon: Flame },
     { name: 'FINANCES', path: '/admin/finances', icon: Landmark },
-    { name: 'TICKETS', path: '/admin/tickets', icon: Ticket },
-    { name: 'NOTIFICATIONS', path: '/admin/notifications', icon: Bell },
+    { name: 'WHATSAPP', path: '/admin/notifications', icon: MessageCircle },
   ];
 
   return (
@@ -121,13 +93,6 @@ export default function AdminLayout() {
           <Link to="/" className="hidden sm:flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#888] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors" title="View Live Website">
             <Globe size={15} />
             <span className="hidden xl:inline">Live Site</span>
-          </Link>
-
-          <Link to="/admin/tickets" className="relative p-2 text-[#888] hover:text-white transition-colors">
-            <MessageSquare size={20} />
-            {openTicketsCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border border-[#0a0a0a]"></span>
-            )}
           </Link>
 
           <div className="hidden lg:block h-6 w-px bg-[#1f1f1f]"></div>
@@ -188,11 +153,6 @@ export default function AdminLayout() {
                         <item.icon size={16} />
                         {item.name}
                       </span>
-                      {item.name === 'TICKETS' && openTicketsCount > 0 && (
-                        <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-2 py-0.5 rounded-full font-mono">
-                          {openTicketsCount} Open
-                        </span>
-                      )}
                     </Link>
                   );
                 })}
@@ -256,13 +216,13 @@ export default function AdminLayout() {
       </main>
 
       {/* Mobile Bottom Navigation Bar for 1-Tap Tab Switching on Phones */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1 py-1.5 grid grid-cols-7 gap-0.5">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1 py-1.5 grid grid-cols-6 gap-0.5">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
           const shortLabel =
             item.name === 'DELIVERABLES' ? 'Work' :
             item.name === 'INFLUENCERS' ? 'Creators' :
-            item.name === 'NOTIFICATIONS' ? 'Alerts' :
+            item.name === 'WHATSAPP' ? 'WhatsApp' :
             item.name.charAt(0) + item.name.slice(1).toLowerCase();
           return (
             <Link
@@ -278,9 +238,6 @@ export default function AdminLayout() {
               <span className="text-[9px] font-bold tracking-tight mt-0.5 truncate max-w-full">
                 {shortLabel}
               </span>
-              {item.name === 'TICKETS' && openTicketsCount > 0 && (
-                <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              )}
             </Link>
           );
         })}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, Video, Image as ImageIcon, Sparkles, Globe, Star, 
+  X, Video, Image as ImageIcon, Flame, Globe, Star, 
   Check, Calendar, IndianRupee, Link as LinkIcon, Upload, 
   Trash2, Eye, ExternalLink, Briefcase, Plus, AlertCircle 
 } from 'lucide-react';
@@ -12,9 +12,9 @@ import { dispatchPushNotification } from '../../utils/pushManager';
 export const SPECIAL_TYPES = [
   { id: 'reel', label: 'Reel / Short', icon: Video, color: 'text-pink-400', border: 'border-pink-500/30', bg: 'bg-pink-500/10' },
   { id: 'static', label: 'Static Post', icon: ImageIcon, color: 'text-[#3428f8]', border: 'border-[#3428f8]/30', bg: 'bg-[#3428f8]/10' },
-  { id: 'story', label: 'Story', icon: Sparkles, color: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/10' },
+  { id: 'story', label: 'Story', icon: Flame, color: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/10' },
   { id: 'website', label: 'Website / App', icon: Globe, color: 'text-cyan-400', border: 'border-cyan-500/30', bg: 'bg-cyan-500/10' },
-  { id: 'other', label: 'Something Else', icon: Star, color: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-500/10' },
+  { id: 'other', label: 'Something Else', icon: Star, color: 'text-blue-400', border: 'border-[#3428f8]/30', bg: 'bg-[#3428f8]/10' },
 ];
 
 export default function AddSpecialDeliverableModal({ 
@@ -228,7 +228,7 @@ export default function AddSpecialDeliverableModal({
           {/* Header */}
           <div className="flex justify-between items-start pb-4 border-b border-[#222]">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 sm:p-3 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30">
+              <div className="p-2.5 sm:p-3 rounded-2xl bg-[#3428f8]/15 text-blue-400 border border-[#3428f8]/30">
                 <Star size={22} />
               </div>
               <div>
@@ -325,14 +325,14 @@ export default function AddSpecialDeliverableModal({
               {deliverableType === 'other' && (
                 <div className="mt-3">
                   <label className="text-[11px] text-[#aaa] font-medium block mb-1">
-                    Enter Custom Deliverable Name <span className="text-purple-400">*</span>
+                    Enter Custom Deliverable Name <span className="text-blue-400">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={customTypeName}
                     onChange={(e) => setCustomTypeName(e.target.value)}
-                    className="w-full bg-[#0a0a0a] border border-[#333] focus:border-purple-500 text-white text-xs p-3 rounded-xl outline-none"
+                    className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white text-xs p-3 rounded-xl outline-none"
                   />
                 </div>
               )}

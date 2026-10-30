@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, QrCode, UploadCloud, Sparkles, MessageSquare } from 'lucide-react';
+import { X, CheckCircle2, QrCode, UploadCloud, Flame, MessageSquare } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { usePricing } from '../../context/PricingContext';
 
@@ -154,9 +154,9 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                 })}
 
                 {/* Influencer Marketing Plan Option */}
-                <div className="relative flex flex-col p-8 rounded-2xl border border-purple-500/40 bg-purple-950/15 hover:border-purple-400 transition-all duration-300">
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-[10px] font-bold uppercase tracking-widest px-3.5 py-1 rounded-full whitespace-nowrap flex items-center gap-1">
-                    <Sparkles size={11} /> INFLUENCERS
+                <div className="relative flex flex-col p-8 rounded-2xl border border-[#3428f8]/40 bg-[#3428f8]/10 hover:border-[#3428f8] transition-all duration-300">
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#3428f8] text-white text-[10px] font-bold uppercase tracking-widest px-3.5 py-1 rounded-full whitespace-nowrap flex items-center gap-1">
+                    <Flame size={11} /> INFLUENCERS
                   </div>
                   
                   <h3 className="text-2xl font-serif text-primary mb-2">Influencers</h3>
@@ -170,19 +170,19 @@ export default function PlanModal({ isOpen, onClose, onSelectPlan, preSelectedPl
                   
                   <ul className="flex flex-col gap-4 mb-8 flex-grow">
                     <li className="flex items-start gap-3 text-sm text-primary">
-                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <CheckCircle2 size={20} className="text-blue-400 shrink-0" />
                       <span>3 to 10 Reels Per Contract</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-primary">
-                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <CheckCircle2 size={20} className="text-blue-400 shrink-0" />
                       <span>Niche Creator Matching (Food, Lifestyle, Fashion)</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-primary">
-                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <CheckCircle2 size={20} className="text-blue-400 shrink-0" />
                       <span>Barter & Paid Compensation Options</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-primary">
-                      <CheckCircle2 size={20} className="text-purple-400 shrink-0" />
+                      <CheckCircle2 size={20} className="text-blue-400 shrink-0" />
                       <span>Scripting, Editing & Delivery Management</span>
                     </li>
                   </ul>

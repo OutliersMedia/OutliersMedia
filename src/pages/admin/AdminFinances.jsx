@@ -7,7 +7,7 @@ import {
   PauseCircle, PlayCircle, XCircle, History, X, FileDown, Tag, Edit3, 
   AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, Calendar, 
   Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight,
-  Zap, Globe, RotateCcw, Sparkles, UserCheck, Upload, Image as ImageIcon,
+  Zap, Globe, RotateCcw, Flame, UserCheck, Upload, Image as ImageIcon,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
@@ -1101,7 +1101,7 @@ export default function AdminFinances() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222] mb-5">
               <div>
                 <h3 className="text-lg sm:text-xl md:text-2xl font-serif text-white flex items-center gap-2">
-                  <Sparkles size={20} className="text-purple-400" />
+                  <Flame size={20} className="text-blue-400" />
                   Agency Net Margin & Creator Outflow
                 </h3>
                 <p className="text-[#888] text-xs sm:text-sm mt-1">
@@ -1132,11 +1132,11 @@ export default function AdminFinances() {
               </div>
 
               <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block mb-1">
                   Creator Costs (Outflow)
                 </span>
                 <div className="text-2xl font-serif font-bold text-white flex items-center gap-1">
-                  <IndianRupee size={18} className="text-purple-400" />
+                  <IndianRupee size={18} className="text-blue-400" />
                   <span>{creatorFinances.totalCommitted.toLocaleString()}</span>
                 </div>
                 <span className="text-[10px] text-[#888] block mt-1">
@@ -1428,7 +1428,7 @@ export default function AdminFinances() {
               <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-5 relative">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-[#3428f8]/10 border border-[#3428f8]/20 px-2 py-0.5 rounded">
                       Full Stack + Website
                     </span>
                     <h4 className="text-white font-serif text-lg mt-1">Premium Plan</h4>
@@ -1963,8 +1963,8 @@ export default function AdminFinances() {
 
                   {/* Special Deliverables Add-on pill (Mobile) */}
                   {txn.specialDeliverables && txn.specialDeliverables.length > 0 && (
-                    <div className="bg-purple-950/20 border border-purple-500/30 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                      <span className="text-purple-400 font-bold flex items-center gap-1 truncate text-[11px]">
+                    <div className="bg-[#3428f8]/10 border border-[#3428f8]/30 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                      <span className="text-blue-400 font-bold flex items-center gap-1 truncate text-[11px]">
                         🌟 {txn.specialDeliverables.length} Special Add-on{txn.specialDeliverables.length > 1 ? 's' : ''}
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-mono">
@@ -1999,7 +1999,7 @@ export default function AdminFinances() {
                     ) : pendingVerificationInst ? (
                       <button
                         onClick={() => handleOpenVerifyModal(txn, pendingVerificationInst)}
-                        className="bg-purple-500/20 text-purple-300 border border-purple-500/40 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                        className="bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/40 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
                       >
                         <ShieldCheck size={13} /> Verify EMI #{pendingVerificationInst.installment_number}
                       </button>
@@ -2039,7 +2039,7 @@ export default function AdminFinances() {
                         <button
                           type="button"
                           onClick={() => setPreviewReceiptUrl(pendingVerificationInst?.receipt_url || txn.payment_receipt_url)}
-                          className="text-[10px] text-purple-300 font-bold uppercase tracking-wider bg-purple-500/10 px-2.5 py-1.5 rounded-lg border border-purple-500/20 flex items-center gap-1"
+                          className="text-[10px] text-blue-300 font-bold uppercase tracking-wider bg-[#3428f8]/10 px-2.5 py-1.5 rounded-lg border border-[#3428f8]/20 flex items-center gap-1"
                         >
                           <Eye size={11} /> Receipt
                         </button>
@@ -2195,7 +2195,7 @@ export default function AdminFinances() {
                         {/* Special Deliverables Add-on pill (Desktop) */}
                         {txn.specialDeliverables && txn.specialDeliverables.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] bg-purple-500/15 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">
+                            <span className="text-[10px] bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">
                               🌟 +{txn.specialDeliverables.length} Special (₹{(txn.specialPaidAmount || 0).toLocaleString()})
                             </span>
                             {txn.specialDueAmount > 0 && (
@@ -2235,7 +2235,7 @@ export default function AdminFinances() {
 
                         {/* Milestone State Details */}
                         {pendingVerificationInst && (
-                          <span className="bg-purple-500/15 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider animate-pulse">
+                          <span className="bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider animate-pulse">
                             EMI #{pendingVerificationInst.installment_number} Proof Uploaded
                           </span>
                         )}
@@ -2280,10 +2280,10 @@ export default function AdminFinances() {
                               <button
                                 type="button"
                                 onClick={() => openReceiptPreview(orderReceipts, 0, `${txn.client?.name || 'Client'} - Payment Receipt Proofs`)}
-                                className="inline-flex items-center gap-1.5 text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/25 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1.5 text-blue-300 hover:text-white bg-[#3428f8]/10 hover:bg-[#3428f8]/25 border border-[#3428f8]/25 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-colors cursor-pointer"
                                 title="Click to view and browse full payment receipts"
                               >
-                                <Eye size={11} className="text-purple-400" />
+                                <Eye size={11} className="text-blue-400" />
                                 {orderReceipts.length > 1 ? `View Receipts (${orderReceipts.length})` : 'View Receipt Proof'}
                               </button>
                             );
@@ -2321,7 +2321,7 @@ export default function AdminFinances() {
                         {txn.status !== 'pending' && pendingVerificationInst && (
                           <button 
                             onClick={() => handleOpenVerifyModal(txn, pendingVerificationInst)}
-                            className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                            className="bg-[#3428f8]/20 hover:bg-[#3428f8]/30 text-blue-300 border border-[#3428f8]/40 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
                             title="Verify client uploaded payment receipt"
                           >
                             <ShieldCheck size={14} /> Verify EMI #{pendingVerificationInst.installment_number}
@@ -2710,13 +2710,13 @@ export default function AdminFinances() {
                                 inst.status === 'paid' 
                                   ? 'bg-green-500/10 text-green-400 border-green-500/30' 
                                   : inst.status === 'pending_verification'
-                                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                  ? 'bg-[#3428f8]/10 text-blue-300 border-[#3428f8]/30'
                                   : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
                               }`}
                             >
                               <option value="paid" className="bg-[#111] text-green-400">Paid</option>
                               <option value="pending" className="bg-[#111] text-yellow-400">Pending</option>
-                              <option value="pending_verification" className="bg-[#111] text-purple-400">Review</option>
+                              <option value="pending_verification" className="bg-[#111] text-blue-400">Review</option>
                             </select>
 
                             {/* Delete Button */}
@@ -2867,7 +2867,7 @@ export default function AdminFinances() {
                                         Saved ✓
                                       </span>
                                     ) : (
-                                      <span className="text-[9px] font-bold bg-purple-500/85 text-white px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm">
+                                      <span className="text-[9px] font-bold bg-[#3428f8]/85 text-white px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm">
                                         New Staged
                                       </span>
                                     )}
@@ -3005,7 +3005,7 @@ export default function AdminFinances() {
                                 >
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                      <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                                      <span className="text-[9px] bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                                         {sd.type || 'Special'}
                                       </span>
                                       <span className="text-white font-bold text-xs truncate">{sd.title}</span>
@@ -3054,7 +3054,7 @@ export default function AdminFinances() {
                                           isPaid 
                                             ? 'bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/25' 
                                             : isReview
-                                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30'
+                                            ? 'bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/40 hover:bg-[#3428f8]/30'
                                             : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/25'
                                         }`}
                                         title="Click to toggle Paid / Due status"
@@ -3123,7 +3123,7 @@ export default function AdminFinances() {
 
                       return (
                         <div className="pt-2.5 border-t border-[#222] flex justify-between items-center text-xs">
-                          <span className="text-purple-400 font-bold flex items-center gap-1">
+                          <span className="text-blue-400 font-bold flex items-center gap-1">
                             🌟 Special Deliverables Add-ons:
                           </span>
                           <div className="flex items-center gap-3 font-mono">
@@ -3198,7 +3198,7 @@ export default function AdminFinances() {
               </button>
 
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-3 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                <div className="p-3 rounded-2xl bg-[#3428f8]/15 text-blue-400 border border-[#3428f8]/30">
                   <ShieldCheck size={24} />
                 </div>
                 <div>
@@ -3254,7 +3254,7 @@ export default function AdminFinances() {
                   type="text"
                   value={verifyModalData.txnId}
                   onChange={(e) => setVerifyModalData({ ...verifyModalData, txnId: e.target.value })}
-                  className="w-full bg-[#0a0a0a] border border-[#333] focus:border-purple-500 text-white font-mono text-sm p-3 rounded-xl outline-none transition-colors"
+                  className="w-full bg-[#0a0a0a] border border-[#333] focus:border-[#3428f8] text-white font-mono text-sm p-3 rounded-xl outline-none transition-colors"
                 />
               </div>
 
@@ -3310,7 +3310,7 @@ export default function AdminFinances() {
                     {previewReceiptModal.title || 'Payment Receipt Proof'}
                   </span>
                   {previewReceiptModal.urls.length > 1 && (
-                    <span className="text-[11px] font-mono bg-[#202020] text-purple-400 px-2.5 py-0.5 rounded-full font-bold">
+                    <span className="text-[11px] font-mono bg-[#202020] text-blue-400 px-2.5 py-0.5 rounded-full font-bold">
                       {previewReceiptModal.activeIndex + 1} of {previewReceiptModal.urls.length}
                     </span>
                   )}

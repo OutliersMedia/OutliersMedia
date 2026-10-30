@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Sparkles, UploadCloud, CheckCircle2, 
+  Flame, UploadCloud, CheckCircle2, 
   MessageSquare, Video, ArrowRight, ShieldCheck, 
   Star, FileText, Check, AlertCircle 
 } from 'lucide-react';
@@ -125,8 +125,8 @@ export default function InfluencerConnect() {
         
         {/* Header Banner */}
         <div className="text-center mb-10 sm:mb-14">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-400 text-xs font-bold uppercase tracking-widest mb-4">
-            <Sparkles size={14} /> Creator Partnerships • Outliers Media
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#3428f8]/15 border border-[#3428f8]/30 text-blue-400 text-xs font-bold uppercase tracking-widest mb-4">
+            <Flame size={14} /> Creator Partnerships • Outliers Media
           </div>
           <h1 className="text-4xl sm:text-6xl font-serif text-primary mb-4 leading-tight">
             Connect as an Influencer
@@ -140,9 +140,9 @@ export default function InfluencerConnect() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-[#101010] border border-purple-500/40 rounded-3xl p-8 sm:p-14 text-center max-w-2xl mx-auto shadow-2xl"
+            className="bg-[#101010] border border-[#3428f8]/40 rounded-3xl p-8 sm:p-14 text-center max-w-2xl mx-auto shadow-2xl"
           >
-            <div className="w-20 h-20 bg-purple-500/15 border border-purple-500/30 text-purple-400 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-[#3428f8]/15 border border-[#3428f8]/30 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 size={40} />
             </div>
             <h2 className="text-3xl font-serif text-white mb-3">Application Received!</h2>
@@ -157,7 +157,7 @@ export default function InfluencerConnect() {
               </div>
               <div className="flex justify-between">
                 <span className="text-[#777]">Collaboration Model:</span>
-                <span className="text-purple-400 font-bold capitalize">{contractType} Partnership</span>
+                <span className="text-blue-400 font-bold capitalize">{contractType} Partnership</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#777]">Contact WhatsApp:</span>
@@ -205,7 +205,7 @@ export default function InfluencerConnect() {
 
             {/* Section 1: Creator Identity */}
             <div>
-              <h3 className="text-sm font-bold uppercase tracking-widest text-purple-400 mb-4 flex items-center gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-2">
                 <Star size={14} /> 1. Creator Profile & Identity
               </h3>
 
@@ -219,7 +219,7 @@ export default function InfluencerConnect() {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                   />
                 </div>
 
@@ -228,13 +228,13 @@ export default function InfluencerConnect() {
                     Instagram Handle / ID *
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-400 font-bold">@</span>
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-400 font-bold">@</span>
                     <input
                       type="text"
                       required
                       value={instagramId}
                       onChange={(e) => setInstagramId(e.target.value.replace(/^@/, ''))}
-                      className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 pl-8 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                      className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 pl-8 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -248,7 +248,7 @@ export default function InfluencerConnect() {
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                   />
                 </div>
 
@@ -260,7 +260,7 @@ export default function InfluencerConnect() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                   />
                 </div>
 
@@ -272,7 +272,7 @@ export default function InfluencerConnect() {
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                   />
                 </div>
 
@@ -283,7 +283,7 @@ export default function InfluencerConnect() {
                   <select
                     value={niche}
                     onChange={(e) => setNiche(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                   >
                     <option value="Food & Cafes">Food & Cafes</option>
                     <option value="Fashion & Lifestyle">Fashion & Lifestyle</option>
@@ -300,7 +300,7 @@ export default function InfluencerConnect() {
 
             {/* Section 2: Contract Range (3 to 10 Reels) */}
             <div className="pt-2 border-t border-[#222]">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-purple-400 mb-2 flex items-center gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-blue-400 mb-2 flex items-center gap-2">
                 <Video size={14} /> 2. Contract Reel Package (Range: 3 to 10 Reels)
               </h3>
               <p className="text-xs text-[#888] mb-4">
@@ -311,7 +311,7 @@ export default function InfluencerConnect() {
               <div className="bg-[#141414] border border-[#262626] rounded-2xl p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-3">
                   <span className="text-xs text-[#aaa] uppercase font-bold tracking-wider">Number of Reels</span>
-                  <span className="text-2xl font-bold font-mono text-purple-400">{reelsCount} Reels</span>
+                  <span className="text-2xl font-bold font-mono text-blue-400">{reelsCount} Reels</span>
                 </div>
 
                 <input
@@ -321,7 +321,7 @@ export default function InfluencerConnect() {
                   step="1"
                   value={reelsCount}
                   onChange={(e) => setReelsCount(parseInt(e.target.value))}
-                  className="w-full accent-purple-500 cursor-pointer h-2 bg-[#222] rounded-lg appearance-none"
+                  className="w-full accent-[#3428f8] cursor-pointer h-2 bg-[#222] rounded-lg appearance-none"
                 />
 
                 <div className="flex justify-between text-[11px] text-[#666] font-mono mt-2">
@@ -340,7 +340,7 @@ export default function InfluencerConnect() {
                       onClick={() => setReelsCount(num)}
                       className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         reelsCount === num
-                          ? 'bg-purple-600 text-white'
+                          ? 'bg-[#3428f8] text-white'
                           : 'bg-[#1e1e1e] text-[#888] hover:text-white'
                       }`}
                     >
@@ -353,7 +353,7 @@ export default function InfluencerConnect() {
 
             {/* Section 3: Compensation & Barter Preferences */}
             <div className="pt-2 border-t border-[#222]">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-purple-400 mb-2 flex items-center gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-blue-400 mb-2 flex items-center gap-2">
                 <FileText size={14} /> 3. Collaboration & Compensation Preferences
               </h3>
               <p className="text-xs text-[#888] mb-4">
@@ -366,7 +366,7 @@ export default function InfluencerConnect() {
                   onClick={() => setContractType('barter')}
                   className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                     contractType === 'barter'
-                      ? 'bg-purple-600/20 border-purple-500 text-white'
+                      ? 'bg-[#3428f8]/20 border-[#3428f8] text-white'
                       : 'bg-[#141414] border-[#262626] text-[#888] hover:text-white'
                   }`}
                 >
@@ -379,7 +379,7 @@ export default function InfluencerConnect() {
                   onClick={() => setContractType('hybrid')}
                   className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                     contractType === 'hybrid'
-                      ? 'bg-purple-600/20 border-purple-500 text-white'
+                      ? 'bg-[#3428f8]/20 border-[#3428f8] text-white'
                       : 'bg-[#141414] border-[#262626] text-[#888] hover:text-white'
                   }`}
                 >
@@ -392,7 +392,7 @@ export default function InfluencerConnect() {
                   onClick={() => setContractType('paid')}
                   className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                     contractType === 'paid'
-                      ? 'bg-purple-600/20 border-purple-500 text-white'
+                      ? 'bg-[#3428f8]/20 border-[#3428f8] text-white'
                       : 'bg-[#141414] border-[#262626] text-[#888] hover:text-white'
                   }`}
                 >
@@ -410,7 +410,7 @@ export default function InfluencerConnect() {
                     type="text"
                     value={followerCount}
                     onChange={(e) => setFollowerCount(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white focus:border-[#3428f8] outline-none transition-colors"
                   />
                 </div>
 
@@ -422,7 +422,7 @@ export default function InfluencerConnect() {
                     type="number"
                     value={expectedRate}
                     onChange={(e) => setExpectedRate(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white font-mono focus:border-purple-500 outline-none transition-colors"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-sm text-white font-mono focus:border-[#3428f8] outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -430,21 +430,21 @@ export default function InfluencerConnect() {
 
             {/* Section 4: Dashboard Screenshot (Optional) */}
             <div className="pt-2 border-t border-[#222]">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-purple-400 mb-2 flex items-center gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-blue-400 mb-2 flex items-center gap-2">
                 <UploadCloud size={14} /> 4. Instagram Insights / Analytics Screenshot (Optional)
               </h3>
               <p className="text-xs text-[#888] mb-4">
                 Upload a screenshot of your Instagram Professional Dashboard (Accounts Reached, Engagement, or Audience Demographics).
               </p>
 
-              <div className="relative border-2 border-dashed border-[#333] hover:border-purple-500 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-[#131313]">
+              <div className="relative border-2 border-dashed border-[#333] hover:border-[#3428f8] rounded-2xl p-6 text-center cursor-pointer transition-colors bg-[#131313]">
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleScreenshotChange}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
-                <UploadCloud size={28} className={`mx-auto mb-2 ${screenshotPreview ? 'text-purple-400' : 'text-[#666]'}`} />
+                <UploadCloud size={28} className={`mx-auto mb-2 ${screenshotPreview ? 'text-blue-400' : 'text-[#666]'}`} />
                 <p className="text-xs font-medium text-white">
                   {screenshotFile ? screenshotFile.name : 'Click to select or drag dashboard screenshot here'}
                 </p>
@@ -487,7 +487,7 @@ export default function InfluencerConnect() {
                     rows={2}
                     value={portfolioLinks}
                     onChange={(e) => setPortfolioLinks(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-xs text-white focus:border-purple-500 outline-none transition-colors resize-none font-mono"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-xs text-white focus:border-[#3428f8] outline-none transition-colors resize-none font-mono"
                   />
                 </div>
 
@@ -499,7 +499,7 @@ export default function InfluencerConnect() {
                     rows={2}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-xs text-white focus:border-purple-500 outline-none transition-colors resize-none"
+                    className="w-full bg-[#161616] border border-[#2c2c2c] rounded-xl p-3.5 text-xs text-white focus:border-[#3428f8] outline-none transition-colors resize-none"
                   />
                 </div>
               </div>
@@ -510,13 +510,13 @@ export default function InfluencerConnect() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full bg-[#3428f8] hover:bg-[#2d23c9] disabled:bg-[#3428f8]/50 text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {submitting ? (
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
                 ) : (
                   <>
-                    <Sparkles size={16} /> Submit Creator Partnership Application
+                    <Flame size={16} /> Submit Creator Partnership Application
                   </>
                 )}
               </button>

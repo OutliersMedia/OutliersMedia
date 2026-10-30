@@ -349,7 +349,7 @@ export default function AdminClients() {
                           <span className="text-[#777]">({client.displayBusinessType})</span>
                         )}
                         {client.isMultiBusiness && (
-                          <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-mono font-bold">
+                          <span className="text-[9px] bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-1.5 py-0.2 rounded font-mono font-bold">
                             Multi-Brand ({client.businessCount})
                           </span>
                         )}
@@ -380,7 +380,7 @@ export default function AdminClients() {
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => setSpecialModalOrder({ client, order })}
-                            className="inline-flex items-center gap-1 text-[10px] text-purple-300 hover:text-white font-bold bg-purple-500/10 hover:bg-purple-600 px-2.5 py-1.5 rounded-xl border border-purple-500/30 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1 text-[10px] text-blue-300 hover:text-white font-bold bg-[#3428f8]/10 hover:bg-[#3428f8] px-2.5 py-1.5 rounded-xl border border-[#3428f8]/30 transition-all cursor-pointer"
                             title="Add special deliverable (website, extra reels, event campaign)"
                           >
                             <Plus size={11} /> + Special
@@ -483,7 +483,7 @@ export default function AdminClients() {
                               <span className="text-[#777] font-normal font-sans">({client.displayBusinessType})</span>
                             )}
                             {client.isMultiBusiness && (
-                              <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-mono font-bold ml-auto">
+                              <span className="text-[9px] bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-1.5 py-0.2 rounded font-mono font-bold ml-auto">
                                 Multi-Brand ({client.businessCount})
                               </span>
                             )}
@@ -508,10 +508,10 @@ export default function AdminClients() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <button
                               onClick={() => setSpecialModalOrder({ client, order })}
-                              className="inline-flex items-center gap-1 text-[10px] text-purple-300 hover:text-white font-bold bg-purple-500/10 hover:bg-purple-600 px-2 py-1 rounded-lg border border-purple-500/30 hover:border-purple-500 transition-all cursor-pointer shadow-sm"
+                              className="inline-flex items-center gap-1 text-[10px] text-blue-300 hover:text-white font-bold bg-[#3428f8]/10 hover:bg-[#3428f8] px-2 py-1 rounded-lg border border-[#3428f8]/30 hover:border-[#3428f8] transition-all cursor-pointer shadow-sm"
                               title="Add a special deliverable (e.g. website, extra reels, event campaign) for this client"
                             >
-                              <Plus size={10} className="text-purple-400 group-hover:text-white" />
+                              <Plus size={10} className="text-blue-400 group-hover:text-white" />
                               <span>+ Special</span>
                             </button>
                             <button

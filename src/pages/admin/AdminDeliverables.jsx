@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 import { 
   Search, Image as ImageIcon, Video, Layout, Plus, CheckCircle, Clock, 
-  Calendar as CalendarIcon, Sparkles, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw, Briefcase,
+  Calendar as CalendarIcon, Flame, Check, ArrowRight, RefreshCw, AlertCircle, RotateCcw, Briefcase,
   Star, Globe, ExternalLink, Trash2, IndianRupee, Link as LinkIcon
 } from 'lucide-react';
 import { 
@@ -576,11 +576,11 @@ export default function AdminDeliverables() {
             onClick={() => setDeliverablesMode('creator_orders')}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
               deliverablesMode === 'creator_orders'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'text-purple-300/80 hover:text-white'
+                ? 'bg-[#3428f8] text-white shadow-md'
+                : 'text-blue-300/80 hover:text-white'
             }`}
           >
-            <Sparkles size={14} />
+            <Flame size={14} />
             <span>Creator Packs & Negotiations</span>
             {creatorOrdersList.filter(o => o.status === 'negotiating').length > 0 && (
               <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-mono font-bold">
@@ -627,7 +627,7 @@ export default function AdminDeliverables() {
             </div>
 
             <div className="bg-[#0a0a0a] border border-[#222] p-4 rounded-2xl">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block mb-1">
                 Total Deal Volume
               </span>
               <span className="text-2xl font-bold font-mono text-white">
@@ -668,7 +668,7 @@ export default function AdminDeliverables() {
                             ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
                             : order.status === 'active'
                             ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                            : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                            : 'bg-[#3428f8]/15 text-blue-300 border-[#3428f8]/30'
                         }`}>
                           {order.status}
                         </span>
@@ -716,8 +716,8 @@ export default function AdminDeliverables() {
                       )}
 
                       {order.admin_notes && (
-                        <div className="mt-2 p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300">
-                          <span className="text-purple-400 block text-[9px] uppercase font-bold mb-0.5">Admin Terms:</span>
+                        <div className="mt-2 p-2.5 rounded-lg bg-[#3428f8]/10 border border-[#3428f8]/20 text-[11px] text-blue-300">
+                          <span className="text-blue-400 block text-[9px] uppercase font-bold mb-0.5">Admin Terms:</span>
                           {order.admin_notes}
                         </div>
                       )}
@@ -727,7 +727,7 @@ export default function AdminDeliverables() {
                     <button
                       type="button"
                       onClick={() => handleOpenNegotiation(order)}
-                      className="w-full py-2.5 px-4 rounded-xl bg-[#1e1e1e] hover:bg-purple-600 text-white border border-[#333] hover:border-purple-500 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full py-2.5 px-4 rounded-xl bg-[#1e1e1e] hover:bg-[#3428f8] text-white border border-[#333] hover:border-[#3428f8] text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Edit3 size={13} />
                       {isNegotiating ? 'Negotiate & Lock Price' : 'Edit Agreed Terms'}
@@ -915,14 +915,14 @@ export default function AdminDeliverables() {
                           onClick={() => setActiveTab('special')}
                           className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                             activeTab === 'special'
-                              ? 'bg-purple-600 text-white'
-                              : 'text-purple-300/80 hover:text-white'
+                              ? 'bg-[#3428f8] text-white'
+                              : 'text-blue-300/80 hover:text-white'
                           }`}
                         >
-                          <Star size={13} className="text-purple-400" />
+                          <Star size={13} className="text-blue-400" />
                           <span>Special</span>
                           {selectedClient.specialDeliverables?.length > 0 && (
-                            <span className="ml-1 px-1.5 py-0.2 bg-purple-500/20 text-purple-200 rounded-full text-[9px] font-mono font-bold">
+                            <span className="ml-1 px-1.5 py-0.2 bg-[#3428f8]/20 text-blue-200 rounded-full text-[9px] font-mono font-bold">
                               {selectedClient.specialDeliverables.length}
                             </span>
                           )}
@@ -932,7 +932,7 @@ export default function AdminDeliverables() {
                       <button
                         type="button"
                         onClick={() => setIsSpecialModalOpen(true)}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-purple-500/15 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-[#3428f8]/15 hover:bg-[#3428f8] text-blue-300 hover:text-white border border-[#3428f8]/30 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
                         title="Add a custom deliverable (website, extra reels, landing page)"
                       >
                         <Plus size={13} />
@@ -1089,7 +1089,7 @@ export default function AdminDeliverables() {
                           <div className="bg-[#0a0a0a] border border-[#222] p-4 rounded-xl flex flex-col justify-between">
                             <div className="flex items-center gap-2 mb-3">
                               <div className="p-1.5 rounded-lg bg-amber-400/20 text-amber-400">
-                                <Sparkles size={16} />
+                                <Flame size={16} />
                               </div>
                               <span className="text-white font-bold text-xs uppercase tracking-wider">Stories</span>
                             </div>
@@ -1243,7 +1243,7 @@ export default function AdminDeliverables() {
                           {/* Stories Progress */}
                           <div className="bg-[#111] p-3 sm:p-4 rounded-xl border border-[#222]">
                             <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                              <Sparkles size={13} className="text-amber-400 shrink-0" />
+                              <Flame size={13} className="text-amber-400 shrink-0" />
                               <span className="text-[#888] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider sm:tracking-widest truncate">Stories</span>
                             </div>
                             <div className="flex items-end gap-1 sm:gap-2">
@@ -1376,11 +1376,11 @@ export default function AdminDeliverables() {
                       <div className="bg-[#111] border border-[#222] p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <Star size={16} className="text-purple-400" />
+                            <Star size={16} className="text-blue-400" />
                             <h4 className="text-white font-bold text-sm uppercase tracking-wider">
                               Special Deliverables & Custom Add-ons
                             </h4>
-                            <span className="text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
+                            <span className="text-[10px] font-mono font-bold bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-2 py-0.5 rounded-full">
                               {selectedClient.specialDeliverables?.length || 0} Total
                             </span>
                           </div>
@@ -1392,7 +1392,7 @@ export default function AdminDeliverables() {
                         <button
                           type="button"
                           onClick={() => setIsSpecialModalOpen(true)}
-                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#3428f8] hover:bg-[#2d23c9] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
                         >
                           <Plus size={14} /> + Add Special Deliverable
                         </button>
@@ -1401,7 +1401,7 @@ export default function AdminDeliverables() {
                       {/* Deliverables List */}
                       {(!selectedClient.specialDeliverables || selectedClient.specialDeliverables.length === 0) ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0a0a0a] border border-[#222] rounded-2xl text-center">
-                          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center mb-3 border border-purple-500/20">
+                          <div className="w-12 h-12 rounded-2xl bg-[#3428f8]/10 text-blue-400 flex items-center justify-center mb-3 border border-[#3428f8]/20">
                             <Star size={24} />
                           </div>
                           <h4 className="text-white font-bold text-base mb-1">No Special Deliverables Yet</h4>
@@ -1411,7 +1411,7 @@ export default function AdminDeliverables() {
                           <button
                             type="button"
                             onClick={() => setIsSpecialModalOpen(true)}
-                            className="inline-flex items-center gap-1.5 bg-[#181818] hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 bg-[#181818] hover:bg-[#3428f8] text-blue-300 hover:text-white border border-[#3428f8]/30 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
                           >
                             <Plus size={13} /> Add First Special Deliverable
                           </button>
@@ -1430,7 +1430,7 @@ export default function AdminDeliverables() {
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30 flex items-center gap-1">
                                       <Star size={10} /> {deliv.category || deliv.custom_type_name || 'Special Project'}
                                     </span>
 
@@ -1482,7 +1482,7 @@ export default function AdminDeliverables() {
                                   {/* Price & Payment Pill */}
                                   <div className="flex items-center gap-2">
                                     {isComplimentary ? (
-                                      <span className="text-xs font-bold font-mono px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                      <span className="text-xs font-bold font-mono px-2.5 py-1 rounded-xl bg-[#3428f8]/15 text-blue-300 border border-[#3428f8]/30">
                                         Complimentary (₹0)
                                       </span>
                                     ) : (
@@ -1591,7 +1591,7 @@ export default function AdminDeliverables() {
           >
             <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block">
                   Proposal Management
                 </span>
                 <h3 className="text-xl font-serif text-white font-bold">
@@ -1639,7 +1639,7 @@ export default function AdminDeliverables() {
                   min="500"
                   value={negotiatedPriceInput}
                   onChange={(e) => setNegotiatedPriceInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-purple-500 outline-none"
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-[#3428f8] outline-none"
                 />
               </div>
 
@@ -1655,7 +1655,7 @@ export default function AdminDeliverables() {
                     required
                     value={negotiatedReelsInput}
                     onChange={(e) => setNegotiatedReelsInput(e.target.value)}
-                    className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-purple-500 outline-none"
+                    className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-[#3428f8] outline-none"
                   />
                 </div>
 
@@ -1666,7 +1666,7 @@ export default function AdminDeliverables() {
                   <select
                     value={negotiatedStatusInput}
                     onChange={(e) => setNegotiatedStatusInput(e.target.value)}
-                    className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-purple-500 outline-none"
+                    className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-[#3428f8] outline-none"
                   >
                     <option value="negotiating">Negotiating</option>
                     <option value="approved">Approved</option>
@@ -1684,7 +1684,7 @@ export default function AdminDeliverables() {
                 <select
                   value={negotiatedTermsInput}
                   onChange={(e) => setNegotiatedTermsInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-purple-500 outline-none"
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-[#3428f8] outline-none"
                 >
                   <option value="100% On Agreement">100% On Agreement</option>
                   <option value="50% Advance / 50% On Delivery">50% Advance / 50% On Delivery</option>
@@ -1701,7 +1701,7 @@ export default function AdminDeliverables() {
                   rows="2"
                   value={negotiatedNotesInput}
                   onChange={(e) => setNegotiatedNotesInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-purple-500 outline-none resize-none"
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-[#3428f8] outline-none resize-none"
                 />
               </div>
 
@@ -1716,7 +1716,7 @@ export default function AdminDeliverables() {
                 <button
                   type="submit"
                   disabled={isSavingNegotiation}
-                  className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
+                  className="flex-1 py-3 px-4 rounded-xl bg-[#3428f8] hover:bg-[#2d23c9] text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSavingNegotiation ? 'Saving...' : 'Lock & Save'}
                 </button>
