@@ -1113,7 +1113,8 @@ export default function AdminFinances() {
       {/* AGENCY NET PROFIT & CREATOR OUTFLOW SECTION */}
       {(() => {
         const creatorFinances = computeCreatorFinances(influencerList);
-        const netProfit = metrics.totalRevenue - creatorFinances.totalCommitted;
+        // Only deduct realized paid creator fees; do NOT deduct pending unpaid fees from net profit
+        const netProfit = metrics.totalRevenue - creatorFinances.totalPaid;
         const profitMargin = metrics.totalRevenue > 0 ? Math.round((netProfit / metrics.totalRevenue) * 100) : 0;
 
         return (
@@ -1125,7 +1126,7 @@ export default function AdminFinances() {
                   Agency Net Margin & Creator Outflow
                 </h3>
                 <p className="text-[#888] text-xs sm:text-sm mt-1">
-                  Track client revenue inflow versus creator expenses and pending disbursements.
+                  Track client revenue inflow versus realized creator paid expenses (pending creator disbursements are not deducted from net profit).
                 </p>
               </div>
 
@@ -1153,14 +1154,14 @@ export default function AdminFinances() {
 
               <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block mb-1">
-                  Creator Costs (Outflow)
+                  Creator Outflow (Paid)
                 </span>
                 <div className="text-2xl font-serif font-bold text-white flex items-center gap-1">
                   <IndianRupee size={18} className="text-blue-400" />
-                  <span>{creatorFinances.totalCommitted.toLocaleString()}</span>
+                  <span>{creatorFinances.totalPaid.toLocaleString()}</span>
                 </div>
                 <span className="text-[10px] text-[#888] block mt-1">
-                  ₹{creatorFinances.totalPaid.toLocaleString()} Paid • ₹{creatorFinances.totalPending.toLocaleString()} Pending
+                  ₹{creatorFinances.totalPending.toLocaleString()} Pending (Not Deducted) • ₹{creatorFinances.totalCommitted.toLocaleString()} Total Signed
                 </span>
               </div>
 
@@ -1173,7 +1174,7 @@ export default function AdminFinances() {
                   <span>{netProfit.toLocaleString()}</span>
                 </div>
                 <span className="text-[10px] text-emerald-400/80 block mt-1 font-bold">
-                  {metrics.totalRevenue > 0 ? `${profitMargin}% Gross Agency Margin` : '—'}
+                  {metrics.totalRevenue > 0 ? `${profitMargin}% Gross Agency Margin (Revenue − Creator Paid)` : '—'}
                 </span>
               </div>
             </div>
