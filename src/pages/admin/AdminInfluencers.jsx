@@ -54,13 +54,18 @@ export default function AdminInfluencers() {
   const [rateApprovalInput, setRateApprovalInput] = useState('');
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
 
-  // Payout Settlement Modal State
+  // Payout Settlement Modal State (Strictly Per-Reel)
   const [payoutModalCreator, setPayoutModalCreator] = useState(null);
+  const [payoutSelectedReel, setPayoutSelectedReel] = useState(1);
   const [payoutAmountInput, setPayoutAmountInput] = useState('');
   const [payoutMethodInput, setPayoutMethodInput] = useState('UPI');
   const [payoutRefInput, setPayoutRefInput] = useState('');
   const [payoutNotesInput, setPayoutNotesInput] = useState('');
   const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
+
+  // Custom Delete Confirmation Modal State
+  const [creatorToDelete, setCreatorToDelete] = useState(null);
+  const [isDeletingCreator, setIsDeletingCreator] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -207,19 +212,57 @@ export default function AdminInfluencers() {
     }
   };
 
-  const handleDelete = async (id, name) => {
-    if (!confirm(`Are you sure you want to remove creator "${name}"?`)) return;
-    await deleteInfluencer(id);
-    await loadData();
+  const handleConfirmDelete = async () => {
+    if (!creatorToDelete) return;
+    setIsDeletingCreator(true);
+    try {
+      const id = creatorToDelete.id;
+      await deleteInfluencer(id);
+      // Optimistically remove from local state immediately
+      setInfluencers(prev => prev.filter(i => String(i.id).trim() !== String(id).trim()));
+      
+      // Close edit modal if it was open for this creator
+      if (editForm && String(editForm.id).trim() === String(id).trim()) {
+        setIsEditingModalOpen(false);
+        setIsNewModalOpen(false);
+        setEditForm(null);
+      }
+      setCreatorToDelete(null);
+      await loadData();
+    } catch (err) {
+      alert("Error removing creator: " + (err.message || err));
+    } finally {
+      setIsDeletingCreator(false);
+    }
   };
 
-  const handleOpenPayout = (inf) => {
+  const handleOpenPayout = (inf, reelNum = null) => {
     const fin = computeCreatorFinances(inf);
     setPayoutModalCreator(inf);
-    setPayoutAmountInput(String(fin.pending || 0));
-    setPayoutMethodInput('UPI');
-    setPayoutRefInput('');
+
+    // Pick target reel: explicitly requested reel or the next unpaid reel
+    const targetReel = reelNum ? parseInt(reelNum) : (fin.nextReelNumber || 1);
+    setPayoutSelectedReel(targetReel);
+
+    const reelData = fin.reelsSummary?.find(r => parseInt(r.reel_number) === targetReel);
+    const targetAmount = reelData ? reelData.cost : (fin.nextReelAmount || Number(inf.final_rate_per_reel || inf.rate_per_reel || 0));
+
+    setPayoutAmountInput(String(targetAmount || ''));
+    setPayoutMethodInput(reelData?.payout_method || 'UPI');
+    setPayoutRefInput(reelData?.payout_reference || '');
     setPayoutNotesInput('');
+  };
+
+  const handleSelectPayoutReel = (reelNum) => {
+    const targetReel = parseInt(reelNum);
+    setPayoutSelectedReel(targetReel);
+    if (!payoutModalCreator) return;
+    const fin = computeCreatorFinances(payoutModalCreator);
+    const reelData = fin.reelsSummary?.find(r => parseInt(r.reel_number) === targetReel);
+    const targetAmount = reelData ? reelData.cost : Number(payoutModalCreator.final_rate_per_reel || payoutModalCreator.rate_per_reel || 0);
+    setPayoutAmountInput(String(targetAmount || ''));
+    if (reelData?.payout_method) setPayoutMethodInput(reelData.payout_method);
+    if (reelData?.payout_reference) setPayoutRefInput(reelData.payout_reference);
   };
 
   const handleConfirmPayout = async (e) => {
@@ -228,6 +271,7 @@ export default function AdminInfluencers() {
     setIsSubmittingPayout(true);
     try {
       await recordCreatorPayout(payoutModalCreator.id, {
+        reel_number: payoutSelectedReel,
         amount: Number(payoutAmountInput || 0),
         payout_method: payoutMethodInput,
         payout_reference: payoutRefInput.trim(),
@@ -600,31 +644,66 @@ export default function AdminInfluencers() {
                     </div>
                   </div>
 
-                  {/* Creator Payout Status */}
-                  <div className="mt-2.5 p-2.5 rounded-xl bg-[#0c0c0c] border border-[#1e1e1e] flex items-center justify-between text-[11px]">
-                    <div>
-                      <span className="text-[#666] block text-[9px] uppercase font-bold">Creator Payout</span>
-                      {fin.committed === 0 ? (
-                        <span className="text-[#888] font-medium">Barter Model Only</span>
-                      ) : fin.payoutStatus === 'paid' ? (
-                        <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
-                          <Check size={11} /> ₹{fin.paid.toLocaleString()} Paid in Full
+                  {/* Creator Payout Status (Pay Per Reel Workflow) */}
+                  <div className="mt-3 p-3 rounded-xl bg-[#0c0c0c] border border-[#1e1e1e] flex flex-col gap-2.5 text-[11px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[#666] block text-[9px] uppercase font-bold tracking-wider">
+                          Per-Reel Payout ({fin.paidReels} of {fin.totalReels} Paid)
                         </span>
-                      ) : (
-                        <span className="text-amber-400 font-bold font-mono">
-                          ₹{fin.pending.toLocaleString()} Pending (₹{fin.paid.toLocaleString()} Paid)
-                        </span>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-emerald-400 font-mono font-bold text-xs">
+                            ₹{fin.paid.toLocaleString()} Paid
+                          </span>
+                          <span className="text-[#555]">•</span>
+                          <span className={`font-mono text-xs ${fin.pending > 0 ? 'text-amber-400 font-bold' : 'text-[#777]'}`}>
+                            ₹{fin.pending.toLocaleString()} Pending
+                          </span>
+                        </div>
+                      </div>
+
+                      {fin.committed > 0 && (
+                        fin.pending === 0 ? (
+                          <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                            <Check size={11} /> All Paid
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPayout(inf, fin.nextReelNumber)}
+                            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm shrink-0"
+                            title={`Pay Reel #${fin.nextReelNumber}`}
+                          >
+                            <IndianRupee size={10} /> Pay Reel #{fin.nextReelNumber}
+                          </button>
+                        )
                       )}
                     </div>
 
-                    {fin.committed > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenPayout(inf)}
-                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30"
-                      >
-                        <IndianRupee size={10} /> Settle
-                      </button>
+                    {/* Per-Reel Individual Visual Indicators */}
+                    {fin.reelsSummary && fin.reelsSummary.length > 0 && (
+                      <div className="grid grid-cols-5 gap-1 pt-2 border-t border-[#1a1a1a]">
+                        {fin.reelsSummary.map((r) => (
+                          <button
+                            key={r.reel_number}
+                            type="button"
+                            onClick={() => handleOpenPayout(inf, r.reel_number)}
+                            className={`p-1 rounded text-center transition-all cursor-pointer border ${
+                              r.isPaid
+                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                : r.isUploaded
+                                ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300 hover:border-cyan-400'
+                                : 'bg-[#141414] border-[#222] text-[#666] hover:text-[#aaa]'
+                            }`}
+                            title={`Reel #${r.reel_number}: ${r.isPaid ? 'Paid' : r.isUploaded ? 'Uploaded (Ready to Pay)' : 'Pending'}`}
+                          >
+                            <span className="block text-[8px] font-mono font-bold leading-tight">R#{r.reel_number}</span>
+                            <span className="block text-[7px] truncate leading-tight uppercase font-bold">
+                              {r.isPaid ? '✓ Paid' : r.isUploaded ? 'Due' : 'Wait'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -653,7 +732,7 @@ export default function AdminInfluencers() {
 
                   <button
                     type="button"
-                    onClick={() => handleDelete(inf.id, inf.name)}
+                    onClick={() => setCreatorToDelete(inf)}
                     className="p-2 rounded-xl text-[#666] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                     title="Delete Creator"
                   >
@@ -1224,14 +1303,23 @@ export default function AdminInfluencers() {
             </div>
 
             {/* Modal Actions */}
-            <div className="pt-4 border-t border-[#222] flex gap-3">
+            <div className="pt-4 border-t border-[#222] flex flex-wrap sm:flex-nowrap items-center gap-3">
+              {!isNewModalOpen && (
+                <button
+                  type="button"
+                  onClick={() => setCreatorToDelete(editForm)}
+                  className="w-full sm:w-auto px-4 py-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Trash2 size={14} /> Delete Creator
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   setIsEditingModalOpen(false);
                   setIsNewModalOpen(false);
                 }}
-                className="flex-1 bg-[#1a1a1a] hover:bg-[#252525] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                className="flex-1 bg-[#1a1a1a] hover:bg-[#252525] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center"
               >
                 Cancel
               </button>
@@ -1254,7 +1342,7 @@ export default function AdminInfluencers() {
         </div>
       )}
 
-      {/* Payout Settlement Modal */}
+      {/* Payout Settlement Modal (Strictly Per-Reel Disbursement) */}
       {payoutModalCreator && (
         <div 
           className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
@@ -1262,125 +1350,259 @@ export default function AdminInfluencers() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#101010] border border-[#2a2a2a] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+            className="bg-[#101010] border border-[#2a2a2a] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative max-h-[92vh] overflow-y-auto"
           >
-            <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
-                  Disbursement Tracker
-                </span>
-                <h3 className="text-xl font-serif text-white font-bold">
-                  Settle Creator Payout
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPayoutModalCreator(null)}
-                className="text-[#888] hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+            {(() => {
+              const fin = computeCreatorFinances(payoutModalCreator);
+              const selectedReelSummary = fin.reelsSummary?.find(r => parseInt(r.reel_number) === parseInt(payoutSelectedReel));
+              const isSelectedPaid = selectedReelSummary?.isPaid;
 
-            {/* Creator Info Recap */}
-            <div className="p-3.5 rounded-xl bg-[#161616] border border-[#252525] mb-5 text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-[#888]">Creator:</span>
-                <span className="text-white font-bold">{payoutModalCreator.name} (@{payoutModalCreator.instagram_id})</span>
-              </div>
-              {(() => {
-                const fin = computeCreatorFinances(payoutModalCreator);
-                return (
-                  <>
+              return (
+                <>
+                  <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                        Per-Reel Payout Manager
+                      </span>
+                      <h3 className="text-xl font-serif text-white font-bold">
+                        Pay Reel #{payoutSelectedReel} • {payoutModalCreator.name}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPayoutModalCreator(null)}
+                      className="text-[#888] hover:text-white p-1 rounded-lg cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Creator Info & Overall Status */}
+                  <div className="p-3.5 rounded-xl bg-[#161616] border border-[#252525] mb-4 text-xs space-y-1.5">
                     <div className="flex justify-between">
-                      <span className="text-[#888]">Total Committed:</span>
-                      <span className="text-white font-mono font-bold">₹{fin.committed.toLocaleString()}</span>
+                      <span className="text-[#888]">Creator:</span>
+                      <span className="text-white font-bold">{payoutModalCreator.name} (@{payoutModalCreator.instagram_id})</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#888]">Already Paid:</span>
-                      <span className="text-emerald-400 font-mono font-bold">₹{fin.paid.toLocaleString()}</span>
+                      <span className="text-[#888]">Contract Summary:</span>
+                      <span className="text-[#ccc]">{fin.totalReels} Reels ({fin.paidReels} Paid • {fin.unpaidReelsCount} Unpaid)</span>
                     </div>
                     <div className="flex justify-between pt-1 border-t border-[#222]">
-                      <span className="text-amber-400 font-bold">Balance Owed:</span>
-                      <span className="text-amber-400 font-mono font-bold text-sm">₹{fin.pending.toLocaleString()}</span>
+                      <span className="text-emerald-400">Total Paid So Far:</span>
+                      <span className="text-emerald-400 font-mono font-bold">₹{fin.paid.toLocaleString()}</span>
                     </div>
-                  </>
-                );
-              })()}
+                    <div className="flex justify-between">
+                      <span className="text-amber-400">Total Pending Balance:</span>
+                      <span className="text-amber-400 font-mono font-bold">₹{fin.pending.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Reel Selector Tabs */}
+                  <div className="mb-5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#aaa] block mb-2">
+                      Choose Reel to Settle (Paid one reel at a time)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                      {(fin.reelsSummary || []).map((r) => {
+                        const isCurrentTab = parseInt(r.reel_number) === parseInt(payoutSelectedReel);
+                        return (
+                          <button
+                            key={r.reel_number}
+                            type="button"
+                            onClick={() => handleSelectPayoutReel(r.reel_number)}
+                            className={`p-2 rounded-xl text-center border transition-all cursor-pointer ${
+                              isCurrentTab
+                                ? 'bg-emerald-500/20 border-emerald-500 text-white shadow-md'
+                                : r.isPaid
+                                ? 'bg-[#141414] border-[#222] text-emerald-400/80 hover:text-emerald-300'
+                                : r.isUploaded
+                                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20'
+                                : 'bg-[#121212] border-[#202020] text-[#777] hover:text-[#bbb]'
+                            }`}
+                          >
+                            <span className="block font-bold text-xs">Reel #{r.reel_number}</span>
+                            <span className="block text-[9px] font-mono mt-0.5">₹{r.cost.toLocaleString()}</span>
+                            <span className={`block text-[8px] font-bold uppercase mt-1 ${
+                              r.isPaid ? 'text-emerald-400' : r.isUploaded ? 'text-cyan-400' : 'text-[#666]'
+                            }`}>
+                              {r.isPaid ? '✓ Paid' : r.isUploaded ? 'Ready' : 'Pending'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Selected Reel Info Callout */}
+                  <div className={`p-3 rounded-xl border mb-4 text-xs flex justify-between items-center ${
+                    isSelectedPaid 
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
+                      : selectedReelSummary?.isUploaded
+                      ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+                      : 'bg-[#181818] border-[#262626] text-[#aaa]'
+                  }`}>
+                    <div>
+                      <span className="font-bold block text-sm text-white">
+                        Reel #{payoutSelectedReel}
+                      </span>
+                      <span className="text-[11px] block mt-0.5">
+                        Status: <strong className="capitalize">{selectedReelSummary?.status || 'Pending'}</strong> • {selectedReelSummary?.isUploaded ? 'Delivered / Live Reel' : 'In Production'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] block uppercase font-bold text-[#888]">Reel Rate</span>
+                      <span className="font-mono text-base font-bold text-white">
+                        ₹{(selectedReelSummary?.cost || Number(payoutAmountInput) || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleConfirmPayout} className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Disbursement Amount for Reel #{payoutSelectedReel} (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={payoutAmountInput}
+                        onChange={(e) => setPayoutAmountInput(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Payment Method *
+                      </label>
+                      <select
+                        value={payoutMethodInput}
+                        onChange={(e) => setPayoutMethodInput(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
+                      >
+                        <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
+                        <option value="Bank Transfer">Bank Transfer (IMPS / NEFT / RTGS)</option>
+                        <option value="Cash">Cash in Hand</option>
+                        <option value="Barter Settled">Barter Settled</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Transaction Reference / UTR Number
+                      </label>
+                      <input
+                        type="text"
+                        value={payoutRefInput}
+                        onChange={(e) => setPayoutRefInput(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Disbursement Notes / Receipt Reference
+                      </label>
+                      <input
+                        type="text"
+                        value={payoutNotesInput}
+                        onChange={(e) => setPayoutNotesInput(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPayoutModalCreator(null)}
+                        className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingPayout}
+                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isSubmittingPayout ? 'Recording...' : `Mark Reel #${payoutSelectedReel} Paid`}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Custom Delete Confirmation */}
+      {creatorToDelete && (
+        <div 
+          className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+          onClick={() => !isDeletingCreator && setCreatorToDelete(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#111] border border-red-500/40 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-red-500/15 text-red-400 border border-red-500/30 rounded-2xl">
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-serif text-white font-bold">
+                  Delete Creator?
+                </h3>
+                <p className="text-xs text-[#888]">
+                  This will permanently remove this creator contract.
+                </p>
+              </div>
             </div>
 
-            <form onSubmit={handleConfirmPayout} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Disbursement Amount (₹) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={payoutAmountInput}
-                  onChange={(e) => setPayoutAmountInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
-                />
+            <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 mb-5 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-[#888]">Creator Name:</span>
+                <span className="text-white font-bold">{creatorToDelete.name}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-[#888]">Instagram:</span>
+                <span className="text-blue-400 font-mono">@{creatorToDelete.instagram_id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#888]">Contract:</span>
+                <span className="text-[#ccc]">{creatorToDelete.reels_count} Creator Reels</span>
+              </div>
+            </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Payment Method *
-                </label>
-                <select
-                  value={payoutMethodInput}
-                  onChange={(e) => setPayoutMethodInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
-                >
-                  <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
-                  <option value="Bank Transfer">Bank Transfer (IMPS / NEFT / RTGS)</option>
-                  <option value="Cash">Cash in Hand</option>
-                  <option value="Barter Settled">Barter Settled</option>
-                </select>
-              </div>
+            <p className="text-xs text-[#aaa] mb-6 leading-relaxed">
+              Are you sure you want to delete <strong>{creatorToDelete.name}</strong>? Any logged reel milestones, links, and payout records for this creator will be removed from your dashboard.
+            </p>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Transaction Reference / UTR Number
-                </label>
-                <input
-                  type="text"
-                  value={payoutRefInput}
-                  onChange={(e) => setPayoutRefInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Disbursement Notes / Receipt Reference
-                </label>
-                <input
-                  type="text"
-                  value={payoutNotesInput}
-                  onChange={(e) => setPayoutNotesInput(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPayoutModalCreator(null)}
-                  className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingPayout}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {isSubmittingPayout ? 'Recording...' : 'Mark as Paid'}
-                </button>
-              </div>
-            </form>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCreatorToDelete(null)}
+                disabled={isDeletingCreator}
+                className="flex-1 py-3 px-4 rounded-xl bg-[#1c1c1c] hover:bg-[#252525] text-xs font-bold uppercase tracking-wider text-[#ccc] hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeletingCreator}
+                className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold uppercase tracking-wider text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg disabled:opacity-50"
+              >
+                {isDeletingCreator ? (
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                ) : (
+                  <>
+                    <Trash2 size={14} /> Yes, Delete
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

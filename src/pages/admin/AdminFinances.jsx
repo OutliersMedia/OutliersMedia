@@ -89,10 +89,11 @@ export default function AdminFinances() {
   const [verifyModalData, setVerifyModalData] = useState(null);
   const [verifyingMilestone, setVerifyingMilestone] = useState(false);
 
-  // Creator Payouts & Net Profit State
+  // Creator Payouts & Net Profit State (Per-Reel Disbursement)
   const [influencerList, setInfluencerList] = useState([]);
   const [showCreatorLedger, setShowCreatorLedger] = useState(false);
   const [creatorPayoutModalData, setCreatorPayoutModalData] = useState(null);
+  const [creatorPayoutSelectedReel, setCreatorPayoutSelectedReel] = useState(1);
   const [creatorPayoutAmt, setCreatorPayoutAmt] = useState('');
   const [creatorPayoutMethod, setCreatorPayoutMethod] = useState('UPI');
   const [creatorPayoutRef, setCreatorPayoutRef] = useState('');
@@ -284,13 +285,31 @@ export default function AdminFinances() {
     }
   };
 
-  const handleOpenCreatorPayoutFromFinances = (inf) => {
+  const handleOpenCreatorPayoutFromFinances = (inf, reelNum = null) => {
     const fin = computeCreatorFinances(inf);
     setCreatorPayoutModalData(inf);
-    setCreatorPayoutAmt(String(fin.pending || 0));
-    setCreatorPayoutMethod('UPI');
-    setCreatorPayoutRef('');
+    const targetReel = reelNum ? parseInt(reelNum) : (fin.nextReelNumber || 1);
+    setCreatorPayoutSelectedReel(targetReel);
+
+    const reelData = fin.reelsSummary?.find(r => parseInt(r.reel_number) === targetReel);
+    const targetAmt = reelData ? reelData.cost : (fin.nextReelAmount || 0);
+
+    setCreatorPayoutAmt(String(targetAmt || ''));
+    setCreatorPayoutMethod(reelData?.payout_method || 'UPI');
+    setCreatorPayoutRef(reelData?.payout_reference || '');
     setCreatorPayoutNotes('');
+  };
+
+  const handleSelectFinancesPayoutReel = (reelNum) => {
+    const targetReel = parseInt(reelNum);
+    setCreatorPayoutSelectedReel(targetReel);
+    if (!creatorPayoutModalData) return;
+    const fin = computeCreatorFinances(creatorPayoutModalData);
+    const reelData = fin.reelsSummary?.find(r => parseInt(r.reel_number) === targetReel);
+    const targetAmt = reelData ? reelData.cost : (Number(creatorPayoutModalData.final_rate_per_reel || creatorPayoutModalData.rate_per_reel || 0));
+    setCreatorPayoutAmt(String(targetAmt || ''));
+    if (reelData?.payout_method) setCreatorPayoutMethod(reelData.payout_method);
+    if (reelData?.payout_reference) setCreatorPayoutRef(reelData.payout_reference);
   };
 
   const handleConfirmCreatorPayoutFromFinances = async (e) => {
@@ -299,6 +318,7 @@ export default function AdminFinances() {
     setSavingCreatorPayout(true);
     try {
       await recordCreatorPayout(creatorPayoutModalData.id, {
+        reel_number: creatorPayoutSelectedReel,
         amount: Number(creatorPayoutAmt || 0),
         payout_method: creatorPayoutMethod,
         payout_reference: creatorPayoutRef.trim(),
@@ -3767,7 +3787,7 @@ export default function AdminFinances() {
         )}
       </AnimatePresence>
 
-      {/* Creator Payout Modal from Finances */}
+      {/* Creator Payout Modal from Finances (Strictly Per-Reel Disbursement) */}
       {creatorPayoutModalData && (
         <div 
           className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
@@ -3775,112 +3795,176 @@ export default function AdminFinances() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#101010] border border-[#2a2a2a] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+            className="bg-[#101010] border border-[#2a2a2a] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative max-h-[92vh] overflow-y-auto"
           >
-            <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
-                  Finances & Ledger
-                </span>
-                <h3 className="text-xl font-serif text-white font-bold">
-                  Settle Creator Payout
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCreatorPayoutModalData(null)}
-                className="text-[#888] hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+            {(() => {
+              const fin = computeCreatorFinances(creatorPayoutModalData);
+              const selectedReelSummary = fin.reelsSummary?.find(r => parseInt(r.reel_number) === parseInt(creatorPayoutSelectedReel));
+              const isSelectedPaid = selectedReelSummary?.isPaid;
 
-            <div className="p-3.5 rounded-xl bg-[#161616] border border-[#252525] mb-5 text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-[#888]">Creator:</span>
-                <span className="text-white font-bold">{creatorPayoutModalData.name} (@{creatorPayoutModalData.instagram_id})</span>
-              </div>
-              {(() => {
-                const fin = computeCreatorFinances(creatorPayoutModalData);
-                return (
-                  <>
+              return (
+                <>
+                  <div className="flex justify-between items-center pb-4 border-b border-[#222] mb-5">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                        Finances & Ledger • Pay Per Reel
+                      </span>
+                      <h3 className="text-xl font-serif text-white font-bold">
+                        Pay Reel #{creatorPayoutSelectedReel} • {creatorPayoutModalData.name}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCreatorPayoutModalData(null)}
+                      className="text-[#888] hover:text-white p-1 rounded-lg cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Creator Info Recap */}
+                  <div className="p-3.5 rounded-xl bg-[#161616] border border-[#252525] mb-4 text-xs space-y-1.5">
                     <div className="flex justify-between">
-                      <span className="text-[#888]">Total Committed:</span>
-                      <span className="text-white font-mono font-bold">₹{fin.committed.toLocaleString()}</span>
+                      <span className="text-[#888]">Creator:</span>
+                      <span className="text-white font-bold">{creatorPayoutModalData.name} (@{creatorPayoutModalData.instagram_id})</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#888]">Paid So Far:</span>
-                      <span className="text-emerald-400 font-mono font-bold">₹{fin.paid.toLocaleString()}</span>
+                      <span className="text-[#888]">Contract Summary:</span>
+                      <span className="text-[#ccc]">{fin.totalReels} Reels ({fin.paidReels} Paid • {fin.unpaidReelsCount} Unpaid)</span>
                     </div>
                     <div className="flex justify-between pt-1 border-t border-[#222]">
-                      <span className="text-amber-400 font-bold">Balance Owed:</span>
-                      <span className="text-amber-400 font-mono font-bold text-sm">₹{fin.pending.toLocaleString()}</span>
+                      <span className="text-emerald-400">Total Paid So Far:</span>
+                      <span className="text-emerald-400 font-mono font-bold">₹{fin.paid.toLocaleString()}</span>
                     </div>
-                  </>
-                );
-              })()}
-            </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-400">Total Pending Balance:</span>
+                      <span className="text-amber-400 font-mono font-bold">₹{fin.pending.toLocaleString()}</span>
+                    </div>
+                  </div>
 
-            <form onSubmit={handleConfirmCreatorPayoutFromFinances} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Disbursement Amount (₹) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={creatorPayoutAmt}
-                  onChange={(e) => setCreatorPayoutAmt(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
-                />
-              </div>
+                  {/* Reel Selector Tabs */}
+                  <div className="mb-5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#aaa] block mb-2">
+                      Choose Reel to Settle (Paid one reel at a time)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                      {(fin.reelsSummary || []).map((r) => {
+                        const isCurrentTab = parseInt(r.reel_number) === parseInt(creatorPayoutSelectedReel);
+                        return (
+                          <button
+                            key={r.reel_number}
+                            type="button"
+                            onClick={() => handleSelectFinancesPayoutReel(r.reel_number)}
+                            className={`p-2 rounded-xl text-center border transition-all cursor-pointer ${
+                              isCurrentTab
+                                ? 'bg-emerald-500/20 border-emerald-500 text-white shadow-md'
+                                : r.isPaid
+                                ? 'bg-[#141414] border-[#222] text-emerald-400/80 hover:text-emerald-300'
+                                : r.isUploaded
+                                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20'
+                                : 'bg-[#121212] border-[#202020] text-[#777] hover:text-[#bbb]'
+                            }`}
+                          >
+                            <span className="block font-bold text-xs">Reel #{r.reel_number}</span>
+                            <span className="block text-[9px] font-mono mt-0.5">₹{r.cost.toLocaleString()}</span>
+                            <span className={`block text-[8px] font-bold uppercase mt-1 ${
+                              r.isPaid ? 'text-emerald-400' : r.isUploaded ? 'text-cyan-400' : 'text-[#666]'
+                            }`}>
+                              {r.isPaid ? '✓ Paid' : r.isUploaded ? 'Ready' : 'Pending'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Payment Method *
-                </label>
-                <select
-                  value={creatorPayoutMethod}
-                  onChange={(e) => setCreatorPayoutMethod(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
-                >
-                  <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
-                  <option value="Bank Transfer">Bank Transfer (IMPS / NEFT)</option>
-                  <option value="Cash">Cash in Hand</option>
-                  <option value="Barter Settled">Barter Settled</option>
-                </select>
-              </div>
+                  {/* Selected Reel Info Callout */}
+                  <div className={`p-3 rounded-xl border mb-4 text-xs flex justify-between items-center ${
+                    isSelectedPaid 
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
+                      : selectedReelSummary?.isUploaded
+                      ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+                      : 'bg-[#181818] border-[#262626] text-[#aaa]'
+                  }`}>
+                    <div>
+                      <span className="font-bold block text-sm text-white">
+                        Reel #{creatorPayoutSelectedReel}
+                      </span>
+                      <span className="text-[11px] block mt-0.5">
+                        Status: <strong className="capitalize">{selectedReelSummary?.status || 'Pending'}</strong> • {selectedReelSummary?.isUploaded ? 'Delivered / Live Reel' : 'In Production'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] block uppercase font-bold text-[#888]">Reel Rate</span>
+                      <span className="font-mono text-base font-bold text-white">
+                        ₹{(selectedReelSummary?.cost || Number(creatorPayoutAmt) || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
-                  Transaction Reference / UTR
-                </label>
-                <input
-                  type="text"
-                  value={creatorPayoutRef}
-                  onChange={(e) => setCreatorPayoutRef(e.target.value)}
-                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
-                />
-              </div>
+                  <form onSubmit={handleConfirmCreatorPayoutFromFinances} className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Disbursement Amount for Reel #{creatorPayoutSelectedReel} (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={creatorPayoutAmt}
+                        onChange={(e) => setCreatorPayoutAmt(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
 
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setCreatorPayoutModalData(null)}
-                  className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingCreatorPayout}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {savingCreatorPayout ? 'Recording...' : 'Mark as Paid'}
-                </button>
-              </div>
-            </form>
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Payment Method *
+                      </label>
+                      <select
+                        value={creatorPayoutMethod}
+                        onChange={(e) => setCreatorPayoutMethod(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white focus:border-emerald-500 outline-none"
+                      >
+                        <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
+                        <option value="Bank Transfer">Bank Transfer (IMPS / NEFT)</option>
+                        <option value="Cash">Cash in Hand</option>
+                        <option value="Barter Settled">Barter Settled</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#aaa] block mb-1">
+                        Transaction Reference / UTR
+                      </label>
+                      <input
+                        type="text"
+                        value={creatorPayoutRef}
+                        onChange={(e) => setCreatorPayoutRef(e.target.value)}
+                        className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-3 text-sm text-white font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCreatorPayoutModalData(null)}
+                        className="flex-1 py-3 px-4 rounded-xl bg-[#181818] border border-[#282828] text-xs font-bold uppercase tracking-wider text-[#aaa] hover:text-white transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingCreatorPayout}
+                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold uppercase tracking-wider text-white transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {savingCreatorPayout ? 'Recording...' : `Mark Reel #${creatorPayoutSelectedReel} Paid`}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

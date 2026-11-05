@@ -1,6 +1,37 @@
 import { supabase } from './supabaseClient';
 
 const INFLUENCERS_CACHE_KEY = 'om_influencers_cache_v1';
+const DELETED_INFLUENCERS_KEY = 'om_deleted_influencers_v1';
+
+/**
+ * Gets permanently deleted influencer IDs from localStorage
+ */
+export function getDeletedInfluencerIds() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_INFLUENCERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * Adds an influencer ID to the permanent deletion blacklist
+ */
+export function addDeletedInfluencerId(id) {
+  if (typeof window === 'undefined' || !id) return;
+  try {
+    const strId = String(id).trim();
+    const current = getDeletedInfluencerIds();
+    if (!current.includes(strId)) {
+      current.push(strId);
+      localStorage.setItem(DELETED_INFLUENCERS_KEY, JSON.stringify(current));
+    }
+  } catch (err) {
+    console.warn("Could not save deleted influencer ID:", err);
+  }
+}
 
 /**
  * Generates initial empty reels for a contract based on reels_count (3 to 10)
@@ -64,6 +95,8 @@ export function setCachedInfluencers(list) {
  */
 export async function fetchInfluencers() {
   const cached = getCachedInfluencers();
+  const deletedIds = new Set(getDeletedInfluencerIds().map(String));
+
   try {
     const { data, error } = await supabase
       .from('influencers')
@@ -71,29 +104,31 @@ export async function fetchInfluencers() {
       .order('created_at', { ascending: false });
 
     if (!error && Array.isArray(data)) {
-      // Normalize data with rate_per_reel and final_rate_per_reel
-      const normalizedData = data.map(inf => {
-        const reels = Array.isArray(inf.reels) ? inf.reels : [];
-        const rate_per_reel = Number(
-          inf.rate_per_reel !== undefined 
-            ? inf.rate_per_reel 
-            : (reels[0]?.rate_per_reel || (inf.total_price && inf.reels_count ? Math.round(Number(inf.total_price) / Number(inf.reels_count)) : 0))
-        );
-        const final_rate_per_reel = Number(
-          inf.final_rate_per_reel !== undefined 
-            ? inf.final_rate_per_reel 
-            : (reels[0]?.final_rate_per_reel || 0)
-        );
-        return {
-          ...inf,
-          rate_per_reel,
-          final_rate_per_reel
-        };
-      });
+      // Normalize data with rate_per_reel and final_rate_per_reel, filter out any deleted records
+      const normalizedData = data
+        .filter(inf => !deletedIds.has(String(inf.id).trim()))
+        .map(inf => {
+          const reels = Array.isArray(inf.reels) ? inf.reels : [];
+          const rate_per_reel = Number(
+            inf.rate_per_reel !== undefined 
+              ? inf.rate_per_reel 
+              : (reels[0]?.rate_per_reel || (inf.total_price && inf.reels_count ? Math.round(Number(inf.total_price) / Number(inf.reels_count)) : 0))
+          );
+          const final_rate_per_reel = Number(
+            inf.final_rate_per_reel !== undefined 
+              ? inf.final_rate_per_reel 
+              : (reels[0]?.final_rate_per_reel || 0)
+          );
+          return {
+            ...inf,
+            rate_per_reel,
+            final_rate_per_reel
+          };
+        });
 
-      // Merge with any offline cached items that aren't in data yet
-      const dbIds = new Set(normalizedData.map(i => i.id));
-      const localOnly = cached.filter(i => !dbIds.has(i.id));
+      // Merge with any offline cached items that aren't in data yet and not in deleted blacklist
+      const dbIds = new Set(normalizedData.map(i => String(i.id).trim()));
+      const localOnly = cached.filter(i => !dbIds.has(String(i.id).trim()) && !deletedIds.has(String(i.id).trim()));
       const combined = [...normalizedData, ...localOnly];
       setCachedInfluencers(combined);
       return combined;
@@ -101,7 +136,7 @@ export async function fetchInfluencers() {
   } catch (err) {
     console.warn("Notice: public.influencers table query fallback:", err);
   }
-  return cached;
+  return cached.filter(i => !deletedIds.has(String(i.id).trim()));
 }
 
 /**
@@ -231,26 +266,35 @@ export async function saveInfluencer(influencerData) {
 }
 
 /**
- * Deletes an influencer record
+ * Deletes an influencer record cleanly from cache, permanent blacklist, and Supabase
  */
 export async function deleteInfluencer(id) {
-  if (!id) return;
-  
-  // 1. Remove from local cache
+  if (!id) return { success: false, error: "No ID provided" };
+  const targetId = String(id).trim();
+
+  // 1. Add to permanent blacklist so this creator is never re-merged from Supabase or cache
+  addDeletedInfluencerId(targetId);
+
+  // 2. Remove from local cache immediately
   const cached = getCachedInfluencers();
-  const updated = cached.filter(item => item.id !== id);
+  const updated = cached.filter(item => String(item.id).trim() !== targetId);
   setCachedInfluencers(updated);
 
-  // 2. Remove from Supabase
+  // 3. Remove from Supabase
   try {
-    await supabase.from('influencers').delete().eq('id', id);
+    const { error } = await supabase.from('influencers').delete().eq('id', targetId);
+    if (error) {
+      console.warn("Notice: Supabase influencers delete response:", error);
+    }
   } catch (err) {
     console.warn("Notice: Supabase influencers delete error:", err);
   }
+
+  return { success: true };
 }
 
 /**
- * Computes creator financial statistics (committed, paid, and pending balance)
+ * Computes creator financial statistics (committed, paid, pending balance, and per-reel breakdown)
  */
 export function computeCreatorFinances(influencerOrList) {
   if (Array.isArray(influencerOrList)) {
@@ -258,12 +302,18 @@ export function computeCreatorFinances(influencerOrList) {
     let totalPaid = 0;
     let totalBarterValue = 0;
     let pendingCreatorsCount = 0;
+    let totalUploadedReels = 0;
+    let totalPaidReels = 0;
+    let totalReelsCount = 0;
 
     influencerOrList.forEach((inf) => {
       const stats = computeCreatorFinances(inf);
       totalCommitted += stats.committed;
       totalPaid += stats.paid;
       totalBarterValue += stats.barterValue;
+      totalUploadedReels += stats.uploadedReels;
+      totalPaidReels += stats.paidReels;
+      totalReelsCount += stats.totalReels;
       if (stats.pending > 0) {
         pendingCreatorsCount += 1;
       }
@@ -275,23 +325,37 @@ export function computeCreatorFinances(influencerOrList) {
       totalPaid,
       totalPending,
       totalBarterValue,
-      pendingCreatorsCount
+      pendingCreatorsCount,
+      totalUploadedReels,
+      totalPaidReels,
+      totalReelsCount
     };
   }
 
   // Single Influencer calculation
   const inf = influencerOrList || {};
   const reels = Array.isArray(inf.reels) ? inf.reels : [];
-  
+  const safeCount = Math.max(3, Math.min(10, parseInt(inf.reels_count) || reels.length || 3));
+  const perReelRate = Number(inf.final_rate_per_reel || inf.rate_per_reel || 0);
+
   let committed = 0;
   let paid = 0;
   let barterValue = 0;
+  let uploadedReels = 0;
+  let paidReels = 0;
 
-  reels.forEach((reel) => {
-    const reelCost = Number(reel.paid_amount || 0);
+  const reelsSummary = reels.map((reel) => {
+    const reelCost = Number(reel.paid_amount !== undefined ? reel.paid_amount : perReelRate);
     committed += reelCost;
-    
-    if (reel.payout_status === 'paid') {
+
+    const isUploaded = Boolean(reel.final_reel_url) || reel.status === 'uploaded' || reel.status === 'completed';
+    if (isUploaded) {
+      uploadedReels += 1;
+    }
+
+    const isPaid = reel.payout_status === 'paid';
+    if (isPaid) {
+      paidReels += 1;
       paid += Number(reel.payout_amount || reelCost);
     } else {
       paid += Number(reel.payout_amount || 0);
@@ -300,22 +364,45 @@ export function computeCreatorFinances(influencerOrList) {
     if (reel.is_barter) {
       barterValue += Number(reel.barter_price || 0);
     }
+
+    return {
+      reel_number: reel.reel_number,
+      title: reel.title || `Reel #${reel.reel_number}`,
+      cost: reelCost,
+      status: reel.status || 'pending',
+      isUploaded,
+      isPaid,
+      payout_status: reel.payout_status || 'unpaid',
+      payout_amount: Number(reel.payout_amount || 0),
+      payout_date: reel.payout_date || null,
+      payout_method: reel.payout_method || 'UPI',
+      payout_reference: reel.payout_reference || '',
+      final_reel_url: reel.final_reel_url || ''
+    };
   });
 
-  // If contract has a final_rate_per_reel or fixed total_price overriding individual reels
+  // Fallback committed total if individual reels were not specified
   if (committed === 0) {
-    if (Number(inf.final_rate_per_reel) > 0) {
-      committed = Number(inf.final_rate_per_reel) * (parseInt(inf.reels_count) || reels.length || 3);
+    if (perReelRate > 0) {
+      committed = perReelRate * safeCount;
     } else if (Number(inf.total_price) > 0) {
       committed = Number(inf.total_price);
     }
   }
 
   const pending = Math.max(0, committed - paid);
-  let payoutStatus = 'barter_only';
+  const unpaidReelsCount = Math.max(0, safeCount - paidReels);
 
+  // Determine the next reel to pay (prioritizing uploaded reels that are unpaid, then next unpaid reel)
+  const uploadedUnpaid = reelsSummary.find(r => r.isUploaded && !r.isPaid);
+  const anyUnpaid = reelsSummary.find(r => !r.isPaid);
+  const nextReelToPay = uploadedUnpaid || anyUnpaid || null;
+  const nextReelNumber = nextReelToPay ? nextReelToPay.reel_number : null;
+  const nextReelAmount = nextReelToPay ? (nextReelToPay.cost || perReelRate || 0) : 0;
+
+  let payoutStatus = 'barter_only';
   if (committed > 0) {
-    if (pending === 0) {
+    if (pending === 0 && paidReels >= safeCount) {
       payoutStatus = 'paid';
     } else if (paid > 0) {
       payoutStatus = 'partially_paid';
@@ -325,6 +412,14 @@ export function computeCreatorFinances(influencerOrList) {
   }
 
   return {
+    totalReels: safeCount,
+    uploadedReels,
+    paidReels,
+    unpaidReelsCount,
+    reelsSummary,
+    nextReelToPay,
+    nextReelNumber,
+    nextReelAmount,
     committed,
     paid,
     pending,
@@ -334,19 +429,19 @@ export function computeCreatorFinances(influencerOrList) {
 }
 
 /**
- * Records a payout (full balance or single reel) for an influencer
+ * Records a single reel payout for an influencer (strictly pay per reel after reel is done)
  */
 export async function recordCreatorPayout(influencerId, payoutDetails = {}) {
   const cached = getCachedInfluencers();
-  const index = cached.findIndex(item => item.id === influencerId);
+  const index = cached.findIndex(item => String(item.id).trim() === String(influencerId).trim());
   if (index === -1) return { error: "Influencer not found" };
 
   const current = JSON.parse(JSON.stringify(cached[index]));
   const reels = Array.isArray(current.reels) ? current.reels : [];
   const now = new Date().toISOString();
 
-  const {
-    reel_number, // if null/undefined, applies to all unpaid reels
+  let {
+    reel_number, // specific reel to pay (e.g. 1, 2, 3...)
     amount,
     payout_method = 'UPI',
     payout_reference = '',
@@ -354,33 +449,43 @@ export async function recordCreatorPayout(influencerId, payoutDetails = {}) {
     notes = ''
   } = payoutDetails;
 
-  if (reel_number !== undefined && reel_number !== null) {
-    // Single reel payout
-    const rIdx = reels.findIndex(r => r.reel_number === reel_number);
-    if (rIdx >= 0) {
-      reels[rIdx] = {
-        ...reels[rIdx],
-        payout_status: 'paid',
-        payout_amount: Number(amount !== undefined ? amount : reels[rIdx].paid_amount || 0),
-        payout_date: now,
-        payout_method,
-        payout_reference: payout_reference || reels[rIdx].payout_reference || '',
-        payout_receipt_url: payout_receipt_url || reels[rIdx].payout_receipt_url || null,
-        notes: notes ? `${reels[rIdx].notes || ''} [Payout: ${notes}]`.trim() : reels[rIdx].notes
-      };
-    }
+  // Always target one specific reel — never pay all at once
+  if (reel_number === undefined || reel_number === null) {
+    const fin = computeCreatorFinances(current);
+    reel_number = fin.nextReelNumber || 1;
+  }
+
+  const targetReelNum = parseInt(reel_number);
+  const rIdx = reels.findIndex(r => parseInt(r.reel_number) === targetReelNum);
+
+  if (rIdx >= 0) {
+    const defaultReelCost = Number(reels[rIdx].paid_amount || current.final_rate_per_reel || current.rate_per_reel || 0);
+    const finalReelAmount = Number(amount !== undefined && amount !== null && amount !== '' ? amount : defaultReelCost);
+    
+    reels[rIdx] = {
+      ...reels[rIdx],
+      payout_status: 'paid',
+      payout_amount: finalReelAmount,
+      payout_date: now,
+      payout_method: payout_method || 'UPI',
+      payout_reference: (payout_reference || '').trim(),
+      payout_receipt_url: payout_receipt_url || reels[rIdx].payout_receipt_url || null,
+      notes: notes ? `${reels[rIdx].notes || ''} [Paid Reel #${targetReelNum}: ${notes}]`.trim() : reels[rIdx].notes
+    };
   } else {
-    // Settle entire balance across reels
-    reels.forEach(r => {
-      const reelCost = Number(r.paid_amount || 0);
-      if (reelCost > 0) {
-        r.payout_status = 'paid';
-        r.payout_amount = reelCost;
-        r.payout_date = now;
-        r.payout_method = payout_method;
-        if (payout_reference) r.payout_reference = payout_reference;
-        if (payout_receipt_url) r.payout_receipt_url = payout_receipt_url;
-      }
+    // If reel wasn't in array yet, add it as paid
+    const reelCost = Number(amount || current.final_rate_per_reel || current.rate_per_reel || 0);
+    reels.push({
+      reel_number: targetReelNum,
+      title: `Reel #${targetReelNum}`,
+      is_paid: true,
+      paid_amount: reelCost,
+      payout_status: 'paid',
+      payout_amount: reelCost,
+      payout_date: now,
+      payout_method: payout_method || 'UPI',
+      payout_reference: (payout_reference || '').trim(),
+      notes: notes ? `[Paid Reel #${targetReelNum}: ${notes}]`.trim() : ''
     });
   }
 
