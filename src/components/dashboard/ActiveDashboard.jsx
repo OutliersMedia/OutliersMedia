@@ -4,7 +4,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { 
   Download, Copy, CheckCircle, Clock, AlertTriangle, 
   IndianRupee, CreditCard, ShieldCheck, Image as ImageIcon, Video, 
-  Layout, Flame, Calendar, ExternalLink, Globe, X, UploadCloud, Check
+  Layout, Flame, Calendar, ExternalLink, Globe, X, UploadCloud, Check,
+  History, ChevronDown, ChevronUp, RefreshCw, CheckCheck
 } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { generateSingleInvoicePDF } from '../../utils/invoiceGenerator';
@@ -16,9 +17,20 @@ import {
   saveSpecialDeliverable
 } from '../../utils/scheduleEngine';
 import { triggerLocalNotification } from '../../utils/pushManager';
+import { 
+  fetchBillingCycles, 
+  getLatestCycle, 
+  calculateCycleEndDate, 
+  RENEWAL_EVENT_NAME 
+} from '../../utils/renewalEngine';
 
 export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpenPayModal }) {
   const [posts, setPosts] = useState([]);
+
+  // Client Billing Cycles & Renewal State
+  const [clientBillingCycles, setClientBillingCycles] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState(null);
+  const [showCyclesHistoryModal, setShowCyclesHistoryModal] = useState(false);
 
   // Special Deliverables & Add-ons state
   const [specialDeliverables, setSpecialDeliverables] = useState([]);
@@ -74,6 +86,29 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
       supabase.removeChannel(specialsChannel);
     };
   }, [order?.id, order?.order_id, order?.schedule_config]);
+
+  // Sync client billing cycles & package renewal history
+  useEffect(() => {
+    if (!order?.client_id) return;
+    let isMounted = true;
+    const loadCycles = async () => {
+      try {
+        const cycles = await fetchBillingCycles(order.client_id);
+        if (isMounted) {
+          setClientBillingCycles(cycles || []);
+        }
+      } catch (err) {
+        console.warn("Notice: client billing cycles fetch error:", err);
+      }
+    };
+    loadCycles();
+    const handleUpdate = () => loadCycles();
+    window.addEventListener(RENEWAL_EVENT_NAME, handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener(RENEWAL_EVENT_NAME, handleUpdate);
+    };
+  }, [order?.client_id]);
 
   // Submit payment proof for a special deliverable
   const handlePaySpecialProof = async (e) => {
@@ -317,6 +352,15 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
     { name: 'Week 4', static: 0, reel: 0, story: 0, poster: 0, total: 0 },
   ];
 
+  // Current & Active Cycle Calculations
+  const latestCycle = getLatestCycle(clientBillingCycles);
+  const activeCycle = (selectedCycleId && clientBillingCycles.find(c => c.id === selectedCycleId)) || latestCycle;
+  const currentCycleNumber = activeCycle ? (activeCycle.cycle_number || 1) : 1;
+  const currentCycleAmount = activeCycle ? Number(activeCycle.amount) : (order.total_agreed_amount || order.amount_paid || 3500);
+  const currentCycleStart = activeCycle?.delivery_start_date || (order.first_upload_date ? order.first_upload_date.split('T')[0] : (order.created_at ? order.created_at.split('T')[0] : '2026-10-01'));
+  const currentCycleEnd = activeCycle?.delivery_end_date || calculateCycleEndDate(currentCycleStart);
+  const isCurrentCyclePaid = activeCycle ? (activeCycle.payment_status === 'Paid') : instMetrics.isFullyPaid;
+
   return (
     <div className="flex flex-col gap-8 w-full max-w-7xl mx-auto">
       {/* Top Banner */}
@@ -377,6 +421,59 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
           <Download size={16} />
           Invoice PDF
         </button>
+      </motion.div>
+
+      {/* Current Billing Cycle & Package Period Banner */}
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-surface/60 border border-themeborder rounded-3xl p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm"
+      >
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#3428f8]/15 border border-[#3428f8]/30 text-blue-400 flex flex-col items-center justify-center font-mono shrink-0">
+            <span className="text-[9px] uppercase font-bold text-[#888]">Cycle</span>
+            <span className="text-base font-bold text-white">#{currentCycleNumber}</span>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white uppercase tracking-wider">
+                {activeCycle?.package || planName}
+              </span>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                isCurrentCyclePaid 
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
+              }`}>
+                {isCurrentCyclePaid ? '✓ Paid in Full' : 'Pending Payment'}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-[#888] mt-1 font-mono">
+              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                <IndianRupee size={12} />
+                {Number(currentCycleAmount).toLocaleString('en-IN')}/mo
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1 text-white">
+                <Calendar size={12} className="text-blue-400" />
+                {currentCycleStart} → {currentCycleEnd}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* View Cycle History Button */}
+        {clientBillingCycles.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowCyclesHistoryModal(true)}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-raised border border-themeborder hover:border-accent text-primary transition-all flex items-center gap-2 cursor-pointer self-start md:self-auto shrink-0"
+          >
+            <History size={14} className="text-[#3428f8]" />
+            <span>Package History ({clientBillingCycles.length})</span>
+          </button>
+        )}
       </motion.div>
 
       {/* Grace Period Alert Banner (if in grace period) */}
@@ -1027,6 +1124,84 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
           </div>
         )}
       </AnimatePresence>
+
+      {/* Package & Cycles History Modal */}
+      {showCyclesHistoryModal && (
+        <div 
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setShowCyclesHistoryModal(false)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#111] border border-[#2a2a2a] rounded-3xl p-6 max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl"
+          >
+            <div className="flex justify-between items-center pb-3 border-b border-[#222] mb-4">
+              <div className="flex items-center gap-2.5">
+                <History size={18} className="text-[#3428f8]" />
+                <h4 className="font-serif text-lg text-white">Billing Cycles & Package History</h4>
+              </div>
+              <button 
+                onClick={() => setShowCyclesHistoryModal(false)}
+                className="text-[#777] hover:text-white p-1.5 rounded-full bg-[#1a1a1a] cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-2.5 pr-1">
+              {clientBillingCycles.map((cyc) => {
+                const isSelected = activeCycle?.id === cyc.id;
+                return (
+                  <div 
+                    key={cyc.id}
+                    onClick={() => {
+                      setSelectedCycleId(cyc.id);
+                      setShowCyclesHistoryModal(false);
+                    }}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                      isSelected 
+                        ? 'bg-[#3428f8]/15 border-[#3428f8] text-white shadow-sm' 
+                        : 'bg-[#141414] border-[#222] hover:border-[#333] text-[#aaa] hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-sm text-white">
+                        Cycle #{cyc.cycle_number}: {cyc.package}
+                      </span>
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                        cyc.payment_status === 'Paid'
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
+                      }`}>
+                        {cyc.payment_status || 'Pending'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-emerald-400 font-bold">
+                        ₹{Number(cyc.amount).toLocaleString('en-IN')}/mo
+                      </span>
+                      <span className="text-[#777]">
+                        {cyc.delivery_start_date} → {cyc.delivery_end_date}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t border-[#222] mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCyclesHistoryModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#1c1c1c] hover:bg-[#252525] text-white cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

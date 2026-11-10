@@ -8,7 +8,7 @@ import {
   AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, Calendar, 
   Check, CreditCard, Layers, Plus, Trash2, Eye, ArrowRight,
   Zap, Globe, RotateCcw, Flame, UserCheck, Upload, Image as ImageIcon,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, RefreshCw, CheckCheck
 } from 'lucide-react';
 import { generateSingleInvoicePDF, generateLifetimeStatementPDF } from '../../utils/invoiceGenerator';
 import { 
@@ -27,6 +27,15 @@ import {
   computeCreatorFinances, 
   recordCreatorPayout 
 } from '../../utils/influencerEngine';
+import { 
+  fetchBillingCycles, 
+  getLatestCycle, 
+  computeRenewalStatus, 
+  markCyclePaid, 
+  calculateCycleEndDate,
+  RENEWAL_EVENT_NAME 
+} from '../../utils/renewalEngine';
+import ClientRenewalModal from '../../components/admin/ClientRenewalModal';
 
 export { getStandardPlanPrice };
 
@@ -99,6 +108,16 @@ export default function AdminFinances() {
   const [creatorPayoutRef, setCreatorPayoutRef] = useState('');
   const [creatorPayoutNotes, setCreatorPayoutNotes] = useState('');
   const [savingCreatorPayout, setSavingCreatorPayout] = useState(false);
+
+  // Client Billing Cycles & Renewal State
+  const [allBillingCycles, setAllBillingCycles] = useState([]);
+  const [selectedRenewalMonth, setSelectedRenewalMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [renewalModalClient, setRenewalModalClient] = useState(null); // { client, order, cycle }
+  const [markingPaidCycleId, setMarkingPaidCycleId] = useState(null);
+  const [showRenewalsSection, setShowRenewalsSection] = useState(true);
 
   // Helper to open multi-screenshot preview modal
   const openReceiptPreview = (urlOrUrls, initialIndex = 0, title = 'Payment Receipt Proof') => {
@@ -265,15 +284,50 @@ export default function AdminFinances() {
     }
   }, [initialFilterParam]);
 
+  const loadBillingCycles = async () => {
+    try {
+      const cycles = await fetchBillingCycles();
+      setAllBillingCycles(cycles || []);
+    } catch (err) {
+      console.warn("Could not load billing cycles in AdminFinances:", err);
+    }
+  };
+
+  const handleMarkCyclePaid = async (cycle) => {
+    if (!cycle) return;
+    setMarkingPaidCycleId(cycle.id);
+    try {
+      await markCyclePaid(cycle.id, cycle.order_id);
+      await fetchFinances();
+      await loadBillingCycles();
+    } catch (err) {
+      alert("Error marking cycle as paid: " + err.message);
+    } finally {
+      setMarkingPaidCycleId(null);
+    }
+  };
+
   useEffect(() => {
     fetchFinances();
     loadInfluencers();
+    loadBillingCycles();
 
     const handleInfluencerChanged = () => {
       loadInfluencers();
     };
+    const handleRenewalChanged = () => {
+      loadBillingCycles();
+      fetchFinances();
+    };
+
     window.addEventListener('om_influencer_changed', handleInfluencerChanged);
-    return () => window.removeEventListener('om_influencer_changed', handleInfluencerChanged);
+    window.addEventListener(RENEWAL_EVENT_NAME, handleRenewalChanged);
+    window.addEventListener('om_business_added', handleRenewalChanged);
+    return () => {
+      window.removeEventListener('om_influencer_changed', handleInfluencerChanged);
+      window.removeEventListener(RENEWAL_EVENT_NAME, handleRenewalChanged);
+      window.removeEventListener('om_business_added', handleRenewalChanged);
+    };
   }, []);
 
   const loadInfluencers = async () => {
@@ -1870,6 +1924,353 @@ export default function AdminFinances() {
           </div>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* CLIENT RENEWALS & MONTHLY BILLING CYCLES ACCOUNTING SECTION               */}
+      {/* ========================================================================= */}
+      {(() => {
+        // Group cycles for each client
+        const clientCycleMap = new Map();
+        allBillingCycles.forEach(c => {
+          if (!c || !c.client_id) return;
+          if (!clientCycleMap.has(c.client_id)) {
+            clientCycleMap.set(c.client_id, []);
+          }
+          clientCycleMap.get(c.client_id).push(c);
+        });
+
+        // Unique client orders from transactions
+        const dueOrPendingRenewals = [];
+        transactions.forEach(t => {
+          if (!t || !t.client_id) return;
+          const cycles = clientCycleMap.get(t.client_id) || [];
+          const latestCycle = getLatestCycle(cycles);
+          const renewalStatus = computeRenewalStatus(t.client, latestCycle, t);
+          const hasPendingCycle = cycles.some(c => c.payment_status === 'Pending');
+
+          if (renewalStatus.isDue || hasPendingCycle || renewalStatus.status === 'renewal_due') {
+            const pendingCycle = cycles.find(c => c.payment_status === 'Pending') || null;
+            dueOrPendingRenewals.push({
+              transaction: t,
+              client: t.client,
+              latestCycle,
+              pendingCycle,
+              renewalStatus
+            });
+          }
+        });
+
+        // Monthly Summary for Selected Month
+        // A cycle falls into this month if delivery_start_date or created_at starts with selectedRenewalMonth
+        const monthCycles = allBillingCycles.filter(c => {
+          if (!c) return false;
+          const s = c.delivery_start_date || '';
+          const cr = c.created_at || '';
+          return s.startsWith(selectedRenewalMonth) || cr.startsWith(selectedRenewalMonth);
+        });
+
+        const totalBilledMonth = monthCycles.reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const totalReceivedMonth = monthCycles.filter(c => c.payment_status === 'Paid').reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const totalPendingMonth = monthCycles.filter(c => c.payment_status === 'Pending').reduce((acc, c) => acc + Number(c.amount || 0), 0);
+
+        // Build list of month options: -2 to +2 months from current
+        const monthOptions = [];
+        const baseDate = new Date();
+        for (let i = -2; i <= 2; i++) {
+          const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, 1);
+          const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const label = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+          monthOptions.push({ val, label });
+        }
+
+        return (
+          <div className="mb-6 sm:mb-8 bg-[#0a0a0a] border border-[#222] rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 relative overflow-hidden">
+            {/* Header */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#222] mb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg sm:text-xl md:text-2xl font-serif text-white flex items-center gap-2">
+                    <RefreshCw size={20} className="text-[#3428f8]" />
+                    Client Renewals & Monthly Accounting
+                  </h3>
+                  {dueOrPendingRenewals.length > 0 && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      {dueOrPendingRenewals.length} Action Needed
+                    </span>
+                  )}
+                </div>
+                <p className="text-[#888] text-xs sm:text-sm mt-1">
+                  Manage package renewals for due clients, mark verified renewal payments, and audit monthly billed vs received totals.
+                </p>
+              </div>
+
+              {/* Month Selector Dropdown & Toggle */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-[#141414] border border-[#262626] rounded-xl px-3 py-1.5 text-xs">
+                  <Calendar size={13} className="text-[#3428f8]" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#777]">Month:</span>
+                  <select
+                    value={selectedRenewalMonth}
+                    onChange={(e) => setSelectedRenewalMonth(e.target.value)}
+                    className="bg-transparent text-white font-bold text-xs outline-none cursor-pointer"
+                  >
+                    {monthOptions.map(m => (
+                      <option key={m.val} value={m.val} className="bg-[#141414] text-white">
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowRenewalsSection(prev => !prev)}
+                  className="px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#141414] hover:bg-[#1f1f1f] text-[#aaa] hover:text-white border border-[#262626] transition-all cursor-pointer"
+                >
+                  {showRenewalsSection ? 'Hide Section' : 'Show Section'}
+                </button>
+              </div>
+            </div>
+
+            {showRenewalsSection && (
+              <div className="space-y-6">
+                {/* 3 Monthly Summary Stat Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#888] block mb-1">
+                      Total Billed ({selectedRenewalMonth})
+                    </span>
+                    <div className="text-2xl font-serif font-bold text-white flex items-center gap-1">
+                      <IndianRupee size={18} className="text-cyan-400" />
+                      <span>{totalBilledMonth.toLocaleString()}</span>
+                    </div>
+                    <span className="text-[10px] text-[#666] block mt-1">
+                      {monthCycles.length} Billing Cycle{monthCycles.length !== 1 ? 's' : ''} in this month
+                    </span>
+                  </div>
+
+                  <div className="bg-[#111] border border-[#222] p-4 rounded-2xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-green-400 block mb-1">
+                      Total Received (Cleared)
+                    </span>
+                    <div className="text-2xl font-serif font-bold text-green-400 flex items-center gap-1">
+                      <IndianRupee size={18} />
+                      <span>{totalReceivedMonth.toLocaleString()}</span>
+                    </div>
+                    <span className="text-[10px] text-[#777] block mt-1">
+                      {monthCycles.filter(c => c.payment_status === 'Paid').length} Paid in Full
+                    </span>
+                  </div>
+
+                  <div className="bg-[#111] border border-amber-500/20 p-4 rounded-2xl bg-amber-500/5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-1">
+                      Total Pending (Due)
+                    </span>
+                    <div className="text-2xl font-serif font-bold text-amber-400 flex items-center gap-1">
+                      <IndianRupee size={18} />
+                      <span>{totalPendingMonth.toLocaleString()}</span>
+                    </div>
+                    <span className="text-[10px] text-amber-400/80 block mt-1">
+                      {monthCycles.filter(c => c.payment_status === 'Pending').length} Pending Payment
+                    </span>
+                  </div>
+                </div>
+
+                {/* Renewals Due Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1.5">
+                      <Clock size={14} /> Clients Due for Package Renewal & Pending Verification
+                    </h4>
+                    <span className="text-[10px] text-[#777]">Ends within 5 days or awaiting payment</span>
+                  </div>
+
+                  {dueOrPendingRenewals.length === 0 ? (
+                    <div className="bg-[#111] border border-[#222] rounded-2xl p-4 text-center text-xs text-[#777]">
+                      ✓ All client packages are currently up to date. No renewals due within the next 5 days.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {dueOrPendingRenewals.map(({ transaction: t, client, latestCycle, pendingCycle, renewalStatus }) => {
+                        const hasPending = Boolean(pendingCycle);
+                        return (
+                          <div 
+                            key={t.id || t.order_id} 
+                            className="bg-[#111] border border-[#222] hover:border-[#333] rounded-2xl p-4 flex flex-col justify-between gap-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h5 className="font-bold text-sm text-white">{client?.name || t.business_name || 'Client'}</h5>
+                                <p className="text-xs text-[#888]">{t.business_name || client?.business_type || 'Main Brand'}</p>
+                                <p className="text-[10px] font-mono text-[#666] mt-0.5">{t.order_id}</p>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                {hasPending ? (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 block animate-pulse">
+                                    Cycle #{pendingCycle.cycle_number} Pending
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 block">
+                                    {renewalStatus.daysLeft <= 0 ? 'Cycle Ended' : `Due in ${renewalStatus.daysLeft}d`}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="bg-[#0a0a0a] p-2.5 rounded-xl border border-[#1f1f1f] flex items-center justify-between text-xs">
+                              <div>
+                                <span className="text-[#888] block text-[10px] uppercase font-bold">
+                                  {hasPending ? `Upcoming: ${pendingCycle.package}` : `Current: ${latestCycle?.package || t.plan_name}`}
+                                </span>
+                                <span className="font-mono text-[10px] text-[#666]">
+                                  {hasPending ? `${pendingCycle.delivery_start_date} → ${pendingCycle.delivery_end_date}` : (latestCycle?.delivery_end_date ? `Ends: ${latestCycle.delivery_end_date}` : 'Cycle Active')}
+                                </span>
+                              </div>
+                              <span className="font-serif font-bold text-emerald-400 text-sm">
+                                ₹{Number(hasPending ? pendingCycle.amount : (latestCycle?.amount || t.total_agreed_amount || 0)).toLocaleString()}
+                              </span>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#1a1a1a]">
+                              {hasPending ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkCyclePaid(pendingCycle)}
+                                  disabled={markingPaidCycleId === pendingCycle.id}
+                                  className="px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                                >
+                                  {markingPaidCycleId === pendingCycle.id ? (
+                                    <>
+                                      <RefreshCw size={12} className="animate-spin" />
+                                      Updating...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCheck size={14} />
+                                      Mark as Paid
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setRenewalModalClient({ client, order: t, cycle: latestCycle })}
+                                  className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#3428f8] hover:bg-[#281bd6] text-white flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                                >
+                                  <RefreshCw size={12} />
+                                  Renew Next Month
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Per-Client Monthly Breakdown Table */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-[#aaa]">
+                      Monthly Per-Client Cycle Breakdown ({selectedRenewalMonth})
+                    </h4>
+                    <span className="text-[10px] font-mono text-[#777]">
+                      {monthCycles.length} active cycle records
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-[#222]">
+                    <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                      <thead>
+                        <tr className="bg-[#111] border-b border-[#222] text-[#888] text-[10px] uppercase font-bold tracking-wider">
+                          <th className="py-2.5 px-3">Client / Brand</th>
+                          <th className="py-2.5 px-3">Cycle #</th>
+                          <th className="py-2.5 px-3">Package</th>
+                          <th className="py-2.5 px-3">Delivery Window</th>
+                          <th className="py-2.5 px-3">Billed (₹)</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#1a1a1a]">
+                        {monthCycles.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" className="py-6 text-center text-[#777] text-xs">
+                              No billing cycles scheduled for {selectedRenewalMonth}.
+                            </td>
+                          </tr>
+                        ) : (
+                          monthCycles.map(cyc => {
+                            const matchingTxn = transactions.find(t => t.client_id === cyc.client_id || t.order_id === cyc.order_id);
+                            const clientName = matchingTxn?.client?.name || matchingTxn?.business_name || 'Client';
+
+                            return (
+                              <tr key={cyc.id} className="hover:bg-[#141414] transition-colors">
+                                <td className="py-2.5 px-3">
+                                  <span className="text-white font-bold block">{clientName}</span>
+                                  <span className="text-[#666] text-[10px] font-mono">{cyc.order_id || '—'}</span>
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-cyan-400">
+                                  #{cyc.cycle_number}
+                                </td>
+                                <td className="py-2.5 px-3 text-[#aaa]">
+                                  {cyc.package}
+                                </td>
+                                <td className="py-2.5 px-3 text-[#777] font-mono text-[10px]">
+                                  {cyc.delivery_start_date} → {cyc.delivery_end_date}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-white">
+                                  ₹{Number(cyc.amount || 0).toLocaleString()}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                    cyc.payment_status === 'Paid'
+                                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                      : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
+                                  }`}>
+                                    {cyc.payment_status || 'Pending'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right">
+                                  {cyc.payment_status === 'Pending' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMarkCyclePaid(cyc)}
+                                      disabled={markingPaidCycleId === cyc.id}
+                                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm"
+                                    >
+                                      {markingPaidCycleId === cyc.id ? 'Updating...' : 'Mark Paid'}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (matchingTxn) {
+                                          setRenewalModalClient({ client: matchingTxn.client, order: matchingTxn, cycle: cyc });
+                                        }
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#1c1c1c] hover:bg-[#3428f8] text-[#aaa] hover:text-white transition-all cursor-pointer border border-[#2a2a2a]"
+                                    >
+                                      Renew Next
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Filter Tabs */}
       <div className="flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 bg-[#0a0a0a] p-1.5 rounded-2xl mb-5 sm:mb-6 border border-[#222] max-w-full">
@@ -3968,6 +4369,21 @@ export default function AdminFinances() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* Shared Client Renewal Modal */}
+      {renewalModalClient && (
+        <ClientRenewalModal
+          isOpen={Boolean(renewalModalClient)}
+          onClose={() => setRenewalModalClient(null)}
+          client={renewalModalClient.client}
+          currentOrder={renewalModalClient.order}
+          latestCycle={renewalModalClient.cycle}
+          onRenewalSuccess={() => {
+            fetchFinances();
+            loadBillingCycles();
+          }}
+        />
       )}
     </div>
   );
