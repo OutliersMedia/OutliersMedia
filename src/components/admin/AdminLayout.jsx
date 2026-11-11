@@ -36,6 +36,7 @@ export default function AdminLayout() {
     { name: 'OVERVIEW', path: '/admin', icon: LayoutDashboard },
     { name: 'CLIENTS', path: '/admin/clients', icon: Users },
     { name: 'DELIVERABLES', path: '/admin/deliverables', icon: ImagePlus },
+    { name: 'WEBSITES', path: '/admin/websites', icon: Globe },
     { name: 'INFLUENCERS', path: '/admin/influencers', icon: Flame },
     { name: 'FINANCES', path: '/admin/finances', icon: Landmark },
     { name: 'WHATSAPP', path: '/admin/notifications', icon: MessageCircle },
@@ -216,11 +217,12 @@ export default function AdminLayout() {
       </main>
 
       {/* Mobile Bottom Navigation Bar for 1-Tap Tab Switching on Phones */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1 py-1.5 grid grid-cols-6 gap-0.5">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-[#1f1f1f] px-1 py-1.5 grid grid-cols-7 gap-0.5">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
           const shortLabel =
             item.name === 'DELIVERABLES' ? 'Work' :
+            item.name === 'WEBSITES' ? 'Sites' :
             item.name === 'INFLUENCERS' ? 'Creators' :
             item.name === 'WHATSAPP' ? 'WhatsApp' :
             item.name.charAt(0) + item.name.slice(1).toLowerCase();

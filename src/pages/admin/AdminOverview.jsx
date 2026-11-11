@@ -7,6 +7,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable, toLocalDateKey } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
+import { isWebsiteOrder } from '../../utils/websiteEngine';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -443,6 +444,7 @@ export default function AdminOverview() {
 
     // Metrics
     const activeOrds = ordersList.filter(o => o.status === 'active');
+    const activeSocialOrds = activeOrds.filter(o => !isWebsiteOrder(o));
     const currentMRR = activeOrds.reduce((sum, o) => sum + Number(o.amount_paid || 0), 0);
 
     // Enrich recent logs for Quick Revert panel
@@ -460,8 +462,8 @@ export default function AdminOverview() {
       }))
     );
 
-    // Build Detailed Retainers
-    const detailed = activeOrds.map(order => {
+    // Build Detailed Retainers (Social Retainer Plans Only)
+    const detailed = activeSocialOrds.map(order => {
       const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
       const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
         ? order.static_posts_total
@@ -511,7 +513,7 @@ export default function AdminOverview() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    activeOrds.forEach(order => {
+    activeSocialOrds.forEach(order => {
       const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
       const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
         ? order.static_posts_total
@@ -604,16 +606,17 @@ export default function AdminOverview() {
 
       if (order.status === 'pending') {
         totalPendingAmount += instMetrics.totalAgreed;
+        const isWebOrd = isWebsiteOrder(order);
         pendingList.push({
           type: 'order',
-          category: 'Plan Order Approval',
-          itemType: 'New Order Approval Pending',
+          category: isWebOrd ? 'Website Project Payment' : 'Plan Order Approval',
+          itemType: isWebOrd ? 'One-Time Website Quote' : 'New Order Approval Pending',
           orderId: order.order_id,
           clientName,
           brandName: bName,
-          planName: order.plan_name,
+          planName: isWebOrd ? 'Website' : order.plan_name,
           amountPending: instMetrics.totalAgreed,
-          status: 'New Order Approval Pending',
+          status: isWebOrd ? 'Website Payment Pending' : 'New Order Approval Pending',
           isNewOrder: true,
           instMetrics,
           created_at: order.created_at
@@ -716,10 +719,10 @@ export default function AdminOverview() {
 
     setPendingPaymentsList(pendingList);
     setCalendarEvents(events);
-    setActiveOrders(activeOrds.map(o => ({ ...o, clientName: profileMap[o.client_id]?.name || 'Unknown' })));
+    setActiveOrders(activeSocialOrds.map(o => ({ ...o, clientName: profileMap[o.client_id]?.name || 'Unknown' })));
     setMetrics({
       mrr: currentMRR,
-      activeRetainers: activeOrds.length,
+      activeRetainers: activeSocialOrds.length,
       pendingAmount: totalPendingAmount,
       pendingOrdersCount: pendingList.length,
       pendingToday

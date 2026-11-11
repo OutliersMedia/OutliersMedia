@@ -3,12 +3,20 @@ import { useNavigate, useSearchParams, useLocation, Navigate } from 'react-route
 import { useAuth, checkIsAdmin, checkIsTester } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { supabase } from '../utils/supabaseClient';
-import { IndianRupee, AlertTriangle, ShieldAlert, CreditCard, MessageSquare, ExternalLink, Briefcase, Plus } from 'lucide-react';
+import { IndianRupee, AlertTriangle, ShieldAlert, CreditCard, MessageSquare, ExternalLink, Briefcase, Plus, Globe, CheckCircle } from 'lucide-react';
 import PlanModal from '../components/dashboard/PlanModal';
 import ActiveDashboard from '../components/dashboard/ActiveDashboard';
 import InstallmentPayModal from '../components/dashboard/InstallmentPayModal';
 import NotificationBell from '../components/dashboard/NotificationBell';
+import BuildWebsiteModal from '../components/dashboard/BuildWebsiteModal';
+import WebsiteProjectView from '../components/dashboard/WebsiteProjectView';
 import { computeOrderInstallmentMetrics } from '../utils/installmentEngine';
+import {
+  fetchClientWebsites,
+  isWebsiteOrder,
+  OPEN_WEBSITE_STATUSES,
+  WEBSITE_EVENT_NAME
+} from '../utils/websiteEngine';
 
 export default function Dashboard() {
   const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete, signOut, loading } = useAuth();
@@ -27,6 +35,10 @@ export default function Dashboard() {
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [preSelectedPlanId, setPreSelectedPlanId] = useState(null);
   const [payModalInstallment, setPayModalInstallment] = useState(null);
+  const [clientWebsites, setClientWebsites] = useState([]);
+  const [showWebsiteModal, setShowWebsiteModal] = useState(false);
+  const [dashboardView, setDashboardView] = useState('social'); // 'social' | 'website'
+  const [websiteToast, setWebsiteToast] = useState(null);
 
   // Auto-open PlanModal if user arrived with ?plan=starter/growth/premium
   useEffect(() => {
@@ -57,17 +69,40 @@ export default function Dashboard() {
     }
   }, [user, isAdmin, isTester, isProfileComplete, loading, navigate, location]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const handleWebsiteSync = () => fetchActiveOrder();
+    window.addEventListener(WEBSITE_EVENT_NAME, handleWebsiteSync);
+    const websiteChannel = supabase
+      .channel(`client-websites-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'websites', filter: `client_id=eq.${user.id}` }, () => {
+        fetchActiveOrder();
+      })
+      .subscribe();
+
+    return () => {
+      window.removeEventListener(WEBSITE_EVENT_NAME, handleWebsiteSync);
+      supabase.removeChannel(websiteChannel);
+    };
+  }, [user?.id]);
+
   const fetchActiveOrder = async (preferredOrderId = null) => {
     setLoadingOrder(true);
-    const { data: allOrders, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('client_id', user.id)
-      .in('status', ['active', 'pending', 'paused', 'expired'])
-      .order('created_at', { ascending: false });
-      
+    const [{ data: allOrders }, websitesList] = await Promise.all([
+      supabase
+        .from('orders')
+        .select('*')
+        .eq('client_id', user.id)
+        .in('status', ['active', 'pending', 'paused', 'expired'])
+        .order('created_at', { ascending: false }),
+      fetchClientWebsites(user.id)
+    ]);
+
+    setClientWebsites(websitesList || []);
+
     if (allOrders && allOrders.length > 0) {
       for (const ord of allOrders) {
+        if (isWebsiteOrder(ord)) continue;
         const instMetrics = computeOrderInstallmentMetrics(ord);
         // Automated suspension check: if active but past grace period, auto-pause
         if (ord.status === 'active' && instMetrics.isOverdue) {
@@ -83,16 +118,23 @@ export default function Dashboard() {
 
       setUserOrders(allOrders);
 
+      const socialOnlyOrders = allOrders.filter(o => !isWebsiteOrder(o));
       let chosen = null;
       if (preferredOrderId) {
-        chosen = allOrders.find(o => o.order_id === preferredOrderId);
+        chosen = socialOnlyOrders.find(o => o.order_id === preferredOrderId);
       } else if (activeOrder) {
-        chosen = allOrders.find(o => o.order_id === activeOrder.order_id);
+        chosen = socialOnlyOrders.find(o => o.order_id === activeOrder.order_id);
       }
-      setActiveOrder(chosen || allOrders[0]);
+      setActiveOrder(chosen || socialOnlyOrders[0] || null);
+      if (socialOnlyOrders.length === 0 && websitesList && websitesList.length > 0) {
+        setDashboardView('website');
+      }
     } else {
       setUserOrders([]);
       setActiveOrder(null);
+      if (websitesList && websitesList.length > 0) {
+        setDashboardView('website');
+      }
     }
     setLoadingOrder(false);
   };
@@ -192,6 +234,16 @@ export default function Dashboard() {
 
   if (!user || !profile) return null;
 
+  const socialOrders = userOrders.filter(o => !isWebsiteOrder(o));
+  const websiteOrders = userOrders.filter(o => isWebsiteOrder(o));
+  const effectiveSocialOrder = socialOrders.find(o => o.order_id === activeOrder?.order_id) || socialOrders[0] || null;
+  const latestWebsite = clientWebsites[0] || null;
+  const openWebsiteRequest = clientWebsites.find(w => OPEN_WEBSITE_STATUSES.includes(w.status)) || null;
+  const showWebsiteDashboard =
+    !loadingOrder &&
+    clientWebsites.length > 0 &&
+    (socialOrders.length === 0 || dashboardView === 'website');
+
   return (
     <div className="min-h-screen bg-base pt-32 pb-20 px-6">
       <div className="max-w-7xl mx-auto">
@@ -202,7 +254,7 @@ export default function Dashboard() {
             <p className="text-muted text-sm uppercase tracking-widest font-bold">Client ID: <span className="text-accent">{profile.user_id}</span></p>
           </div>
           <div className="flex items-center gap-4">
-            <NotificationBell user={user} order={activeOrder} />
+            <NotificationBell user={user} order={effectiveSocialOrder} />
             <button 
               onClick={() => signOut()} 
               className="text-xs font-bold uppercase tracking-widest text-muted hover:text-danger transition-colors"
@@ -212,12 +264,24 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Multi-Business Horizontal Tabs */}
-        {!loadingOrder && userOrders.length > 0 && (
+        {websiteToast && (
+          <div className="mb-6 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+              {websiteToast}
+            </span>
+            <button type="button" onClick={() => setWebsiteToast(null)} className="text-emerald-300 hover:text-white cursor-pointer">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Multi-Business & Website Project Tabs */}
+        {!loadingOrder && (socialOrders.length > 0 || clientWebsites.length > 0) && (
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 mb-8 border-b border-themeborder/50">
-            {userOrders.map((ord) => {
-              const isCurrent = ord.order_id === activeOrder?.order_id;
-              const bName = ord.business_name || ord.schedule_config?.business_name || (userOrders.length > 1 ? `Business (${ord.order_id})` : profile.business_type || 'Main Brand');
+            {socialOrders.map((ord) => {
+              const isCurrent = dashboardView !== 'website' && ord.order_id === effectiveSocialOrder?.order_id;
+              const bName = ord.business_name || ord.schedule_config?.business_name || (socialOrders.length > 1 ? `Business (${ord.order_id})` : profile.business_type || 'Main Brand');
               const isPaused = ord.status === 'paused';
               const isPending = ord.status === 'pending';
               const isActive = ord.status === 'active';
@@ -225,7 +289,10 @@ export default function Dashboard() {
               return (
                 <button
                   key={ord.order_id}
-                  onClick={() => setActiveOrder(ord)}
+                  onClick={() => {
+                    setDashboardView('social');
+                    setActiveOrder(ord);
+                  }}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                     isCurrent
                       ? 'bg-accent text-white border border-accent'
@@ -246,16 +313,62 @@ export default function Dashboard() {
               );
             })}
 
-            <button
-              onClick={() => {
-                setPreSelectedPlanId(null);
-                setShowPlanModal(true);
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-accent hover:text-white bg-accent/10 hover:bg-accent border border-accent/30 transition-all whitespace-nowrap cursor-pointer ml-auto sm:ml-0"
-              title="Enroll another business brand"
-            >
-              <Plus size={14} /> Add Another Business
-            </button>
+            {latestWebsite && (
+              <button
+                type="button"
+                onClick={() => setDashboardView('website')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  showWebsiteDashboard
+                    ? 'bg-accent text-white border border-accent'
+                    : 'bg-surface hover:bg-raised text-muted hover:text-primary border border-themeborder'
+                }`}
+              >
+                <Globe size={14} className={showWebsiteDashboard ? 'text-white' : 'text-accent'} />
+                <span>Website: {latestWebsite.status}</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              {!latestWebsite ? (
+                <button
+                  type="button"
+                  onClick={() => setShowWebsiteModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-primary hover:text-white bg-surface hover:bg-[#3428f8] border border-themeborder hover:border-[#3428f8] transition-all whitespace-nowrap cursor-pointer"
+                >
+                  <Globe size={14} className="text-accent" /> Build a Website
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (openWebsiteRequest) {
+                      setDashboardView('website');
+                    } else {
+                      setShowWebsiteModal(true);
+                    }
+                  }}
+                  title={openWebsiteRequest ? 'An open website request is already active' : 'Request another website build'}
+                  className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-all whitespace-nowrap cursor-pointer ${
+                    openWebsiteRequest
+                      ? 'bg-[#3428f8]/15 text-blue-300 border-[#3428f8]/30'
+                      : 'bg-surface hover:bg-[#3428f8] text-primary hover:text-white border-themeborder'
+                  }`}
+                >
+                  <Globe size={14} /> Website: {latestWebsite.status}
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setPreSelectedPlanId(null);
+                  setShowPlanModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-accent hover:text-white bg-accent/10 hover:bg-accent border border-accent/30 transition-all whitespace-nowrap cursor-pointer"
+                title="Enroll another business brand"
+              >
+                <Plus size={14} /> {socialOrders.length > 0 ? 'Add Another Business' : 'Activate Plan'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -263,19 +376,31 @@ export default function Dashboard() {
           <div className="flex justify-center items-center h-64">
             <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></span>
           </div>
-        ) : activeOrder ? (
-          activeOrder.status === 'pending' ? (
+        ) : showWebsiteDashboard ? (
+          <WebsiteProjectView
+            websites={clientWebsites}
+            websiteOrders={websiteOrders}
+            profile={profile}
+            hasSocialPlan={socialOrders.length > 0}
+            onOpenActivatePlan={() => {
+              setPreSelectedPlanId(null);
+              setShowPlanModal(true);
+            }}
+            onOpenBuildWebsite={() => setShowWebsiteModal(true)}
+          />
+        ) : effectiveSocialOrder ? (
+          effectiveSocialOrder.status === 'pending' ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-surface/30 border border-themeborder border-dashed p-12 rounded-3xl text-center flex flex-col items-center justify-center min-h-[400px]">
               <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mb-6 text-yellow-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
               </div>
               <h3 className="text-3xl font-serif text-primary mb-4">Waiting for Approval</h3>
-              <p className="text-muted text-sm max-w-lg mb-2">Your payment details have been received. The admin will manually verify the payment and activate your <strong>{activeOrder.plan_name}</strong> shortly.</p>
-              <p className="text-muted text-xs font-bold uppercase tracking-widest mt-6 bg-base px-4 py-2 rounded-lg border border-themeborder">Order ID: {activeOrder.order_id}</p>
+              <p className="text-muted text-sm max-w-lg mb-2">Your payment details have been received. The admin will manually verify the payment and activate your <strong>{effectiveSocialOrder.plan_name}</strong> shortly.</p>
+              <p className="text-muted text-xs font-bold uppercase tracking-widest mt-6 bg-base px-4 py-2 rounded-lg border border-themeborder">Order ID: {effectiveSocialOrder.order_id}</p>
             </motion.div>
-          ) : activeOrder.status === 'paused' ? (
+          ) : effectiveSocialOrder.status === 'paused' ? (
             (() => {
-              const instMetrics = computeOrderInstallmentMetrics(activeOrder);
+              const instMetrics = computeOrderInstallmentMetrics(effectiveSocialOrder);
               const overdueInst = instMetrics.nextInstallment;
               const hasPendingProof = instMetrics.hasPendingVerification;
 
@@ -289,7 +414,7 @@ export default function Dashboard() {
                   </span>
                   <h3 className="text-3xl font-serif text-white mb-3">Overdue Milestone Payment</h3>
                   <p className="text-[#aaa] text-sm max-w-lg mb-6 leading-relaxed">
-                    Your <strong>{activeOrder.plan_name}</strong> deliverables are temporarily on hold because an installment payment is past due and the grace period has elapsed.
+                    Your <strong>{effectiveSocialOrder.plan_name}</strong> deliverables are temporarily on hold because an installment payment is past due and the grace period has elapsed.
                   </p>
 
                   {/* Overdue Breakdown Box */}
@@ -353,7 +478,7 @@ export default function Dashboard() {
             })()
           ) : (
             <ActiveDashboard 
-              order={activeOrder} 
+              order={effectiveSocialOrder} 
               profile={profile} 
               onRefreshOrder={fetchActiveOrder}
               onOpenPayModal={(inst) => setPayModalInstallment(inst)}
@@ -374,17 +499,35 @@ export default function Dashboard() {
               </div>
               <h3 className="text-2xl font-serif text-primary mb-3">No Active Packages</h3>
               <p className="text-muted text-sm max-w-md mb-8">
-                Your order details and reports will appear here once you activate a project. Choose a plan or track an existing order ID.
+                Choose a social media growth plan, request a custom website build, or track an existing order ID.
               </p>
               
-              <div className="flex flex-col w-full max-w-md gap-4">
-                {/* Primary CTA */}
-                <button 
-                  onClick={() => setShowPlanModal(true)}
-                  className="w-full bg-[#3428f8] text-[#EEF2FF] px-8 py-5 text-sm font-bold uppercase tracking-widest hover:opacity-90 transition-all duration-300 rounded-xl hover:scale-[1.02]"
-                >
-                  Activate Project
-                </button>
+              <div className="flex flex-col w-full max-w-xl gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 w-full gap-3">
+                  {/* Primary Social Plan CTA */}
+                  <button 
+                    onClick={() => setShowPlanModal(true)}
+                    className="w-full bg-[#3428f8] text-[#EEF2FF] px-6 py-5 text-xs sm:text-sm font-bold uppercase tracking-widest hover:opacity-90 transition-all duration-300 rounded-xl hover:scale-[1.02] cursor-pointer"
+                  >
+                    Activate Plan
+                  </button>
+
+                  {/* Website-Only Option CTA */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (openWebsiteRequest) {
+                        setDashboardView('website');
+                      } else {
+                        setShowWebsiteModal(true);
+                      }
+                    }}
+                    className="w-full bg-surface hover:bg-raised border border-[#3428f8]/50 hover:border-[#3428f8] text-primary px-6 py-5 text-xs sm:text-sm font-bold uppercase tracking-widest transition-all duration-300 rounded-xl hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Globe size={16} className="text-[#3428f8]" />
+                    {latestWebsite ? `Website: ${latestWebsite.status}` : 'Build a Website'}
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-4 my-2">
                   <div className="h-px bg-themeborder flex-1"></div>
@@ -425,10 +568,27 @@ export default function Dashboard() {
         preSelectedPlanId={preSelectedPlanId}
       />
 
+      <BuildWebsiteModal
+        isOpen={showWebsiteModal}
+        onClose={() => setShowWebsiteModal(false)}
+        user={user}
+        profile={profile}
+        existingWebsites={clientWebsites}
+        onSuccess={async (res) => {
+          await fetchActiveOrder();
+          setDashboardView('website');
+          setWebsiteToast(
+            res?.emailSent
+              ? 'Website request submitted! Our team has been notified by email.'
+              : 'Website request submitted successfully! Track live status here.'
+          );
+        }}
+      />
+
       <InstallmentPayModal
         isOpen={Boolean(payModalInstallment)}
         onClose={() => setPayModalInstallment(null)}
-        order={activeOrder}
+        order={effectiveSocialOrder}
         installment={payModalInstallment}
         onSuccess={fetchActiveOrder}
       />

@@ -5,7 +5,7 @@ import { isEmailAdmin } from '../../context/AuthContext';
 import { 
   Search, Copy, Check, Clock, Image as ImageIcon, Video, Layout, 
   AlertTriangle, Edit3, Briefcase, Plus, Star, RefreshCw, ChevronDown, 
-  ChevronUp, CheckCircle2, History, Pause, Play, IndianRupee
+  ChevronUp, CheckCircle2, History, Pause, Play, IndianRupee, Globe, ExternalLink
 } from 'lucide-react';
 import AddSpecialDeliverableModal from '../../components/admin/AddSpecialDeliverableModal';
 import ClientRenewalModal from '../../components/admin/ClientRenewalModal';
@@ -18,6 +18,28 @@ import {
   RENEWAL_EVENT_NAME 
 } from '../../utils/renewalEngine';
 import { generateUploadSchedule, getNextUpload, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
+import {
+  fetchAllWebsites,
+  deriveClientType,
+  isWebsiteOrder,
+  WEBSITE_EVENT_NAME,
+  normalizeWebsiteUrl
+} from '../../utils/websiteEngine';
+
+function renderClientTypeBadge(clientType) {
+  if (!clientType) return null;
+  const styles =
+    clientType === 'Both'
+      ? 'bg-[#3428f8]/20 text-blue-300 border-[#3428f8]/40'
+      : clientType === 'Website only'
+      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+      : 'bg-[#1b1b1b] text-[#ccc] border-[#2e2e2e]';
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border ${styles}`}>
+      {clientType}
+    </span>
+  );
+}
 
 // --- COPY BUTTON COMPONENT ---
 function CopyButton({ text }) {
@@ -54,9 +76,11 @@ export default function AdminClients() {
     const handleRefresh = () => fetchClients();
     window.addEventListener('om_business_added', handleRefresh);
     window.addEventListener(RENEWAL_EVENT_NAME, handleRefresh);
+    window.addEventListener(WEBSITE_EVENT_NAME, handleRefresh);
     return () => {
       window.removeEventListener('om_business_added', handleRefresh);
       window.removeEventListener(RENEWAL_EVENT_NAME, handleRefresh);
+      window.removeEventListener(WEBSITE_EVENT_NAME, handleRefresh);
     };
   }, []);
 
@@ -78,41 +102,61 @@ export default function AdminClients() {
       .select('*')
       .order('published_at', { ascending: false });
 
-    // Fetch billing cycles
-    const allBillingCycles = await fetchBillingCycles();
+    // Fetch billing cycles and website requests in parallel
+    const [allBillingCycles, allWebsites] = await Promise.all([
+      fetchBillingCycles(),
+      fetchAllWebsites()
+    ]);
 
     if (profiles) {
       const ordersList = orders || [];
       const postsList = posts || [];
+      const websitesList = allWebsites || [];
 
       const clientItems = [];
 
       profiles.forEach(profile => {
         const isAdmin = profile.role === 'admin' || isEmailAdmin(profile.email);
         const clientOrders = ordersList.filter(o => o.client_id === profile.auth_id);
+        const socialOrders = clientOrders.filter(o => !isWebsiteOrder(o));
+        const websiteOrders = clientOrders.filter(o => isWebsiteOrder(o));
+        const clientWebsites = websitesList.filter(w => w.client_id === profile.auth_id);
+        const latestWebsite = clientWebsites[0] || null;
+        const clientType = isAdmin ? null : deriveClientType(clientOrders, clientWebsites);
         const clientCycles = allBillingCycles.filter(c => c.client_id === profile.auth_id);
         const latestCycle = getLatestCycle(clientCycles);
 
-        if (clientOrders.length === 0 || isAdmin) {
-          // Profile without orders (Lead or Admin)
+        if (socialOrders.length === 0 || isAdmin) {
+          const isWebOnlyClient = !isAdmin && clientType === 'Website only' && latestWebsite;
+          // Profile without social plan orders (Website only, Lead, or Admin)
           clientItems.push({
             ...profile,
-            displayBusinessName: profile.business_type || 'Main Brand',
-            displayBusinessType: profile.business_type || '',
+            displayBusinessName: isWebOnlyClient
+              ? (latestWebsite.business_name || profile.business_type || 'Website Project')
+              : (profile.business_type || 'Main Brand'),
+            displayBusinessType: isWebOnlyClient
+              ? (latestWebsite.website_type || 'Website')
+              : (profile.business_type || ''),
             displayInstagram: profile.instagram_handle || '',
             latestOrder: null,
             latestCycle: null,
             clientCycles: [],
-            renewalStatus: { status: 'lead', label: 'Lead', daysLeft: 0, isDue: false },
-            calculatedStatus: 'lead',
+            clientType,
+            clientWebsites,
+            latestWebsite,
+            websiteOrder: websiteOrders[0] || null,
+            renewalStatus: isWebOnlyClient
+              ? { status: 'website_only', label: 'Website Project (One-Time)', daysLeft: null, isDue: false }
+              : { status: 'lead', label: 'Lead', daysLeft: 0, isDue: false },
+            calculatedStatus: isWebOnlyClient ? 'website' : 'lead',
             scheduleInfo: null,
             isAdmin,
             isMultiBusiness: false,
             businessCount: 0
           });
         } else {
-          // Decompose each enrolled order as its own business item
-          clientOrders.forEach(order => {
+          // Decompose each enrolled social media order as its own business item
+          socialOrders.forEach(order => {
             let calculatedStatus = order.status;
             if (calculatedStatus === 'active' && order.created_at) {
               const expiryDate = new Date(order.created_at);
@@ -179,12 +223,16 @@ export default function AdminClients() {
               latestOrder: order,
               latestCycle: currentCycle,
               clientCycles: matchingCycles.length > 0 ? matchingCycles : clientCycles,
+              clientType,
+              clientWebsites,
+              latestWebsite,
+              websiteOrder: websiteOrders[0] || null,
               renewalStatus,
               calculatedStatus,
               scheduleInfo,
               isAdmin: false,
-              isMultiBusiness: clientOrders.length > 1,
-              businessCount: clientOrders.length
+              isMultiBusiness: socialOrders.length > 1,
+              businessCount: socialOrders.length
             });
           });
         }
@@ -214,6 +262,7 @@ export default function AdminClients() {
   const counts = useMemo(() => {
     const res = {
       All: 0,
+      'Website only': 0,
       'Renewal Due': 0,
       Active: 0,
       Leads: 0,
@@ -235,6 +284,9 @@ export default function AdminClients() {
 
       // Non-admin profiles are clients
       res.All += 1;
+      if (c.clientType === 'Website only') {
+        res['Website only'] += 1;
+      }
       if (c.renewalStatus?.status === 'renewal_due') {
         res['Renewal Due'] += 1;
       }
@@ -269,6 +321,7 @@ export default function AdminClients() {
 
     // For non-admin profiles (Clients):
     if (filter === 'All') return true;
+    if (filter === 'Website only') return c.clientType === 'Website only';
     if (filter === 'Renewal Due') return c.renewalStatus?.status === 'renewal_due';
     if (filter === 'Active') return c.calculatedStatus === 'active' && c.renewalStatus?.status !== 'renewal_due';
     if (filter === 'Pending') return c.calculatedStatus === 'pending';
@@ -306,7 +359,7 @@ export default function AdminClients() {
 
       {/* Filter Tabs */}
       <div className="flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 bg-[#0a0a0a] p-1.5 rounded-xl mb-3 sm:mb-4 border border-[#222] max-w-full">
-        {['All', 'Renewal Due', 'Active', 'Pending', 'Leads', 'Testers', 'Expired', 'Paused', 'Inactive'].map(f => {
+        {['All', 'Website only', 'Renewal Due', 'Active', 'Pending', 'Leads', 'Testers', 'Expired', 'Paused', 'Inactive'].map(f => {
           const isRenewalDueTab = f === 'Renewal Due';
           return (
             <button
@@ -388,6 +441,7 @@ export default function AdminClients() {
                         <p className="text-white font-bold text-sm truncate">{client.name || 'Unknown'}</p>
                         {(client.isAdmin || client.role === 'admin') && <span className="text-[9px] bg-[#3428f8] px-1.5 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
                         {client.role === 'tester' && <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold uppercase">Tester</span>}
+                        {renderClientTypeBadge(client.clientType)}
                       </div>
                       <div className="flex items-center gap-1 text-xs text-[#888] truncate">
                         <span className="truncate">{client.email}</span>
@@ -416,6 +470,10 @@ export default function AdminClients() {
                             <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Pending</span>
                           ) : client.calculatedStatus === 'expired' ? (
                             <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Expired</span>
+                          ) : client.calculatedStatus === 'website' && client.latestWebsite ? (
+                            <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                              {client.latestWebsite.status}
+                            </span>
                           ) : (
                             <span className="bg-[#222] text-[#888] border border-[#333] px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Lead</span>
                           )}
@@ -565,6 +623,19 @@ export default function AdminClients() {
                           </button>
                         </div>
                       </div>
+                    ) : client.latestWebsite ? (
+                      <div className="flex items-center justify-between w-full gap-2">
+                        <span className="text-[11px] text-[#888]">
+                          One-Time Website ({client.latestWebsite.status})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/admin/websites')}
+                          className="inline-flex items-center gap-1.5 text-xs text-white font-bold bg-[#3428f8] hover:bg-[#281bd6] px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                        >
+                          <Globe size={12} /> Manage Website
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-[#555] text-xs italic">Lead Account</span>
                     )}
@@ -606,10 +677,11 @@ export default function AdminClients() {
                     <tr key={client.auth_id} className="border-b border-[#222] bg-[#111] hover:bg-[#151515] transition-colors">
                       {/* Client / Contact */}
                       <td className="p-4 min-w-[260px]">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
                           <p className="text-white font-medium">{client.name || 'Unknown'}</p>
                           {(client.isAdmin || client.role === 'admin') && <span className="text-[9px] bg-[#3428f8] px-1 py-0.5 rounded text-white uppercase font-bold">Admin</span>}
                           {client.role === 'tester' && <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Tester</span>}
+                          {renderClientTypeBadge(client.clientType)}
                           {client.user_id && <span className="text-[9px] text-[#666] font-mono border border-[#333] px-1 py-0.5 rounded">{client.user_id}</span>}
                         </div>
                         <div className="flex items-center gap-0 mb-0.5">
@@ -693,6 +765,24 @@ export default function AdminClients() {
                               </div>
                             )}
                           </>
+                        ) : client.latestWebsite ? (
+                          <div className="space-y-1">
+                            <p className="text-emerald-400 font-bold text-xs flex items-center gap-1.5">
+                              <Globe size={12} /> {client.latestWebsite.website_type}
+                            </p>
+                            <p className="text-white font-mono text-xs">
+                              {client.latestWebsite.agreed_amount
+                                ? `₹${Number(client.latestWebsite.agreed_amount).toLocaleString('en-IN')} (One-Time)`
+                                : client.latestWebsite.budget
+                                ? `Budget: ₹${Number(client.latestWebsite.budget).toLocaleString('en-IN')}`
+                                : 'Quote Pending'}
+                            </p>
+                            <p className="text-[#666] text-[10px]">
+                              {client.latestWebsite.preferred_deadline
+                                ? `Target: ${client.latestWebsite.preferred_deadline}`
+                                : 'No monthly renewal'}
+                            </p>
+                          </div>
                         ) : (
                           <span className="text-[#555] text-sm italic">No Plan Selected</span>
                         )}
@@ -714,6 +804,13 @@ export default function AdminClients() {
                               <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Active</span>
                             ) : client.calculatedStatus === 'pending' ? (
                               <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Pending</span>
+                            ) : client.calculatedStatus === 'website' && client.latestWebsite ? (
+                              <div className="space-y-1">
+                                <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider inline-block">
+                                  {client.latestWebsite.status}
+                                </span>
+                                <p className="text-[10px] text-[#777]">One-time build (No renewal)</p>
+                              </div>
                             ) : (
                               <span className="bg-[#222] text-[#888] border border-[#333] px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider">Lead</span>
                             )}
@@ -803,6 +900,17 @@ export default function AdminClients() {
                               title="View and edit in Finances"
                             >
                               <Edit3 size={11} className="text-[#3428f8]" /> Finances
+                            </button>
+                          </div>
+                        )}
+                        {!order && client.latestWebsite && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => navigate('/admin/websites')}
+                              className="inline-flex items-center gap-1.5 text-xs text-white font-bold bg-[#3428f8] hover:bg-[#281bd6] px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                            >
+                              <Globe size={12} /> Manage Website
                             </button>
                           </div>
                         )}

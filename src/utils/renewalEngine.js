@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { generateUploadSchedule } from './scheduleEngine.js';
+import { isWebsiteOrder } from './websiteEngine.js';
 
 /**
  * OUTLIERS MEDIA — CLIENT RENEWAL & BILLING CYCLES ENGINE
@@ -71,7 +72,7 @@ export function bootstrapInitialCycles(ordersList = []) {
   if (!Array.isArray(ordersList)) return [];
 
   return ordersList
-    .filter(order => order && order.client_id && order.order_id)
+    .filter(order => order && order.client_id && order.order_id && !isWebsiteOrder(order))
     .map((order, idx) => {
       const startDate = order.first_upload_date 
         ? order.first_upload_date.split('T')[0] 
@@ -175,6 +176,11 @@ export function getLatestCycle(cycles = []) {
  * - Paused: marked as paused
  */
 export function computeRenewalStatus(client, latestCycle, latestOrder) {
+  // Renewal logic applies to monthly plan clients only. Website projects are one-time.
+  if (isWebsiteOrder(latestOrder) && !latestCycle) {
+    return { status: 'website_only', label: 'Website Project (One-Time)', daysLeft: null, isDue: false, isOverdue: false };
+  }
+
   if (!client || (!latestCycle && !latestOrder)) {
     return { status: 'lead', label: 'Lead / Onboarding', daysLeft: 0, isDue: false, isOverdue: false };
   }

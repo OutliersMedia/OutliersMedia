@@ -30,6 +30,7 @@ import AdminFinances from './pages/admin/AdminFinances';
 import AdminDeliverables from './pages/admin/AdminDeliverables';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminInfluencers from './pages/admin/AdminInfluencers';
+import AdminWebsites from './pages/admin/AdminWebsites';
 import InfluencerConnect from './pages/InfluencerConnect';
 
 // This component acts as a global lock for clients missing phone number.
@@ -158,6 +159,7 @@ function App() {
                           <Route index element={<AdminOverview />} />
                           <Route path="clients" element={<AdminClients />} />
                           <Route path="deliverables" element={<AdminDeliverables />} />
+                          <Route path="websites" element={<AdminWebsites />} />
                           <Route path="influencers" element={<AdminInfluencers />} />
                           <Route path="finances" element={<AdminFinances />} />
                           <Route path="tickets" element={<Navigate to="/admin" replace />} />

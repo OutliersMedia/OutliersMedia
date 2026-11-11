@@ -16,6 +16,7 @@ import {
   saveCreatorOrder, 
   updateCreatorOrderNegotiation 
 } from '../../utils/influencerEngine';
+import { isWebsiteOrder } from '../../utils/websiteEngine';
 
 export default function AdminDeliverables() {
   const [clientsList, setClientsList] = useState([]);
@@ -234,7 +235,9 @@ export default function AdminDeliverables() {
       const enrichedClients = [];
 
       profiles.forEach(profile => {
-        const clientOrders = orders ? orders.filter(o => o.client_id === profile.auth_id) : [];
+        const clientOrders = orders
+          ? orders.filter(o => o.client_id === profile.auth_id && !isWebsiteOrder(o))
+          : [];
 
         if (clientOrders.length === 0) {
           enrichedClients.push({

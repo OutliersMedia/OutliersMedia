@@ -35,6 +35,11 @@ import {
   calculateCycleEndDate,
   RENEWAL_EVENT_NAME 
 } from '../../utils/renewalEngine';
+import {
+  WEBSITE_EVENT_NAME,
+  isWebsiteOrder,
+  markWebsiteOrderPaid
+} from '../../utils/websiteEngine';
 import ClientRenewalModal from '../../components/admin/ClientRenewalModal';
 
 export { getStandardPlanPrice };
@@ -293,6 +298,8 @@ export default function AdminFinances() {
     }
   };
 
+  const [markingPaidWebsiteId, setMarkingPaidWebsiteId] = useState(null);
+
   const handleMarkCyclePaid = async (cycle) => {
     if (!cycle) return;
     setMarkingPaidCycleId(cycle.id);
@@ -304,6 +311,19 @@ export default function AdminFinances() {
       alert("Error marking cycle as paid: " + err.message);
     } finally {
       setMarkingPaidCycleId(null);
+    }
+  };
+
+  const handleMarkWebsiteOrderPaid = async (order) => {
+    if (!order) return;
+    setMarkingPaidWebsiteId(order.id || order.order_id);
+    try {
+      await markWebsiteOrderPaid(order);
+      await fetchFinances();
+    } catch (err) {
+      alert("Error marking website payment as paid: " + err.message);
+    } finally {
+      setMarkingPaidWebsiteId(null);
     }
   };
 
@@ -322,10 +342,12 @@ export default function AdminFinances() {
 
     window.addEventListener('om_influencer_changed', handleInfluencerChanged);
     window.addEventListener(RENEWAL_EVENT_NAME, handleRenewalChanged);
+    window.addEventListener(WEBSITE_EVENT_NAME, handleRenewalChanged);
     window.addEventListener('om_business_added', handleRenewalChanged);
     return () => {
       window.removeEventListener('om_influencer_changed', handleInfluencerChanged);
       window.removeEventListener(RENEWAL_EVENT_NAME, handleRenewalChanged);
+      window.removeEventListener(WEBSITE_EVENT_NAME, handleRenewalChanged);
       window.removeEventListener('om_business_added', handleRenewalChanged);
     };
   }, []);
@@ -487,8 +509,8 @@ export default function AdminFinances() {
         let currentStatus = order.status;
         const instMetrics = computeOrderInstallmentMetrics({ ...order, client: clientProfile });
 
-        // Auto-suspension check: active order overdue past grace period -> pause
-        if (order.status === 'active' && instMetrics.isOverdue) {
+        // Auto-suspension check: active order overdue past grace period -> pause (applies to social retainer plans only)
+        if (!isWebsiteOrder(order) && order.status === 'active' && instMetrics.isOverdue) {
           try {
             await supabase.from('orders').update({ status: 'paused' }).eq('id', order.id);
             currentStatus = 'paused';
@@ -1002,6 +1024,7 @@ export default function AdminFinances() {
 
     if (filter === 'All') return true;
     if (filter === 'Pending') return t.status === 'pending';
+    if (filter === 'Website') return isWebsiteOrder(t);
     if (filter === 'Installments') return t.instMetrics.hasInstallments && t.instMetrics.installments.length > 1;
     if (filter === 'Overdue') return t.instMetrics.isOverdue || t.instMetrics.inGracePeriod || t.status === 'paused';
     if (filter === 'Approved') return ['active', 'paused', 'cancelled'].includes(t.status) && t.instMetrics.isFullyPaid;
@@ -1942,7 +1965,8 @@ export default function AdminFinances() {
         // Unique client orders from transactions
         const dueOrPendingRenewals = [];
         transactions.forEach(t => {
-          if (!t || !t.client_id) return;
+          // Renewal logic applies to plan clients only; website projects are one-time
+          if (!t || !t.client_id || isWebsiteOrder(t)) return;
           const cycles = clientCycleMap.get(t.client_id) || [];
           const latestCycle = getLatestCycle(cycles);
           const renewalStatus = computeRenewalStatus(t.client, latestCycle, t);
@@ -1960,18 +1984,43 @@ export default function AdminFinances() {
           }
         });
 
-        // Monthly Summary for Selected Month
+        // Monthly Summary for Selected Month (Social Retainer Cycles + One-Time Website Projects)
         // A cycle falls into this month if delivery_start_date or created_at starts with selectedRenewalMonth
         const monthCycles = allBillingCycles.filter(c => {
-          if (!c) return false;
+          if (!c || String(c.order_id || '').toUpperCase().startsWith('WEB-')) return false;
           const s = c.delivery_start_date || '';
           const cr = c.created_at || '';
           return s.startsWith(selectedRenewalMonth) || cr.startsWith(selectedRenewalMonth);
         });
 
-        const totalBilledMonth = monthCycles.reduce((acc, c) => acc + Number(c.amount || 0), 0);
-        const totalReceivedMonth = monthCycles.filter(c => c.payment_status === 'Paid').reduce((acc, c) => acc + Number(c.amount || 0), 0);
-        const totalPendingMonth = monthCycles.filter(c => c.payment_status === 'Pending').reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const monthWebsiteOrders = transactions.filter(t => {
+          if (!t || !isWebsiteOrder(t) || t.status === 'cancelled') return false;
+          const cr = t.created_at || '';
+          const paidAt = t.instMetrics?.installments?.[0]?.paid_at || '';
+          return cr.startsWith(selectedRenewalMonth) || paidAt.startsWith(selectedRenewalMonth);
+        });
+
+        const socialBilledMonth = monthCycles.reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const socialReceivedMonth = monthCycles.filter(c => c.payment_status === 'Paid').reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const socialPendingMonth = monthCycles.filter(c => c.payment_status === 'Pending').reduce((acc, c) => acc + Number(c.amount || 0), 0);
+
+        const websiteBilledMonth = monthWebsiteOrders.reduce(
+          (acc, w) => acc + Number(w.instMetrics?.totalAgreed || w.total_agreed_amount || 0),
+          0
+        );
+        const websiteReceivedMonth = monthWebsiteOrders.reduce(
+          (acc, w) =>
+            acc +
+            (w.status === 'pending'
+              ? 0
+              : Number(w.instMetrics?.paidAmount ?? w.amount_paid ?? 0)),
+          0
+        );
+        const websitePendingMonth = Math.max(0, websiteBilledMonth - websiteReceivedMonth);
+
+        const totalBilledMonth = socialBilledMonth + websiteBilledMonth;
+        const totalReceivedMonth = socialReceivedMonth + websiteReceivedMonth;
+        const totalPendingMonth = socialPendingMonth + websitePendingMonth;
 
         // Build list of month options: -2 to +2 months from current
         const monthOptions = [];
@@ -2045,7 +2094,10 @@ export default function AdminFinances() {
                       <span>{totalBilledMonth.toLocaleString()}</span>
                     </div>
                     <span className="text-[10px] text-[#666] block mt-1">
-                      {monthCycles.length} Billing Cycle{monthCycles.length !== 1 ? 's' : ''} in this month
+                      {monthCycles.length} Cycle{monthCycles.length !== 1 ? 's' : ''}
+                      {monthWebsiteOrders.length > 0 && (
+                        <> • <strong className="text-blue-400">Website: ₹{websiteBilledMonth.toLocaleString()}</strong> ({monthWebsiteOrders.length})</>
+                      )}
                     </span>
                   </div>
 
@@ -2058,7 +2110,10 @@ export default function AdminFinances() {
                       <span>{totalReceivedMonth.toLocaleString()}</span>
                     </div>
                     <span className="text-[10px] text-[#777] block mt-1">
-                      {monthCycles.filter(c => c.payment_status === 'Paid').length} Paid in Full
+                      Plans: ₹{socialReceivedMonth.toLocaleString()}
+                      {websiteReceivedMonth > 0 && (
+                        <> • <strong className="text-blue-400">Website: ₹{websiteReceivedMonth.toLocaleString()}</strong></>
+                      )}
                     </span>
                   </div>
 
@@ -2071,7 +2126,8 @@ export default function AdminFinances() {
                       <span>{totalPendingMonth.toLocaleString()}</span>
                     </div>
                     <span className="text-[10px] text-amber-400/80 block mt-1">
-                      {monthCycles.filter(c => c.payment_status === 'Pending').length} Pending Payment
+                      {monthCycles.filter(c => c.payment_status === 'Pending').length + monthWebsiteOrders.filter(w => w.status === 'pending' || !w.instMetrics?.isFullyPaid).length} Pending Payment
+                      {websitePendingMonth > 0 && ` (Website: ₹${websitePendingMonth.toLocaleString()})`}
                     </span>
                   </div>
                 </div>
@@ -2178,7 +2234,7 @@ export default function AdminFinances() {
                       Monthly Per-Client Cycle Breakdown ({selectedRenewalMonth})
                     </h4>
                     <span className="text-[10px] font-mono text-[#777]">
-                      {monthCycles.length} active cycle records
+                      {monthCycles.length} cycles{monthWebsiteOrders.length > 0 ? ` + ${monthWebsiteOrders.length} Website` : ''}
                     </span>
                   </div>
 
@@ -2187,8 +2243,8 @@ export default function AdminFinances() {
                       <thead>
                         <tr className="bg-[#111] border-b border-[#222] text-[#888] text-[10px] uppercase font-bold tracking-wider">
                           <th className="py-2.5 px-3">Client / Brand</th>
-                          <th className="py-2.5 px-3">Cycle #</th>
-                          <th className="py-2.5 px-3">Package</th>
+                          <th className="py-2.5 px-3">Cycle / Type</th>
+                          <th className="py-2.5 px-3">Package / Label</th>
                           <th className="py-2.5 px-3">Delivery Window</th>
                           <th className="py-2.5 px-3">Billed (₹)</th>
                           <th className="py-2.5 px-3">Status</th>
@@ -2196,71 +2252,126 @@ export default function AdminFinances() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#1a1a1a]">
-                        {monthCycles.length === 0 ? (
+                        {monthCycles.length === 0 && monthWebsiteOrders.length === 0 ? (
                           <tr>
                             <td colSpan="7" className="py-6 text-center text-[#777] text-xs">
-                              No billing cycles scheduled for {selectedRenewalMonth}.
+                              No billing cycles or website entries scheduled for {selectedRenewalMonth}.
                             </td>
                           </tr>
                         ) : (
-                          monthCycles.map(cyc => {
-                            const matchingTxn = transactions.find(t => t.client_id === cyc.client_id || t.order_id === cyc.order_id);
-                            const clientName = matchingTxn?.client?.name || matchingTxn?.business_name || 'Client';
+                          <>
+                            {monthCycles.map(cyc => {
+                              const matchingTxn = transactions.find(t => t.client_id === cyc.client_id || t.order_id === cyc.order_id);
+                              const clientName = matchingTxn?.client?.name || matchingTxn?.business_name || 'Client';
 
-                            return (
-                              <tr key={cyc.id} className="hover:bg-[#141414] transition-colors">
-                                <td className="py-2.5 px-3">
-                                  <span className="text-white font-bold block">{clientName}</span>
-                                  <span className="text-[#666] text-[10px] font-mono">{cyc.order_id || '—'}</span>
-                                </td>
-                                <td className="py-2.5 px-3 font-mono font-bold text-cyan-400">
-                                  #{cyc.cycle_number}
-                                </td>
-                                <td className="py-2.5 px-3 text-[#aaa]">
-                                  {cyc.package}
-                                </td>
-                                <td className="py-2.5 px-3 text-[#777] font-mono text-[10px]">
-                                  {cyc.delivery_start_date} → {cyc.delivery_end_date}
-                                </td>
-                                <td className="py-2.5 px-3 font-mono font-bold text-white">
-                                  ₹{Number(cyc.amount || 0).toLocaleString()}
-                                </td>
-                                <td className="py-2.5 px-3">
-                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                                    cyc.payment_status === 'Paid'
-                                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                      : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
-                                  }`}>
-                                    {cyc.payment_status || 'Pending'}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
-                                  {cyc.payment_status === 'Pending' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleMarkCyclePaid(cyc)}
-                                      disabled={markingPaidCycleId === cyc.id}
-                                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm"
-                                    >
-                                      {markingPaidCycleId === cyc.id ? 'Updating...' : 'Mark Paid'}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (matchingTxn) {
-                                          setRenewalModalClient({ client: matchingTxn.client, order: matchingTxn, cycle: cyc });
-                                        }
-                                      }}
-                                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#1c1c1c] hover:bg-[#3428f8] text-[#aaa] hover:text-white transition-all cursor-pointer border border-[#2a2a2a]"
-                                    >
-                                      Renew Next
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })
+                              return (
+                                <tr key={cyc.id} className="hover:bg-[#141414] transition-colors">
+                                  <td className="py-2.5 px-3">
+                                    <span className="text-white font-bold block">{clientName}</span>
+                                    <span className="text-[#666] text-[10px] font-mono">{cyc.order_id || '—'}</span>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono font-bold text-cyan-400">
+                                    #{cyc.cycle_number}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-[#aaa]">
+                                    {cyc.package}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-[#777] font-mono text-[10px]">
+                                    {cyc.delivery_start_date} → {cyc.delivery_end_date}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono font-bold text-white">
+                                    ₹{Number(cyc.amount || 0).toLocaleString()}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                      cyc.payment_status === 'Paid'
+                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
+                                    }`}>
+                                      {cyc.payment_status || 'Pending'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    {cyc.payment_status === 'Pending' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMarkCyclePaid(cyc)}
+                                        disabled={markingPaidCycleId === cyc.id}
+                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm"
+                                      >
+                                        {markingPaidCycleId === cyc.id ? 'Updating...' : 'Mark Paid'}
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (matchingTxn) {
+                                            setRenewalModalClient({ client: matchingTxn.client, order: matchingTxn, cycle: cyc });
+                                          }
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#1c1c1c] hover:bg-[#3428f8] text-[#aaa] hover:text-white transition-all cursor-pointer border border-[#2a2a2a]"
+                                      >
+                                        Renew Next
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {monthWebsiteOrders.map(webOrd => {
+                              const amount = Number(webOrd.instMetrics?.totalAgreed || webOrd.total_agreed_amount || 0);
+                              const isWebPaid = webOrd.status !== 'pending' && webOrd.instMetrics?.isFullyPaid;
+                              const webId = webOrd.id || webOrd.order_id;
+                              return (
+                                <tr key={`month-web-${webId}`} className="hover:bg-[#141414] transition-colors bg-[#3428f8]/[0.03]">
+                                  <td className="py-2.5 px-3">
+                                    <span className="text-white font-bold block">{webOrd.business_name || webOrd.client?.name || 'Website Client'}</span>
+                                    <span className="text-[#666] text-[10px] font-mono">{webOrd.order_id}</span>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-[10px] text-[#3428f8] font-bold">
+                                    One-Time
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 text-[10px] font-bold uppercase">
+                                      <Globe size={10} /> Website
+                                    </span>
+                                    {webOrd.business_type && (
+                                      <span className="ml-1.5 text-[10px] text-[#888]">{webOrd.business_type}</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-[#777] font-mono text-[10px]">
+                                    One-Time Project
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono font-bold text-white">
+                                    ₹{amount.toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                                      isWebPaid
+                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                    }`}>
+                                      {isWebPaid ? 'Paid' : 'Pending'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    {!isWebPaid ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMarkWebsiteOrderPaid(webOrd)}
+                                        disabled={markingPaidWebsiteId === webId}
+                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm"
+                                      >
+                                        {markingPaidWebsiteId === webId ? 'Updating...' : 'Mark as Paid'}
+                                      </button>
+                                    ) : (
+                                      <span className="text-[10px] text-emerald-400 font-bold uppercase">Cleared</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </>
                         )}
                       </tbody>
                     </table>
@@ -2279,7 +2390,8 @@ export default function AdminFinances() {
           { id: 'Pending', label: 'Pending Approval' },
           { id: 'Installments', label: 'EMI / Installments' },
           { id: 'Overdue', label: 'Overdue & Grace' },
-          { id: 'Approved', label: 'Fully Cleared' }
+          { id: 'Approved', label: 'Fully Cleared' },
+          { id: 'Website', label: 'Website' }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -2319,7 +2431,13 @@ export default function AdminFinances() {
                     <div className="min-w-0">
                       <p className="text-white font-bold text-sm truncate">{txn.client.name}</p>
                       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                        <span className="text-[#3428f8] text-xs font-bold">{txn.plan_name}</span>
+                        {isWebsiteOrder(txn) ? (
+                          <span className="inline-flex items-center gap-1 bg-[#3428f8]/20 text-blue-300 border border-[#3428f8]/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                            <Globe size={10} /> Website
+                          </span>
+                        ) : (
+                          <span className="text-[#3428f8] text-xs font-bold">{txn.plan_name}</span>
+                        )}
                         <span className="text-[#666] text-[10px] font-mono">• {txn.order_id}</span>
                       </div>
                       <p className="text-[#555] text-[10px] mt-0.5">
@@ -2411,7 +2529,16 @@ export default function AdminFinances() {
                       <Edit3 size={12} className="text-[#3428f8]" /> Edit Payment
                     </button>
 
-                    {txn.status === 'pending' ? (
+                    {isWebsiteOrder(txn) && (txn.status === 'pending' || !inst.isFullyPaid) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkWebsiteOrderPaid(txn)}
+                        disabled={markingPaidWebsiteId === (txn.id || txn.order_id)}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle size={13} /> {markingPaidWebsiteId === (txn.id || txn.order_id) ? 'Updating...' : 'Mark as Paid'}
+                      </button>
+                    ) : txn.status === 'pending' ? (
                       <button
                         onClick={() => handleOpenConfigurator(txn)}
                         className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
@@ -2538,9 +2665,15 @@ export default function AdminFinances() {
                     <td className="p-4">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-white font-mono font-bold text-sm">{txn.order_id}</span>
-                        <span className="text-[10px] bg-[#1a1a1a] text-[#888] px-2 py-0.5 rounded border border-[#262626] font-medium">
-                          {txn.plan_name}
-                        </span>
+                        {isWebsiteOrder(txn) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-[#3428f8]/20 text-blue-300 px-2 py-0.5 rounded border border-[#3428f8]/30 font-bold uppercase">
+                            <Globe size={10} /> Website
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-[#1a1a1a] text-[#888] px-2 py-0.5 rounded border border-[#262626] font-medium">
+                            {txn.plan_name}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[#666] text-xs">
                         {new Date(txn.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -2728,8 +2861,18 @@ export default function AdminFinances() {
                           Edit Payment
                         </button>
 
-                        {/* 1. Pending Initial Order Approval */}
-                        {txn.status === 'pending' && (
+                        {/* 1. One-time Website Mark as Paid OR Pending Initial Order Approval */}
+                        {isWebsiteOrder(txn) && (txn.status === 'pending' || !inst.isFullyPaid) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkWebsiteOrderPaid(txn)}
+                            disabled={markingPaidWebsiteId === (txn.id || txn.order_id)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer shadow-sm"
+                            title="Mark one-time Website payment as Paid"
+                          >
+                            <CheckCircle size={14} /> {markingPaidWebsiteId === (txn.id || txn.order_id) ? 'Updating...' : 'Mark as Paid'}
+                          </button>
+                        ) : txn.status === 'pending' && (
                           <button 
                             onClick={() => handleOpenConfigurator(txn)}
                             className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
