@@ -33,6 +33,7 @@ import {
   computeRenewalStatus, 
   markCyclePaid, 
   calculateCycleEndDate,
+  getOrderBusinessKey,
   RENEWAL_EVENT_NAME 
 } from '../../utils/renewalEngine';
 import {
@@ -917,11 +918,26 @@ export default function AdminFinances() {
       if (error) {
         alert("Failed to save installment plan: " + error.message);
       } else {
+        // Keep matching billing_cycle status synced when remaining EMI balance clears
+        if (configModalOrder.order_id) {
+          try {
+            await supabase
+              .from('billing_cycles')
+              .update({
+                payment_status: balanceDue <= 0 ? 'Paid' : 'Pending',
+                updated_at: new Date().toISOString()
+              })
+              .eq('order_id', configModalOrder.order_id);
+          } catch {
+            // non-fatal
+          }
+        }
         stagedReceiptFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
         setStagedReceiptFiles([]);
         setSavedReceiptUrls([]);
         setConfigModalOrder(null);
         await fetchFinances();
+        await loadBillingCycles();
       }
     } catch (err) {
       alert("Error: " + err.message);
@@ -1023,7 +1039,14 @@ export default function AdminFinances() {
     if (!matchesSearch) return false;
 
     if (filter === 'All') return true;
-    if (filter === 'Pending') return t.status === 'pending';
+    if (filter === 'Pending') {
+      return (
+        t.status === 'pending' ||
+        t.payment_status === 'pending' ||
+        t.payment_status === 'pending_verification' ||
+        !t.instMetrics?.isFullyPaid
+      );
+    }
     if (filter === 'Website') return isWebsiteOrder(t);
     if (filter === 'Installments') return t.instMetrics.hasInstallments && t.instMetrics.installments.length > 1;
     if (filter === 'Overdue') return t.instMetrics.isOverdue || t.instMetrics.inGracePeriod || t.status === 'paused';
@@ -1963,20 +1986,43 @@ export default function AdminFinances() {
         });
 
         // Unique client orders from transactions
-        const dueOrPendingRenewals = [];
+        // Group social transactions per (client_id, businessKey) so renewal chains (Cycle #1 -> #2 -> #3)
+        // never create duplicate renewal rows or keep stale Cycle #1 marked as "Renewal Due".
+        const businessRenewalGroups = new Map();
         transactions.forEach(t => {
           // Renewal logic applies to plan clients only; website projects are one-time
           if (!t || !t.client_id || isWebsiteOrder(t)) return;
-          const cycles = clientCycleMap.get(t.client_id) || [];
+          const bKey = `${t.client_id}::${getOrderBusinessKey(t, t.client?.business_type || 'Main Brand')}`;
+          if (!businessRenewalGroups.has(bKey)) {
+            businessRenewalGroups.set(bKey, []);
+          }
+          businessRenewalGroups.get(bKey).push(t);
+        });
+
+        const dueOrPendingRenewals = [];
+        businessRenewalGroups.forEach((groupTxns) => {
+          const sortedGroup = [...groupTxns].sort(
+            (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+          );
+          const latestTxn = sortedGroup[0];
+          const groupOrderIds = new Set(sortedGroup.map(o => o.order_id).filter(Boolean));
+
+          const allClientCycles = clientCycleMap.get(latestTxn.client_id) || [];
+          const matchedBusinessCycles = allClientCycles.filter(c => c.order_id && groupOrderIds.has(c.order_id));
+          const cycles = matchedBusinessCycles.length > 0 ? matchedBusinessCycles : allClientCycles;
+
           const latestCycle = getLatestCycle(cycles);
-          const renewalStatus = computeRenewalStatus(t.client, latestCycle, t);
-          const hasPendingCycle = cycles.some(c => c.payment_status === 'Pending');
+          const renewalStatus = computeRenewalStatus(latestTxn.client, latestCycle, latestTxn);
+          const pendingCycle =
+            cycles.find(c => c.payment_status === 'Pending' && c.order_id === latestTxn.order_id) ||
+            cycles.find(c => c.payment_status === 'Pending') ||
+            null;
+          const hasPendingCycle = Boolean(pendingCycle) || !latestTxn.instMetrics?.isFullyPaid;
 
           if (renewalStatus.isDue || hasPendingCycle || renewalStatus.status === 'renewal_due') {
-            const pendingCycle = cycles.find(c => c.payment_status === 'Pending') || null;
             dueOrPendingRenewals.push({
-              transaction: t,
-              client: t.client,
+              transaction: latestTxn,
+              client: latestTxn.client,
               latestCycle,
               pendingCycle,
               renewalStatus
@@ -2000,9 +2046,27 @@ export default function AdminFinances() {
           return cr.startsWith(selectedRenewalMonth) || paidAt.startsWith(selectedRenewalMonth);
         });
 
+        const getCycleSplitBreakdown = (cyc) => {
+          const totalCycAmt = Number(cyc?.amount || 0);
+          if (cyc?.payment_status === 'Paid') {
+            return { received: totalCycAmt, pending: 0, matchingTxn: transactions.find(t => t.order_id === cyc.order_id) || null };
+          }
+          const matchingTxn = transactions.find(
+            t =>
+              (cyc.order_id && t.order_id === cyc.order_id) ||
+              (cyc.id?.startsWith('bootstrap_c1_') && t.order_id === cyc.id.replace('bootstrap_c1_', ''))
+          ) || null;
+
+          if (matchingTxn?.instMetrics) {
+            const paid = Math.min(totalCycAmt, Number(matchingTxn.instMetrics.paidAmount || 0));
+            return { received: paid, pending: Math.max(0, totalCycAmt - paid), matchingTxn };
+          }
+          return { received: 0, pending: totalCycAmt, matchingTxn };
+        };
+
         const socialBilledMonth = monthCycles.reduce((acc, c) => acc + Number(c.amount || 0), 0);
-        const socialReceivedMonth = monthCycles.filter(c => c.payment_status === 'Paid').reduce((acc, c) => acc + Number(c.amount || 0), 0);
-        const socialPendingMonth = monthCycles.filter(c => c.payment_status === 'Pending').reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const socialReceivedMonth = monthCycles.reduce((acc, c) => acc + getCycleSplitBreakdown(c).received, 0);
+        const socialPendingMonth = monthCycles.reduce((acc, c) => acc + getCycleSplitBreakdown(c).pending, 0);
 
         const websiteBilledMonth = monthWebsiteOrders.reduce(
           (acc, w) => acc + Number(w.instMetrics?.totalAgreed || w.total_agreed_amount || 0),
@@ -2179,17 +2243,54 @@ export default function AdminFinances() {
                                 <span className="text-[#888] block text-[10px] uppercase font-bold">
                                   {hasPending ? `Upcoming: ${pendingCycle.package}` : `Current: ${latestCycle?.package || t.plan_name}`}
                                 </span>
-                                <span className="font-mono text-[10px] text-[#666]">
+                                <span className="font-mono text-[10px] text-[#666] block">
                                   {hasPending ? `${pendingCycle.delivery_start_date} → ${pendingCycle.delivery_end_date}` : (latestCycle?.delivery_end_date ? `Ends: ${latestCycle.delivery_end_date}` : 'Cycle Active')}
                                 </span>
+                                {t.instMetrics?.hasInstallments && t.instMetrics.installments.length > 1 && (
+                                  <span className="text-[9px] font-mono text-blue-400 block mt-0.5">
+                                    {t.instMetrics.installments.length}x EMI • ₹{Number(t.instMetrics.paidAmount || 0).toLocaleString()} Paid / ₹{Number(t.instMetrics.balanceDue || 0).toLocaleString()} Due
+                                  </span>
+                                )}
                               </div>
-                              <span className="font-serif font-bold text-emerald-400 text-sm">
-                                ₹{Number(hasPending ? pendingCycle.amount : (latestCycle?.amount || t.total_agreed_amount || 0)).toLocaleString()}
-                              </span>
+                              <div className="text-right">
+                                <span className="font-serif font-bold text-emerald-400 text-sm block">
+                                  ₹{Number(hasPending ? pendingCycle.amount : (latestCycle?.amount || t.total_agreed_amount || 0)).toLocaleString()}
+                                </span>
+                                {getAllOrderReceiptUrls(t).length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openReceiptPreview(getAllOrderReceiptUrls(t), 0, `${client?.name || t.business_name} - Renewal Screenshots`)}
+                                    className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-400 hover:text-white mt-0.5 cursor-pointer"
+                                  >
+                                    <Eye size={10} /> Proof ({getAllOrderReceiptUrls(t).length})
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#1a1a1a]">
+                            <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#1a1a1a] flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const editCycleTarget = hasPending ? pendingCycle : latestCycle;
+                                  const editOrderTarget = (editCycleTarget?.order_id && transactions.find(tx => tx.order_id === editCycleTarget.order_id)) || t;
+                                  setRenewalModalClient({
+                                    mode: 'edit',
+                                    client,
+                                    order: editOrderTarget,
+                                    cycle: editCycleTarget,
+                                    targetCycle: editCycleTarget,
+                                    targetOrder: editOrderTarget
+                                  });
+                                }}
+                                className="px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#1a1a1a] hover:bg-[#252525] text-blue-300 hover:text-white border border-[#2f2f2f] flex items-center gap-1.5 transition-all cursor-pointer"
+                                title="Edit deliverables, cost, dates & payment for this cycle"
+                              >
+                                <Edit3 size={12} />
+                                Edit Plan
+                              </button>
+
                               {hasPending ? (
                                 <button
                                   type="button"
@@ -2261,17 +2362,35 @@ export default function AdminFinances() {
                         ) : (
                           <>
                             {monthCycles.map(cyc => {
-                              const matchingTxn = transactions.find(t => t.client_id === cyc.client_id || t.order_id === cyc.order_id);
+                              const matchingTxn = transactions.find(t => t.order_id === cyc.order_id || (cyc.client_id && t.client_id === cyc.client_id));
+                              const exactOrderTxn = transactions.find(t => t.order_id === cyc.order_id) || matchingTxn;
                               const clientName = matchingTxn?.client?.name || matchingTxn?.business_name || 'Client';
+                              const receiptUrls = exactOrderTxn ? getAllOrderReceiptUrls(exactOrderTxn) : [];
+                              const isEmiCycle = exactOrderTxn?.instMetrics?.hasInstallments && exactOrderTxn.instMetrics.installments.length > 1;
+                              const isPartialEmi = isEmiCycle && exactOrderTxn.instMetrics.paidAmount > 0 && !exactOrderTxn.instMetrics.isFullyPaid;
 
                               return (
                                 <tr key={cyc.id} className="hover:bg-[#141414] transition-colors">
                                   <td className="py-2.5 px-3">
                                     <span className="text-white font-bold block">{clientName}</span>
-                                    <span className="text-[#666] text-[10px] font-mono">{cyc.order_id || '—'}</span>
+                                    <span className="text-[#666] text-[10px] font-mono block">{cyc.order_id || '—'}</span>
+                                    {receiptUrls.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openReceiptPreview(receiptUrls, 0, `${clientName} - Cycle #${cyc.cycle_number} Receipts`)}
+                                        className="inline-flex items-center gap-1 text-[9px] text-blue-400 hover:text-white font-bold mt-0.5 cursor-pointer"
+                                      >
+                                        <Eye size={10} /> {receiptUrls.length} Proof{receiptUrls.length > 1 ? 's' : ''}
+                                      </button>
+                                    )}
                                   </td>
                                   <td className="py-2.5 px-3 font-mono font-bold text-cyan-400">
                                     #{cyc.cycle_number}
+                                    {isEmiCycle && (
+                                      <span className="block text-[9px] text-blue-400 font-normal">
+                                        {exactOrderTxn.instMetrics.installments.length}x EMI
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="py-2.5 px-3 text-[#aaa]">
                                     {cyc.package}
@@ -2281,39 +2400,72 @@ export default function AdminFinances() {
                                   </td>
                                   <td className="py-2.5 px-3 font-mono font-bold text-white">
                                     ₹{Number(cyc.amount || 0).toLocaleString()}
+                                    {isPartialEmi && (
+                                      <span className="block text-[9px] text-emerald-400 font-normal">
+                                        ₹{Number(exactOrderTxn.instMetrics.paidAmount || 0).toLocaleString()} Paid
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="py-2.5 px-3">
                                     <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                                       cyc.payment_status === 'Paid'
                                         ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                        : isPartialEmi
+                                        ? 'bg-[#3428f8]/15 text-blue-300 border-[#3428f8]/40'
                                         : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
                                     }`}>
-                                      {cyc.payment_status || 'Pending'}
+                                      {cyc.payment_status === 'Paid' ? 'Paid' : (isPartialEmi ? 'EMI Partial' : (cyc.payment_status || 'Pending'))}
                                     </span>
                                   </td>
                                   <td className="py-2.5 px-3 text-right">
-                                    {cyc.payment_status === 'Pending' ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMarkCyclePaid(cyc)}
-                                        disabled={markingPaidCycleId === cyc.id}
-                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm"
-                                      >
-                                        {markingPaidCycleId === cyc.id ? 'Updating...' : 'Mark Paid'}
-                                      </button>
-                                    ) : (
+                                    <div className="inline-flex items-center justify-end gap-1.5">
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          if (matchingTxn) {
-                                            setRenewalModalClient({ client: matchingTxn.client, order: matchingTxn, cycle: cyc });
-                                          }
+                                          const targetOrd = exactOrderTxn || matchingTxn;
+                                          const resolvedClient = targetOrd?.client || {
+                                            auth_id: cyc.client_id,
+                                            name: targetOrd?.business_name || 'Client',
+                                            displayBusinessName: targetOrd?.business_name || 'Client'
+                                          };
+                                          setRenewalModalClient({
+                                            mode: 'edit',
+                                            client: resolvedClient,
+                                            order: targetOrd,
+                                            cycle: cyc,
+                                            targetCycle: cyc,
+                                            targetOrder: targetOrd
+                                          });
                                         }}
-                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#1c1c1c] hover:bg-[#3428f8] text-[#aaa] hover:text-white transition-all cursor-pointer border border-[#2a2a2a]"
+                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#181818] hover:bg-[#262626] text-blue-300 hover:text-white transition-all cursor-pointer border border-[#2c2c2c] inline-flex items-center gap-1"
+                                        title="Edit deliverables, cost, dates & payment for this cycle"
                                       >
-                                        Renew Next
+                                        <Edit3 size={10} /> Edit
                                       </button>
-                                    )}
+
+                                      {cyc.payment_status === 'Pending' ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMarkCyclePaid(cyc)}
+                                          disabled={markingPaidCycleId === cyc.id}
+                                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm"
+                                        >
+                                          {markingPaidCycleId === cyc.id ? 'Updating...' : 'Mark Paid'}
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (matchingTxn) {
+                                              setRenewalModalClient({ client: matchingTxn.client, order: matchingTxn, cycle: cyc });
+                                            }
+                                          }}
+                                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#1c1c1c] hover:bg-[#3428f8] text-[#aaa] hover:text-white transition-all cursor-pointer border border-[#2a2a2a]"
+                                        >
+                                          Renew Next
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -2449,6 +2601,11 @@ export default function AdminFinances() {
                       {txn.status === 'active' && (
                         <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                           <CheckCircle size={10} /> Active
+                        </span>
+                      )}
+                      {txn.status === 'active' && !inst.isFullyPaid && !isEmi && (
+                        <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <Clock size={9} /> Payment Pending
                         </span>
                       )}
                       {txn.status === 'pending' && (
@@ -2770,6 +2927,11 @@ export default function AdminFinances() {
                         {txn.status === 'active' && (
                           <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                             <CheckCircle size={10} /> Active Retainer
+                          </span>
+                        )}
+                        {txn.status === 'active' && !inst.isFullyPaid && !pendingVerificationInst && !isEmi && (
+                          <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold tracking-wider flex items-center gap-1">
+                            <Clock size={10} /> Payment Pending (₹{Number(inst.balanceDue || 0).toLocaleString('en-IN')})
                           </span>
                         )}
                         {txn.status === 'pending' && (
@@ -4522,6 +4684,9 @@ export default function AdminFinances() {
           client={renewalModalClient.client}
           currentOrder={renewalModalClient.order}
           latestCycle={renewalModalClient.cycle}
+          mode={renewalModalClient.mode || 'create'}
+          targetCycle={renewalModalClient.targetCycle || null}
+          targetOrder={renewalModalClient.targetOrder || null}
           onRenewalSuccess={() => {
             fetchFinances();
             loadBillingCycles();

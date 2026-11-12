@@ -174,6 +174,60 @@ export function generateCustomSchedule({
 }
 
 /**
+ * Generates an exact-count 30-day upload schedule honoring customized deliverable numbers.
+ */
+export function generateExactQuotaSchedule({
+  startDate,
+  staticTotal = 0,
+  reelsTotal = 0,
+  storiesTotal = 0,
+  postersTotal = 0
+}) {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const schedule = [];
+
+  const timePresets = {
+    static: ['7:00 PM', '12:30 PM', '6:30 PM', '11:00 AM', '8:00 PM'],
+    reel: ['7:30 PM', '1:00 PM', '8:30 PM', '6:00 PM'],
+    story: ['12:00 PM', '6:00 PM', '10:00 AM', '8:00 PM'],
+    poster: ['2:00 PM', '5:00 PM']
+  };
+
+  const distributeType = (type, totalCount, times, phaseOffset = 0) => {
+    const count = Math.max(0, parseInt(totalCount, 10) || 0);
+    if (count === 0) return;
+
+    const span = Math.max(1, 30 - phaseOffset);
+    for (let i = 0; i < count; i++) {
+      const rawOffset = count === 1
+        ? phaseOffset
+        : Math.floor((i * span) / count) + phaseOffset;
+      const dayOffset = Math.max(0, Math.min(29, rawOffset));
+      const date = new Date(start);
+      date.setDate(date.getDate() + dayOffset);
+
+      schedule.push({
+        type,
+        time: times[i % times.length],
+        note: `${TYPE_CONFIG[type]?.label || type} #${i + 1} of ${count}`,
+        date,
+        dayNumber: dayOffset + 1,
+        cycleWeek: Math.min(5, Math.floor(dayOffset / 7) + 1)
+      });
+    }
+  };
+
+  distributeType('static', staticTotal, timePresets.static, 0);
+  distributeType('story', storiesTotal, timePresets.story, 1);
+  distributeType('reel', reelsTotal, timePresets.reel, 2);
+  distributeType('poster', postersTotal, timePresets.poster, 3);
+
+  schedule.sort((a, b) => a.date - b.date);
+  return schedule;
+}
+
+/**
  * Master schedule generation function with custom schedule support
  */
 export function generateUploadSchedule(
@@ -184,6 +238,18 @@ export function generateUploadSchedule(
   postersTotal = 0,
   customConfig = null
 ) {
+  // Exact-quota schedule mode (used by customized renewal cycles & custom deliverable plans)
+  if (customConfig && (customConfig.useExactQuotas || customConfig.custom_deliverables)) {
+    const effectiveStartDate = customConfig.firstUploadDate || startDate;
+    return generateExactQuotaSchedule({
+      startDate: effectiveStartDate,
+      staticTotal: customConfig.totalStatic ?? staticTotal ?? 0,
+      reelsTotal: customConfig.totalReels ?? reelsTotal ?? 0,
+      storiesTotal: customConfig.totalStories ?? 15,
+      postersTotal: customConfig.totalPosters ?? postersTotal ?? 0
+    });
+  }
+
   // If custom schedule configuration is provided, use custom interval engine
   if (customConfig && (customConfig.staticPerWeek !== undefined || customConfig.firstUploadDate)) {
     const effectiveStartDate = customConfig.firstUploadDate || startDate;

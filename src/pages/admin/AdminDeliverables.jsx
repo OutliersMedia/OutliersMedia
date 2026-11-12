@@ -17,6 +17,7 @@ import {
   updateCreatorOrderNegotiation 
 } from '../../utils/influencerEngine';
 import { isWebsiteOrder } from '../../utils/websiteEngine';
+import { RENEWAL_EVENT_NAME } from '../../utils/renewalEngine';
 
 export default function AdminDeliverables() {
   const [clientsList, setClientsList] = useState([]);
@@ -123,10 +124,12 @@ export default function AdminDeliverables() {
     window.addEventListener('om_business_added', handleRefresh);
     window.addEventListener('om_special_deliverable_changed', handleRefresh);
     window.addEventListener('om_creator_orders_changed', handleRefresh);
+    window.addEventListener(RENEWAL_EVENT_NAME, handleRefresh);
     return () => {
       window.removeEventListener('om_business_added', handleRefresh);
       window.removeEventListener('om_special_deliverable_changed', handleRefresh);
       window.removeEventListener('om_creator_orders_changed', handleRefresh);
+      window.removeEventListener(RENEWAL_EVENT_NAME, handleRefresh);
     };
   }, []);
 
@@ -252,30 +255,42 @@ export default function AdminDeliverables() {
           });
         } else {
           clientOrders.forEach(order => {
+            const scheduleConfig = getClientSchedule(order);
             const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
-            const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
-              ? order.static_posts_total
-              : (isStarterOrd ? 12 : 15);
-            const normReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
-              ? order.reels_total
-              : (isStarterOrd ? 8 : 12);
-            const normStories = (order.stories_total && order.stories_total !== 32)
-              ? order.stories_total
-              : 15;
+            const usesCustomQuotas = Boolean(scheduleConfig?.custom_deliverables || scheduleConfig?.is_renewal);
+
+            const normStatic = usesCustomQuotas
+              ? Number(order.static_posts_total ?? scheduleConfig?.totalStatic ?? (isStarterOrd ? 12 : 15))
+              : ((order.static_posts_total && order.static_posts_total !== 10)
+                ? order.static_posts_total
+                : (isStarterOrd ? 12 : 15));
+            const normReels = usesCustomQuotas
+              ? Number(order.reels_total ?? scheduleConfig?.totalReels ?? (isStarterOrd ? 8 : 12))
+              : ((order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+                ? order.reels_total
+                : (isStarterOrd ? 8 : 12));
+            const normStories = usesCustomQuotas
+              ? Number(order.stories_total ?? scheduleConfig?.totalStories ?? 15)
+              : ((order.stories_total && order.stories_total !== 32)
+                ? order.stories_total
+                : 15);
+            const normPosters = usesCustomQuotas
+              ? Number(order.posters_total ?? scheduleConfig?.totalPosters ?? 0)
+              : 0;
 
             const normalizedOrder = {
               ...order,
               static_posts_total: normStatic,
               reels_total: normReels,
               stories_total: normStories,
-              posters_total: 0
+              posters_total: normPosters
             };
 
             let calculatedStatus = normalizedOrder.status;
 
-            if (calculatedStatus === 'active' && normalizedOrder.created_at) {
-              const createdDate = new Date(normalizedOrder.created_at);
-              const expiryDate = new Date(createdDate);
+            const effectiveStartStr = scheduleConfig?.firstUploadDate || normalizedOrder.first_upload_date || normalizedOrder.created_at;
+            if (calculatedStatus === 'active' && effectiveStartStr) {
+              const expiryDate = new Date(effectiveStartStr);
               expiryDate.setDate(expiryDate.getDate() + 30);
 
               if (new Date() > expiryDate) {
@@ -283,7 +298,6 @@ export default function AdminDeliverables() {
               }
             }
 
-            const scheduleConfig = getClientSchedule(normalizedOrder);
             const clientPosts = posts ? posts.filter(p => p.order_id === normalizedOrder.order_id) : [];
 
             const staticDelivered = clientPosts.filter(p => p.post_type === 'static').length;
@@ -291,9 +305,12 @@ export default function AdminDeliverables() {
             const storiesDelivered = clientPosts.filter(p => p.post_type === 'story').length;
             const postersDelivered = clientPosts.filter(p => p.post_type === 'poster').length;
 
-            const storiesQuota = normalizedOrder.stories_total || scheduleConfig?.totalStories || 15;
+            const storiesQuota = usesCustomQuotas
+              ? normStories
+              : (normalizedOrder.stories_total || scheduleConfig?.totalStories || 15);
             const totalQuota = (normalizedOrder.static_posts_total || 0) + 
                                (normalizedOrder.reels_total || 0) + 
+                               (normalizedOrder.posters_total || 0) +
                                storiesQuota;
 
             const progress = {
@@ -301,7 +318,7 @@ export default function AdminDeliverables() {
               reels: reelsDelivered,
               stories: storiesDelivered,
               posters: postersDelivered,
-              total_delivered: staticDelivered + reelsDelivered + storiesDelivered,
+              total_delivered: staticDelivered + reelsDelivered + storiesDelivered + postersDelivered,
               total_quota: totalQuota
             };
 
@@ -879,7 +896,14 @@ export default function AdminDeliverables() {
                               {client.displayBusinessName}
                             </p>
                           )}
-                          <p className="text-[#666] text-[10px] font-mono">{client.latestOrder?.order_id || 'No Order ID'}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-[#666] text-[10px] font-mono">{client.latestOrder?.order_id || 'No Order ID'}</p>
+                            {(client.scheduleConfig?.cycle_number || client.latestOrder?.schedule_config?.cycle_number) && (
+                              <span className="text-[9px] bg-[#3428f8]/15 border border-[#3428f8]/30 text-blue-300 px-1.5 py-0.2 rounded font-mono font-bold">
+                                Cycle #{client.scheduleConfig?.cycle_number || client.latestOrder?.schedule_config?.cycle_number}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div>
                           {client.calculatedStatus === 'active' && <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider">Active</span>}

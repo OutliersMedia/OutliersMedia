@@ -21,10 +21,11 @@ import {
   fetchBillingCycles, 
   getLatestCycle, 
   calculateCycleEndDate, 
+  getOrderBusinessKey,
   RENEWAL_EVENT_NAME 
 } from '../../utils/renewalEngine';
 
-export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpenPayModal }) {
+export default function ActiveDashboard({ order: propOrder, allClientOrders = [], profile, onRefreshOrder, onOpenPayModal }) {
   const [posts, setPosts] = useState([]);
 
   // Client Billing Cycles & Renewal State
@@ -39,6 +40,37 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
   const [specialPayReceiptFile, setSpecialPayReceiptFile] = useState(null);
   const [payingSpecial, setPayingSpecial] = useState(false);
   const [specialPaySuccess, setSpecialPaySuccess] = useState(false);
+
+  // Resolve the active cycle and order for the currently selected business
+  const currentBusinessKey = propOrder
+    ? getOrderBusinessKey(propOrder, profile?.business_type || 'Main Brand')
+    : '';
+  const businessOrders = (() => {
+    if (!propOrder) return [];
+    const matching = Array.isArray(allClientOrders)
+      ? allClientOrders.filter(
+          o => o && o.order_id && getOrderBusinessKey(o, profile?.business_type || 'Main Brand') === currentBusinessKey
+        )
+      : [];
+    return matching.length > 0 ? matching : [propOrder];
+  })();
+  const businessOrderIds = new Set(businessOrders.map(o => o.order_id).filter(Boolean));
+  const filteredBusinessCycles = clientBillingCycles.filter(
+    c => (c.order_id && businessOrderIds.has(c.order_id)) || (!c.order_id && businessOrderIds.size <= 1)
+  );
+  const businessCycles = filteredBusinessCycles.length > 0 ? filteredBusinessCycles : clientBillingCycles;
+  const latestCycle = getLatestCycle(businessCycles);
+  const activeCycle =
+    (selectedCycleId && businessCycles.find(c => c.id === selectedCycleId)) ||
+    businessCycles.find(c => c.order_id === propOrder?.order_id) ||
+    latestCycle;
+  const order =
+    (activeCycle?.order_id && businessOrders.find(o => o.order_id === activeCycle.order_id)) ||
+    propOrder;
+
+  useEffect(() => {
+    setSelectedCycleId(null);
+  }, [propOrder?.order_id]);
 
   // Sync and fetch special deliverables
   useEffect(() => {
@@ -89,11 +121,11 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
 
   // Sync client billing cycles & package renewal history
   useEffect(() => {
-    if (!order?.client_id) return;
+    if (!propOrder?.client_id) return;
     let isMounted = true;
     const loadCycles = async () => {
       try {
-        const cycles = await fetchBillingCycles(order.client_id);
+        const cycles = await fetchBillingCycles(propOrder.client_id);
         if (isMounted) {
           setClientBillingCycles(cycles || []);
         }
@@ -108,7 +140,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
       isMounted = false;
       window.removeEventListener(RENEWAL_EVENT_NAME, handleUpdate);
     };
-  }, [order?.client_id]);
+  }, [propOrder?.client_id, propOrder?.order_id]);
 
   // Submit payment proof for a special deliverable
   const handlePaySpecialProof = async (e) => {
@@ -263,21 +295,30 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
   const planName = order.plan_name || order.plan || 'Starter Plan';
   const scheduleConfig = getClientSchedule(order);
 
-  // Calculate Progress based on plan quotas stored in database or updated plan defaults
+  // Calculate Progress based on custom renewal/order quotas or updated plan defaults
   const isStarterPlan = planName.toLowerCase().includes('starter');
   const defaultStaticForPlan = isStarterPlan ? 12 : 15;
   const defaultReelsForPlan = isStarterPlan ? 8 : 12;
+  const usesCustomQuotas = Boolean(scheduleConfig?.custom_deliverables || scheduleConfig?.is_renewal);
 
-  const targetStatic = (order.static_posts_total && order.static_posts_total !== 10)
-    ? order.static_posts_total
-    : defaultStaticForPlan;
-  const targetReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
-    ? order.reels_total
-    : defaultReelsForPlan;
-  const targetPosters = 0; // Physical poster removed
+  const targetStatic = usesCustomQuotas
+    ? Number(order.static_posts_total ?? scheduleConfig?.totalStatic ?? defaultStaticForPlan)
+    : ((order.static_posts_total && order.static_posts_total !== 10)
+      ? order.static_posts_total
+      : defaultStaticForPlan);
+  const targetReels = usesCustomQuotas
+    ? Number(order.reels_total ?? scheduleConfig?.totalReels ?? defaultReelsForPlan)
+    : ((order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+      ? order.reels_total
+      : defaultReelsForPlan);
+  const targetPosters = usesCustomQuotas
+    ? Number(order.posters_total ?? scheduleConfig?.totalPosters ?? 0)
+    : 0; // Physical poster removed on legacy standard plans
   
-  let targetStories = order.stories_total || scheduleConfig?.totalStories;
-  if (!targetStories || targetStories === 32) {
+  let targetStories = usesCustomQuotas
+    ? Number(order.stories_total ?? scheduleConfig?.totalStories ?? 15)
+    : (order.stories_total || scheduleConfig?.totalStories);
+  if (!usesCustomQuotas && (!targetStories || targetStories === 32)) {
     targetStories = 15;
   }
 
@@ -352,9 +393,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
     { name: 'Week 4', static: 0, reel: 0, story: 0, poster: 0, total: 0 },
   ];
 
-  // Current & Active Cycle Calculations
-  const latestCycle = getLatestCycle(clientBillingCycles);
-  const activeCycle = (selectedCycleId && clientBillingCycles.find(c => c.id === selectedCycleId)) || latestCycle;
+  // Current & Active Cycle Calculations (derived from businessCycles & selectedCycleId above)
   const currentCycleNumber = activeCycle ? (activeCycle.cycle_number || 1) : 1;
   const currentCycleAmount = activeCycle ? Number(activeCycle.amount) : (order.total_agreed_amount || order.amount_paid || 3500);
   const currentCycleStart = activeCycle?.delivery_start_date || (order.first_upload_date ? order.first_upload_date.split('T')[0] : (order.created_at ? order.created_at.split('T')[0] : '2026-10-01'));
@@ -464,14 +503,14 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
         </div>
 
         {/* View Cycle History Button */}
-        {clientBillingCycles.length > 0 && (
+        {businessCycles.length > 0 && (
           <button
             type="button"
             onClick={() => setShowCyclesHistoryModal(true)}
             className="px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-raised border border-themeborder hover:border-accent text-primary transition-all flex items-center gap-2 cursor-pointer self-start md:self-auto shrink-0"
           >
             <History size={14} className="text-[#3428f8]" />
-            <span>Package History ({clientBillingCycles.length})</span>
+            <span>Package History ({businessCycles.length})</span>
           </button>
         )}
       </motion.div>
@@ -1149,7 +1188,7 @@ export default function ActiveDashboard({ order, profile, onRefreshOrder, onOpen
             </div>
 
             <div className="overflow-y-auto space-y-2.5 pr-1">
-              {clientBillingCycles.map((cyc) => {
+              {businessCycles.map((cyc) => {
                 const isSelected = activeCycle?.id === cyc.id;
                 return (
                   <div 

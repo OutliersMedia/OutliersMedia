@@ -17,6 +17,7 @@ import {
   OPEN_WEBSITE_STATUSES,
   WEBSITE_EVENT_NAME
 } from '../utils/websiteEngine';
+import { getOrderBusinessKey, RENEWAL_EVENT_NAME } from '../utils/renewalEngine';
 
 export default function Dashboard() {
   const { user, profile, isAdmin: authIsAdmin, isTester: authIsTester, isProfileComplete, signOut, loading } = useAuth();
@@ -71,18 +72,29 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const handleWebsiteSync = () => fetchActiveOrder();
-    window.addEventListener(WEBSITE_EVENT_NAME, handleWebsiteSync);
-    const websiteChannel = supabase
-      .channel(`client-websites-${user.id}`)
+    const handleLiveSync = () => fetchActiveOrder();
+    window.addEventListener(WEBSITE_EVENT_NAME, handleLiveSync);
+    window.addEventListener(RENEWAL_EVENT_NAME, handleLiveSync);
+    window.addEventListener('om_business_added', handleLiveSync);
+
+    const liveChannel = supabase
+      .channel(`client-live-sync-${user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'websites', filter: `client_id=eq.${user.id}` }, () => {
+        fetchActiveOrder();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `client_id=eq.${user.id}` }, () => {
+        fetchActiveOrder();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'billing_cycles', filter: `client_id=eq.${user.id}` }, () => {
         fetchActiveOrder();
       })
       .subscribe();
 
     return () => {
-      window.removeEventListener(WEBSITE_EVENT_NAME, handleWebsiteSync);
-      supabase.removeChannel(websiteChannel);
+      window.removeEventListener(WEBSITE_EVENT_NAME, handleLiveSync);
+      window.removeEventListener(RENEWAL_EVENT_NAME, handleLiveSync);
+      window.removeEventListener('om_business_added', handleLiveSync);
+      supabase.removeChannel(liveChannel);
     };
   }, [user?.id]);
 
@@ -118,14 +130,26 @@ export default function Dashboard() {
 
       setUserOrders(allOrders);
 
-      const socialOnlyOrders = allOrders.filter(o => !isWebsiteOrder(o));
-      let chosen = null;
-      if (preferredOrderId) {
-        chosen = socialOnlyOrders.find(o => o.order_id === preferredOrderId);
-      } else if (activeOrder) {
-        chosen = socialOnlyOrders.find(o => o.order_id === activeOrder.order_id);
-      }
-      setActiveOrder(chosen || socialOnlyOrders[0] || null);
+      const socialOnlyOrders = allOrders
+        .filter(o => !isWebsiteOrder(o))
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+      setActiveOrder((prevActive) => {
+        if (preferredOrderId) {
+          const explicit = socialOnlyOrders.find(o => o.order_id === preferredOrderId);
+          if (explicit) return explicit;
+        }
+        if (prevActive) {
+          const prevBKey = getOrderBusinessKey(prevActive, profile?.business_type || 'Main Brand');
+          const sameBusinessLatest = socialOnlyOrders.find(
+            o => getOrderBusinessKey(o, profile?.business_type || 'Main Brand') === prevBKey
+          );
+          if (sameBusinessLatest) return sameBusinessLatest;
+          const exactMatch = socialOnlyOrders.find(o => o.order_id === prevActive.order_id);
+          if (exactMatch) return exactMatch;
+        }
+        return socialOnlyOrders[0] || null;
+      });
       if (socialOnlyOrders.length === 0 && websitesList && websitesList.length > 0) {
         setDashboardView('website');
       }
@@ -234,9 +258,29 @@ export default function Dashboard() {
 
   if (!user || !profile) return null;
 
-  const socialOrders = userOrders.filter(o => !isWebsiteOrder(o));
+  const rawSocialOrders = userOrders
+    .filter(o => !isWebsiteOrder(o))
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const socialBusinessMap = new Map();
+  rawSocialOrders.forEach(ord => {
+    const bKey = getOrderBusinessKey(ord, profile.business_type || 'Main Brand');
+    if (!socialBusinessMap.has(bKey)) {
+      socialBusinessMap.set(bKey, ord);
+    }
+  });
+  const socialOrders = Array.from(socialBusinessMap.values());
   const websiteOrders = userOrders.filter(o => isWebsiteOrder(o));
-  const effectiveSocialOrder = socialOrders.find(o => o.order_id === activeOrder?.order_id) || socialOrders[0] || null;
+  const effectiveSocialOrder =
+    socialOrders.find(o => o.order_id === activeOrder?.order_id) ||
+    (activeOrder
+      ? socialOrders.find(
+          o =>
+            getOrderBusinessKey(o, profile.business_type || 'Main Brand') ===
+            getOrderBusinessKey(activeOrder, profile.business_type || 'Main Brand')
+        )
+      : null) ||
+    socialOrders[0] ||
+    null;
   const latestWebsite = clientWebsites[0] || null;
   const openWebsiteRequest = clientWebsites.find(w => OPEN_WEBSITE_STATUSES.includes(w.status)) || null;
   const showWebsiteDashboard =
@@ -389,7 +433,7 @@ export default function Dashboard() {
             onOpenBuildWebsite={() => setShowWebsiteModal(true)}
           />
         ) : effectiveSocialOrder ? (
-          effectiveSocialOrder.status === 'pending' ? (
+          effectiveSocialOrder.status === 'pending' && !effectiveSocialOrder.schedule_config?.is_renewal ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-surface/30 border border-themeborder border-dashed p-12 rounded-3xl text-center flex flex-col items-center justify-center min-h-[400px]">
               <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mb-6 text-yellow-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -479,6 +523,7 @@ export default function Dashboard() {
           ) : (
             <ActiveDashboard 
               order={effectiveSocialOrder} 
+              allClientOrders={rawSocialOrders}
               profile={profile} 
               onRefreshOrder={fetchActiveOrder}
               onOpenPayModal={(inst) => setPayModalInstallment(inst)}

@@ -7,7 +7,8 @@ import { supabase } from '../../utils/supabaseClient';
 import { generateUploadSchedule, getClientSchedule, TYPE_CONFIG, matchPostsToScheduleSlots, broadcastDeliverablesSync, getSpecialDeliverables, saveSpecialDeliverable, toLocalDateKey } from '../../utils/scheduleEngine';
 import { computeOrderInstallmentMetrics } from '../../utils/installmentEngine';
 import { dispatchPushNotification, triggerLocalNotification } from '../../utils/pushManager';
-import { isWebsiteOrder } from '../../utils/websiteEngine';
+import { isWebsiteOrder, WEBSITE_EVENT_NAME } from '../../utils/websiteEngine';
+import { RENEWAL_EVENT_NAME } from '../../utils/renewalEngine';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -344,6 +345,19 @@ export default function AdminOverview() {
 
   useEffect(() => {
     fetchAll();
+
+    const handleRefresh = () => fetchAll();
+    window.addEventListener(RENEWAL_EVENT_NAME, handleRefresh);
+    window.addEventListener(WEBSITE_EVENT_NAME, handleRefresh);
+    window.addEventListener('om_business_added', handleRefresh);
+    window.addEventListener('om_special_deliverable_changed', handleRefresh);
+
+    return () => {
+      window.removeEventListener(RENEWAL_EVENT_NAME, handleRefresh);
+      window.removeEventListener(WEBSITE_EVENT_NAME, handleRefresh);
+      window.removeEventListener('om_business_added', handleRefresh);
+      window.removeEventListener('om_special_deliverable_changed', handleRefresh);
+    };
   }, []);
 
   const fetchAll = async () => {
@@ -464,24 +478,35 @@ export default function AdminOverview() {
 
     // Build Detailed Retainers (Social Retainer Plans Only)
     const detailed = activeSocialOrds.map(order => {
-      const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
-      const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
-        ? order.static_posts_total
-        : (isStarterOrd ? 12 : 15);
-      const normReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
-        ? order.reels_total
-        : (isStarterOrd ? 8 : 12);
-
       const scheduleConfig = getClientSchedule(order);
+      const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
+      const usesCustomQuotas = Boolean(scheduleConfig?.custom_deliverables || scheduleConfig?.is_renewal);
+
+      const normStatic = usesCustomQuotas
+        ? Number(order.static_posts_total ?? scheduleConfig?.totalStatic ?? (isStarterOrd ? 12 : 15))
+        : ((order.static_posts_total && order.static_posts_total !== 10)
+          ? order.static_posts_total
+          : (isStarterOrd ? 12 : 15));
+      const normReels = usesCustomQuotas
+        ? Number(order.reels_total ?? scheduleConfig?.totalReels ?? (isStarterOrd ? 8 : 12))
+        : ((order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+          ? order.reels_total
+          : (isStarterOrd ? 8 : 12));
+      const normPosters = usesCustomQuotas
+        ? Number(order.posters_total ?? scheduleConfig?.totalPosters ?? 0)
+        : 0;
+
       const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
       const orderPosts = postsList.filter(p => p.order_id === order.order_id);
       const staticDone = orderPosts.filter(p => p.post_type === 'static').length;
       const reelsDone = orderPosts.filter(p => p.post_type === 'reel').length;
       const storiesDone = orderPosts.filter(p => p.post_type === 'story').length;
-      const postersDone = 0;
-      const totalDone = staticDone + reelsDone + storiesDone;
-      const storiesQuota = order.stories_total || scheduleConfig?.totalStories || 15;
-      const totalQuota = normStatic + normReels + storiesQuota;
+      const postersDone = normPosters > 0 ? orderPosts.filter(p => p.post_type === 'poster').length : 0;
+      const totalDone = staticDone + reelsDone + storiesDone + postersDone;
+      const storiesQuota = usesCustomQuotas
+        ? Number(order.stories_total ?? scheduleConfig?.totalStories ?? 15)
+        : (order.stories_total || scheduleConfig?.totalStories || 15);
+      const totalQuota = normStatic + normReels + storiesQuota + normPosters;
 
       const startD = new Date(effectiveStart);
       const now = new Date();
@@ -493,7 +518,7 @@ export default function AdminOverview() {
         static_posts_total: normStatic,
         reels_total: normReels,
         stories_total: storiesQuota,
-        posters_total: 0,
+        posters_total: normPosters,
         clientName: profileMap[order.client_id]?.name || 'Unknown',
         totalDone,
         totalQuota,
@@ -514,16 +539,25 @@ export default function AdminOverview() {
     today.setHours(0, 0, 0, 0);
 
     activeSocialOrds.forEach(order => {
+      const scheduleConfig = getClientSchedule(order);
       const isStarterOrd = (order.plan_name || '').toLowerCase().includes('starter');
-      const normStatic = (order.static_posts_total && order.static_posts_total !== 10)
-        ? order.static_posts_total
-        : (isStarterOrd ? 12 : 15);
-      const normReels = (order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
-        ? order.reels_total
-        : (isStarterOrd ? 8 : 12);
+      const usesCustomQuotas = Boolean(scheduleConfig?.custom_deliverables || scheduleConfig?.is_renewal);
+
+      const normStatic = usesCustomQuotas
+        ? Number(order.static_posts_total ?? scheduleConfig?.totalStatic ?? (isStarterOrd ? 12 : 15))
+        : ((order.static_posts_total && order.static_posts_total !== 10)
+          ? order.static_posts_total
+          : (isStarterOrd ? 12 : 15));
+      const normReels = usesCustomQuotas
+        ? Number(order.reels_total ?? scheduleConfig?.totalReels ?? (isStarterOrd ? 8 : 12))
+        : ((order.reels_total && order.reels_total !== 3 && order.reels_total !== 4)
+          ? order.reels_total
+          : (isStarterOrd ? 8 : 12));
+      const normPosters = usesCustomQuotas
+        ? Number(order.posters_total ?? scheduleConfig?.totalPosters ?? 0)
+        : 0;
 
       const clientName = profileMap[order.client_id]?.name || 'Unknown';
-      const scheduleConfig = getClientSchedule(order);
       const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
 
       const orderPosts = postsList.filter(p => p.order_id === order.order_id);
@@ -533,7 +567,7 @@ export default function AdminOverview() {
         order.plan_name,
         normStatic,
         normReels,
-        0,
+        normPosters,
         scheduleConfig
       );
 

@@ -65,104 +65,242 @@ export function broadcastRenewalSync(payload = {}) {
   }
 }
 
+const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 /**
- * Bootstraps initial Cycle 1 entries from existing orders if not already tracked
+ * Extracts a clean Supabase auth UUID from synthetic multi-business client objects
+ * (where AdminClients overrides auth_id as `${real_auth_id}_${order_id}`).
+ */
+export function resolveClientUuid(client = null, order = null, cycle = null) {
+  const candidates = [
+    client?.real_auth_id,
+    order?.client_id,
+    cycle?.client_id,
+    client?.auth_id,
+    client?.id
+  ];
+
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(UUID_REGEX);
+    if (match) return match[0];
+  }
+
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    const cleaned = raw.trim().replace(/_OM\d+$/i, '');
+    if (cleaned) return cleaned;
+  }
+
+  return null;
+}
+
+const OPTIONAL_ORDER_COLUMNS = [
+  'original_amount',
+  'payment_receipt_url',
+  'grace_period_days',
+  'business_name',
+  'business_type',
+  'instagram_handle',
+  'has_website',
+  'posters_total',
+  'total_agreed_amount',
+  'balance_due',
+  'installments'
+];
+
+/**
+ * Writes to the 'orders' table while automatically stripping any optional columns
+ * not yet migrated in the live Supabase schema so renewals never fail on optional fields.
+ */
+async function safeOrderWrite(mode, payload, matchCol = null, matchVal = null) {
+  const currentPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const query = mode === 'insert'
+      ? supabase.from('orders').insert([currentPayload]).select().maybeSingle()
+      : supabase.from('orders').update(currentPayload).eq(matchCol, matchVal).select().maybeSingle();
+
+    const { data, error } = await query;
+    if (!error) {
+      return { data };
+    }
+
+    const msg = String(error.message || '');
+    const missingColMatch =
+      msg.match(/Could not find the '([^']+)' column/i) ||
+      msg.match(/column "([^"]+)" of relation "orders" does not exist/i) ||
+      msg.match(/column orders\.([a-zA-Z0-9_]+) does not exist/i);
+
+    if (missingColMatch && missingColMatch[1] && Object.prototype.hasOwnProperty.call(currentPayload, missingColMatch[1])) {
+      delete currentPayload[missingColMatch[1]];
+      continue;
+    }
+
+    const matchedOptional = OPTIONAL_ORDER_COLUMNS.filter(col =>
+      Object.prototype.hasOwnProperty.call(currentPayload, col) &&
+      msg.toLowerCase().includes(col.toLowerCase())
+    );
+    if (matchedOptional.length > 0) {
+      matchedOptional.forEach(col => delete currentPayload[col]);
+      continue;
+    }
+
+    throw new Error(
+      mode === 'insert'
+        ? `Could not create finance entry in orders: ${error.message}`
+        : `Could not update linked order & finance record: ${error.message}`
+    );
+  }
+
+  throw new Error(
+    mode === 'insert'
+      ? 'Could not create finance entry in orders after schema compatibility retries.'
+      : 'Could not update linked order & finance record after schema compatibility retries.'
+  );
+}
+
+/**
+ * Bootstraps initial cycle entries from existing social orders if not already tracked in billing_cycles
  */
 export function bootstrapInitialCycles(ordersList = []) {
   if (!Array.isArray(ordersList)) return [];
 
   return ordersList
     .filter(order => order && order.client_id && order.order_id && !isWebsiteOrder(order))
-    .map((order, idx) => {
-      const startDate = order.first_upload_date 
-        ? order.first_upload_date.split('T')[0] 
+    .map((order) => {
+      const cycleNumber = Number(order.schedule_config?.cycle_number || 1);
+      const startDate = order.first_upload_date
+        ? order.first_upload_date.split('T')[0]
         : (order.created_at ? order.created_at.split('T')[0] : '2026-10-01');
       const endDate = calculateCycleEndDate(startDate);
-      const isPaid = (Number(order.amount_paid || 0) >= Number(order.total_agreed_amount || 0) && Number(order.amount_paid || 0) > 0)
-        || order.payment_status === 'paid'
-        || order.status === 'active';
+      const agreed = Number(order.total_agreed_amount || order.original_amount || order.amount_paid || 0);
+      const paidAmt = Number(order.amount_paid || 0);
+      const hasExplicitUnpaid = ['pending', 'partial', 'pending_verification'].includes(order.payment_status);
+      const isPaid =
+        order.payment_status === 'paid' ||
+        (agreed > 0 && paidAmt >= agreed) ||
+        (cycleNumber === 1 && order.status === 'active' && !hasExplicitUnpaid);
 
       return {
-        id: `bootstrap_c1_${order.order_id}`,
+        id: `bootstrap_c${cycleNumber}_${order.order_id}`,
         client_id: order.client_id,
         order_id: order.order_id,
-        cycle_number: 1,
+        cycle_number: cycleNumber,
         package: order.plan_name || 'Starter Plan',
-        amount: Number(order.total_agreed_amount || order.amount_paid || order.original_amount || 3500),
+        amount: Number(order.total_agreed_amount || order.original_amount || order.amount_paid || 3500),
         delivery_start_date: startDate,
         delivery_end_date: endDate,
         payment_status: isPaid ? 'Paid' : 'Pending',
-        notes: 'Initial Onboarding Cycle',
+        notes: cycleNumber > 1 ? `Monthly package renewal for Cycle #${cycleNumber}` : 'Initial Onboarding Cycle',
         created_at: order.created_at || new Date().toISOString()
       };
     });
+}
+
+function getCycleDedupeKey(cycle) {
+  if (!cycle) return '';
+  if (cycle.order_id) {
+    return `ord:${cycle.order_id}:c${cycle.cycle_number || 1}`;
+  }
+  return `id:${cycle.id}`;
 }
 
 /**
  * Fetches all billing cycles for a client or all clients
  */
 export async function fetchBillingCycles(clientId = null) {
+  const resolvedClientId = clientId ? resolveClientUuid({ auth_id: clientId }) : null;
   let dbCycles = [];
+  let dbQuerySucceeded = false;
 
   try {
     let query = supabase.from('billing_cycles').select('*').order('cycle_number', { ascending: true });
-    if (clientId) {
-      query = query.eq('client_id', clientId);
+    if (resolvedClientId) {
+      query = query.eq('client_id', resolvedClientId);
     }
     const { data, error } = await query;
     if (!error && Array.isArray(data)) {
       dbCycles = data;
+      dbQuerySucceeded = true;
     }
   } catch (err) {
     console.warn("Notice: billing_cycles database query notice:", err);
   }
 
-  // Merge with cached cycles
+  // Merge DB cycles with cache only when DB query could not complete; when Supabase succeeds,
+  // rely on live DB rows + missing orders backfill so deleted/orphaned localStorage entries never resurrect.
   const cached = getCachedCycles();
   const mergedMap = new Map();
 
-  // Add cached cycles
-  cached.forEach(c => {
-    if (c && c.id) mergedMap.set(String(c.id), c);
+  if (!dbQuerySucceeded) {
+    cached.forEach(c => {
+      if (!c || !c.id) return;
+      if (/_OM\d+$/i.test(String(c.client_id || ''))) return;
+      if (resolvedClientId && c.client_id !== resolvedClientId) return;
+      mergedMap.set(getCycleDedupeKey(c), c);
+    });
+  }
+
+  dbCycles.forEach(c => {
+    if (!c || !c.id) return;
+    mergedMap.set(getCycleDedupeKey(c), c);
   });
 
-  // Add db cycles (higher precedence)
-  dbCycles.forEach(c => {
-    if (c && c.id) mergedMap.set(String(c.id), c);
-  });
+  // Backfill any social orders that do not yet have a cycle entry (even when later renewals already exist in DB)
+  try {
+    let ordQuery = supabase.from('orders').select('*').order('created_at', { ascending: true });
+    if (resolvedClientId) ordQuery = ordQuery.eq('client_id', resolvedClientId);
+    const { data: ords } = await ordQuery;
+    if (ords && ords.length > 0) {
+      const coveredOrderIds = new Set(
+        Array.from(mergedMap.values()).map(c => c.order_id).filter(Boolean)
+      );
+      const missingOrders = ords.filter(o => o && o.order_id && !coveredOrderIds.has(o.order_id));
+      if (missingOrders.length > 0) {
+        const bootstrapped = bootstrapInitialCycles(missingOrders);
+        bootstrapped.forEach(b => mergedMap.set(getCycleDedupeKey(b), b));
+      }
+    }
+  } catch (err) {
+    console.warn("Notice: bootstrap orders fallback error:", err);
+  }
 
   let combined = Array.from(mergedMap.values());
 
-  // If no cycles exist at all yet, auto-bootstrap Cycle 1 from existing orders
-  if (combined.length === 0) {
-    try {
-      let ordQuery = supabase.from('orders').select('*').order('created_at', { ascending: true });
-      if (clientId) ordQuery = ordQuery.eq('client_id', clientId);
-      const { data: ords } = await ordQuery;
-      if (ords && ords.length > 0) {
-        const bootstrapped = bootstrapInitialCycles(ords);
-        bootstrapped.forEach(b => mergedMap.set(String(b.id), b));
-        combined = Array.from(mergedMap.values());
-        setCachedCycles(combined);
-      }
-    } catch (err) {
-      console.warn("Notice: bootstrap orders fallback error:", err);
-    }
+  if (resolvedClientId) {
+    combined = combined.filter(c => c.client_id === resolvedClientId);
   }
 
-  if (clientId) {
-    combined = combined.filter(c => c.client_id === clientId);
-  }
-
-  // Sort by cycle_number ascending
   combined.sort((a, b) => (a.cycle_number || 1) - (b.cycle_number || 1));
-  setCachedCycles(combined);
+
+  // Preserve other clients' cached cycles when fetching for a single client
+  if (resolvedClientId) {
+    const others = cached.filter(c => c && c.client_id !== resolvedClientId && !/_OM\d+$/i.test(String(c.client_id || '')));
+    setCachedCycles([...others, ...combined]);
+  } else {
+    setCachedCycles(combined);
+  }
+
   return combined;
 }
 
 /**
  * Gets the latest cycle for a client
  */
+export function getOrderBusinessKey(order, fallbackBusiness = 'Main Brand') {
+  const raw =
+    order?.business_name ||
+    order?.schedule_config?.business_name ||
+    order?.business_type ||
+    order?.schedule_config?.business_type ||
+    fallbackBusiness ||
+    'Main Brand';
+  return String(raw).trim().toLowerCase() || 'main brand';
+}
+
 export function getLatestCycle(cycles = []) {
   if (!Array.isArray(cycles) || cycles.length === 0) return null;
   const sorted = [...cycles].sort((a, b) => (b.cycle_number || 1) - (a.cycle_number || 1));
@@ -234,14 +372,93 @@ export function computeRenewalStatus(client, latestCycle, latestOrder) {
   };
 }
 
+export function getPlanDefaultQuotas(packageName = 'Starter Plan') {
+  const norm = (packageName || 'Starter Plan').toLowerCase();
+  if (norm.includes('premium')) {
+    return {
+      staticPosts: 15,
+      reels: 12,
+      stories: 15,
+      posters: 0,
+      hasWebsite: true,
+      defaultPrice: 8000
+    };
+  }
+  if (norm.includes('growth')) {
+    return {
+      staticPosts: 15,
+      reels: 12,
+      stories: 15,
+      posters: 0,
+      hasWebsite: false,
+      defaultPrice: 6000
+    };
+  }
+  return {
+    staticPosts: 12,
+    reels: 8,
+    stories: 15,
+    posters: 0,
+    hasWebsite: false,
+    defaultPrice: 3500
+  };
+}
+
+export function formatPaymentStructureLabel(paymentMode = 'full', installments = []) {
+  if (paymentMode === 'emi_2') return '2x EMIs (50% / 50%)';
+  if (paymentMode === 'emi_3') return '3x EMIs (40% / 30% / 30%)';
+  if (paymentMode === 'custom') {
+    const count = Array.isArray(installments) ? installments.length : 0;
+    return count > 1 ? `Custom EMI (${count} Milestones)` : 'Custom Single Payment';
+  }
+  return 'Full Payment (1x)';
+}
+
 /**
  * Formats structured payment details for clipboard copy
  */
-export function formatPaymentDetailsText({ client, cycle, orderId, amount, packageName, startDate, endDate }) {
+export function formatPaymentDetailsText({
+  client,
+  cycle,
+  orderId,
+  amount,
+  packageName,
+  startDate,
+  endDate,
+  paymentMode = 'full',
+  paymentChannel = 'UPI',
+  paymentRef = '',
+  installments = [],
+  deliverables = null,
+  uploadedReceiptUrls = []
+}) {
   const clientName = client?.name || client?.business_type || 'Valued Client';
   const business = client?.displayBusinessName || client?.business_name || client?.business_type || clientName;
   const cycleNum = cycle?.cycle_number || 2;
   const orderRef = orderId || cycle?.order_id || 'OM-RENEW';
+  const structureLabel = formatPaymentStructureLabel(paymentMode, installments);
+
+  const paidSoFar = Array.isArray(installments)
+    ? installments.filter(i => i.status === 'paid').reduce((s, i) => s + Number(i.amount || 0), 0)
+    : 0;
+  const balanceRemaining = Math.max(0, Number(amount || 0) - paidSoFar);
+
+  const deliverablesLine = deliverables
+    ? `\nDeliverables: ${deliverables.staticPosts ?? 0} Static Posts • ${deliverables.reels ?? 0} Reels • ${deliverables.stories ?? 0} Stories${Number(deliverables.posters || 0) > 0 ? ` • ${deliverables.posters} Posters` : ''}${deliverables.hasWebsite ? ' + Website/SEO' : ''}`
+    : '';
+
+  const milestoneLines = Array.isArray(installments) && installments.length > 1
+    ? '\n\nEMI / MILESTONE SCHEDULE:\n----------------------------------------\n' +
+      installments.map((inst, idx) => {
+        const st = inst.status === 'paid' ? 'PAID' : (inst.status === 'pending_verification' ? 'IN REVIEW' : 'PENDING');
+        return `EMI #${inst.installment_number || idx + 1}: ₹${Number(inst.amount || 0).toLocaleString()} • Due ${inst.due_date || startDate} • [${st}]${inst.notes ? ` (${inst.notes})` : ''}`;
+      }).join('\n')
+    : '';
+
+  const refLine = paymentRef ? `\nTransaction / UTR Ref: ${paymentRef}` : '';
+  const proofLine = uploadedReceiptUrls.length > 0
+    ? `\nPayment Proof Attached: ${uploadedReceiptUrls.length} screenshot(s) uploaded`
+    : '';
 
   return `========================================
 OUTLIERS MEDIA — PACKAGE RENEWAL DETAILS
@@ -250,8 +467,10 @@ Client: ${clientName}
 Business Brand: ${business}
 Package: ${packageName} (Cycle #${cycleNum})
 Renewal Amount: ₹${Number(amount || 0).toLocaleString()}
+Payment Plan: ${structureLabel} (${paymentChannel})
+Paid So Far: ₹${paidSoFar.toLocaleString()} | Balance Due: ₹${balanceRemaining.toLocaleString()}
 Delivery Period: ${startDate} to ${endDate}
-Order Reference: ${orderRef}
+Order Reference: ${orderRef}${deliverablesLine}${refLine}${proofLine}${milestoneLines}
 
 PAYMENT METHODS:
 ----------------------------------------
@@ -264,11 +483,283 @@ Please share your transaction screenshot or reference ID after payment to begin 
 }
 
 /**
+ * Resolves and validates custom or default deliverable quotas for a cycle.
+ */
+function resolveDeliverableQuotas(packageName, deliverables = null) {
+  const defaults = getPlanDefaultQuotas(packageName);
+  const staticQuota = Math.max(0, Number.isFinite(Number(deliverables?.staticPosts))
+    ? parseInt(deliverables.staticPosts, 10)
+    : defaults.staticPosts);
+  const reelsQuota = Math.max(0, Number.isFinite(Number(deliverables?.reels))
+    ? parseInt(deliverables.reels, 10)
+    : defaults.reels);
+  const storiesQuota = Math.max(0, Number.isFinite(Number(deliverables?.stories))
+    ? parseInt(deliverables.stories, 10)
+    : defaults.stories);
+  const postersQuota = Math.max(0, Number.isFinite(Number(deliverables?.posters))
+    ? parseInt(deliverables.posters, 10)
+    : defaults.posters);
+  const hasWebsite = deliverables?.hasWebsite !== undefined
+    ? Boolean(deliverables.hasWebsite)
+    : defaults.hasWebsite;
+
+  if (staticQuota + reelsQuota + storiesQuota + postersQuota === 0 && !hasWebsite) {
+    throw new Error("Please include at least 1 deliverable (or enable Website support) for this renewal.");
+  }
+
+  return { staticQuota, reelsQuota, storiesQuota, postersQuota, hasWebsite };
+}
+
+/**
+ * Merges retained receipt URLs and uploads new receipt files to Supabase storage.
+ */
+async function uploadRenewalReceipts({ orderId, cycleNumber, receiptFiles = [], existingUrls = [] }) {
+  const uploadedReceiptUrls = Array.isArray(existingUrls)
+    ? [...new Set(existingUrls.filter(Boolean))]
+    : [];
+
+  if (Array.isArray(receiptFiles) && receiptFiles.length > 0) {
+    for (let i = 0; i < receiptFiles.length; i++) {
+      const entry = receiptFiles[i];
+      const fileObj = entry?.file || entry;
+      if (!fileObj || typeof fileObj.name !== 'string') continue;
+
+      const ext = fileObj.name.split('.').pop() || 'png';
+      const fileName = `receipt_${orderId}_C${cycleNumber}_${Date.now()}_${i}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('receipts')
+        .upload(fileName, fileObj, { upsert: true });
+
+      if (uploadErr) {
+        throw new Error(`Failed to upload payment screenshot (${fileObj.name}): ${uploadErr.message}`);
+      }
+
+      const { data: pubData } = supabase.storage
+        .from('receipts')
+        .getPublicUrl(fileName);
+
+      if (pubData?.publicUrl && !uploadedReceiptUrls.includes(pubData.publicUrl)) {
+        uploadedReceiptUrls.push(pubData.publicUrl);
+      }
+    }
+  }
+
+  return uploadedReceiptUrls;
+}
+
+/**
+ * Normalizes EMI / Full payment milestones and derives billing + order statuses.
+ */
+function buildRenewalPaymentState({
+  orderId,
+  cycleNumber,
+  amount,
+  startDate,
+  paymentDetails = null,
+  uploadedReceiptUrls = [],
+  pruneRemovedReceipts = false,
+  isAdminRenewal = true,
+  existingOrderStatus = null
+}) {
+  const paymentMode = paymentDetails?.paymentMode || 'full';
+  const paymentChannel = paymentDetails?.paymentChannel || 'UPI';
+  const paymentRef = (paymentDetails?.paymentRef || '').trim();
+  const gracePeriodDays = Math.max(1, parseInt(paymentDetails?.gracePeriodDays, 10) || 3);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const cleanStartDate = String(startDate).split('T')[0];
+  const defaultPendingDueDate = cleanStartDate >= todayStr ? cleanStartDate : todayStr;
+  const primaryReceiptUrl = uploadedReceiptUrls.length > 0 ? uploadedReceiptUrls[0] : null;
+
+  let renewalInstallments = [];
+  if (Array.isArray(paymentDetails?.installments) && paymentDetails.installments.length > 0) {
+    const milestoneSum = paymentDetails.installments.reduce((s, m) => s + Number(m.amount || 0), 0);
+    if (Math.abs(milestoneSum - amount) > 1) {
+      throw new Error(
+        `EMI milestone amounts (₹${milestoneSum.toLocaleString()}) must equal the renewal amount (₹${amount.toLocaleString()}).`
+      );
+    }
+
+    const firstPaidIdx = paymentDetails.installments.findIndex(
+      m => m.status === 'paid' || m.status === 'pending_verification'
+    );
+    const proofTargetIdx = firstPaidIdx >= 0 ? firstPaidIdx : 0;
+
+    renewalInstallments = paymentDetails.installments.map((inst, idx) => {
+      const st = ['paid', 'pending_verification', 'pending'].includes(inst.status) ? inst.status : 'pending';
+      const attachProof = idx === proofTargetIdx && uploadedReceiptUrls.length > 0;
+      const rawInstReceipts = Array.isArray(inst.receipt_urls) ? inst.receipt_urls.filter(Boolean) : [];
+      const existingInstReceipts = pruneRemovedReceipts
+        ? rawInstReceipts.filter(u => uploadedReceiptUrls.includes(u))
+        : rawInstReceipts;
+
+      const instReceipts = attachProof
+        ? [...new Set([...existingInstReceipts, ...uploadedReceiptUrls])]
+        : existingInstReceipts;
+
+      const keptSingleUrl = inst.receipt_url && (!pruneRemovedReceipts || uploadedReceiptUrls.includes(inst.receipt_url))
+        ? inst.receipt_url
+        : null;
+
+      return {
+        installment_number: idx + 1,
+        amount: Math.max(0, Number(inst.amount || 0)),
+        due_date: inst.due_date || defaultPendingDueDate,
+        status: st,
+        paid_at: st === 'paid' ? (inst.paid_at || nowIso) : null,
+        payment_id: (inst.payment_id || '').trim() || (idx === 0 && paymentRef ? paymentRef : `TXN-${orderId}-C${cycleNumber}-${idx + 1}`),
+        notes: (inst.notes || '').trim() || (
+          paymentDetails.installments.length > 1
+            ? `Cycle #${cycleNumber} EMI #${idx + 1} (${paymentChannel})`
+            : `Cycle #${cycleNumber} Full Payment (${paymentChannel})`
+        ),
+        receipt_url: attachProof ? primaryReceiptUrl : (instReceipts[0] || keptSingleUrl),
+        receipt_urls: instReceipts
+      };
+    });
+  } else {
+    const initStatus = ['paid', 'pending_verification', 'pending'].includes(paymentDetails?.initialStatus)
+      ? paymentDetails.initialStatus
+      : 'pending';
+
+    renewalInstallments = [
+      {
+        installment_number: 1,
+        amount,
+        due_date: initStatus === 'pending' ? defaultPendingDueDate : cleanStartDate,
+        status: initStatus,
+        paid_at: initStatus === 'paid' ? nowIso : null,
+        payment_id: paymentRef || `TXN-${orderId}-C${cycleNumber}`,
+        notes: `Cycle #${cycleNumber} Full Payment (${paymentChannel})`,
+        receipt_url: primaryReceiptUrl,
+        receipt_urls: uploadedReceiptUrls
+      }
+    ];
+  }
+
+  const paidAmount = renewalInstallments
+    .filter(i => i.status === 'paid')
+    .reduce((s, i) => s + Number(i.amount || 0), 0);
+  const balanceDue = Math.max(0, amount - paidAmount);
+  const hasPendingVerification = renewalInstallments.some(i => i.status === 'pending_verification');
+  const isFullyPaid = balanceDue <= 0;
+  const resolvedOrderStatus = existingOrderStatus === 'cancelled'
+    ? 'cancelled'
+    : (isAdminRenewal || paidAmount > 0 ? 'active' : 'pending');
+
+  return {
+    nowIso,
+    paymentMode,
+    paymentChannel,
+    paymentRef,
+    gracePeriodDays,
+    primaryReceiptUrl,
+    renewalInstallments,
+    paidAmount,
+    balanceDue,
+    hasPendingVerification,
+    isFullyPaid,
+    orderStatus: resolvedOrderStatus,
+    orderPaymentStatus: isFullyPaid
+      ? 'paid'
+      : (paidAmount > 0 ? 'partial' : (hasPendingVerification ? 'pending_verification' : 'pending')),
+    cyclePaymentStatus: isFullyPaid ? 'Paid' : 'Pending',
+    paymentStructureLabel: formatPaymentStructureLabel(paymentMode, renewalInstallments)
+  };
+}
+
+/**
+ * Merges schedule_config metadata and generates the exact content calendar slots.
+ */
+function buildCycleScheduleAndConfig({
+  client,
+  baseOrder,
+  existingScheduleConfig = null,
+  cycleNumber,
+  packageName,
+  startDate,
+  quotas,
+  paymentState,
+  uploadedReceiptUrls,
+  isNewRenewal = false
+}) {
+  const normPkg = (packageName || 'Starter Plan').toLowerCase();
+  const isStarter = normPkg.includes('starter');
+  const baseCfg = existingScheduleConfig && typeof existingScheduleConfig === 'object' ? existingScheduleConfig : {};
+
+  const scheduleConfig = {
+    ...baseCfg,
+    business_name: client?.displayBusinessName || baseOrder?.business_name || baseCfg.business_name || client?.business_type || client?.name || 'Brand',
+    business_type: client?.displayBusinessType || baseOrder?.business_type || baseCfg.business_type || 'Business',
+    instagram_handle: client?.displayInstagram || baseOrder?.instagram_handle || baseCfg.instagram_handle || '',
+    firstUploadDate: startDate,
+    staticPerWeek: Math.max(0, Math.round(quotas.staticQuota / 4)) || (isStarter ? 3 : 4),
+    staticInterval: baseCfg.staticInterval || 2,
+    reelsPerWeek: Math.max(0, Math.round(quotas.reelsQuota / 4)) || (isStarter ? 2 : 3),
+    reelsInterval: baseCfg.reelsInterval || 3,
+    storiesPerWeek: Math.max(0, Math.round(quotas.storiesQuota / 4)) || 4,
+    storiesInterval: baseCfg.storiesInterval || 2,
+    totalStatic: quotas.staticQuota,
+    totalReels: quotas.reelsQuota,
+    totalStories: quotas.storiesQuota,
+    totalPosters: quotas.postersQuota,
+    custom_deliverables: true,
+    useExactQuotas: true,
+    cycle_number: cycleNumber,
+    is_renewal: baseCfg.is_renewal !== undefined ? baseCfg.is_renewal : (isNewRenewal || cycleNumber > 1),
+    payment_mode: paymentState.paymentMode,
+    payment_mode_label: paymentState.paymentStructureLabel,
+    payment_channel: paymentState.paymentChannel,
+    payment_reference: paymentState.paymentRef || null,
+    receipt_urls: uploadedReceiptUrls,
+    installments: paymentState.renewalInstallments
+  };
+
+  const generatedSchedule = generateUploadSchedule(
+    startDate,
+    packageName,
+    quotas.staticQuota,
+    quotas.reelsQuota,
+    quotas.postersQuota,
+    scheduleConfig
+  );
+
+  return { scheduleConfig, generatedSchedule };
+}
+
+function upsertCachedCycles(entries = []) {
+  const existing = getCachedCycles();
+  const map = new Map();
+  existing.forEach(c => {
+    if (c && c.id) map.set(getCycleDedupeKey(c), c);
+  });
+  entries.forEach(c => {
+    if (c && c.id) map.set(getCycleDedupeKey(c), c);
+  });
+  setCachedCycles(Array.from(map.values()));
+}
+
+/**
+ * Formats compact cycle notes summary stored on billing_cycles.
+ */
+function formatCycleNotesSummary({ notes, paymentStructureLabel, paymentChannel, quotas, receiptCount, fallback }) {
+  const parts = [
+    notes?.trim(),
+    `${paymentStructureLabel} • ${paymentChannel}`,
+    `${quotas.staticQuota}S/${quotas.reelsQuota}R/${quotas.storiesQuota}St${quotas.postersQuota > 0 ? `/${quotas.postersQuota}P` : ''}`,
+    receiptCount > 0 ? `${receiptCount} screenshot(s)` : null
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(' | ') : fallback;
+}
+
+/**
  * Creates a new client renewal cycle:
  * 1. Saves new cycle in billing_cycles with client's new individual amount
  * 2. Generates content calendar in existing format (startDate to startDate + 1 month)
- * 3. Creates finance entry in the existing 'orders' table with status 'pending'
- * 4. Generates payment details in existing format with copy/download support
+ * 3. Creates finance entry in the existing 'orders' table with EMI / receipt metadata
+ * 4. Generates payment details in existing format with copy support
  */
 export async function createRenewalCycle({
   client,
@@ -276,13 +767,16 @@ export async function createRenewalCycle({
   packageName,
   amount,
   startDate,
-  notes = ''
+  notes = '',
+  deliverables = null,
+  paymentDetails = null,
+  receiptFiles = []
 }) {
-  if (!client || (!client.auth_id && !client.id)) {
+  const clientId = resolveClientUuid(client, currentOrder);
+  if (!client || !clientId) {
     throw new Error("Client identifier is required.");
   }
 
-  const clientId = client.auth_id || client.id;
   const numAmount = Number(amount);
   if (isNaN(numAmount) || numAmount <= 0) {
     throw new Error("Renewal amount must be a positive number.");
@@ -295,144 +789,155 @@ export async function createRenewalCycle({
   const cleanStartDate = String(startDate).split('T')[0];
   const cleanEndDate = calculateCycleEndDate(cleanStartDate);
 
-  // 1. Fetch current cycles to determine next cycle number and prevent duplicates
-  const existingCycles = await fetchBillingCycles(clientId);
-  const latestCycle = getLatestCycle(existingCycles);
+  // 1. Fetch live orders & billing cycles to check duplicates, resolve next order_id, and detect orphaned cycles
+  let allOrders = [];
+  try {
+    const { data: ordData } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (Array.isArray(ordData)) allOrders = ordData;
+  } catch (err) {
+    console.warn("Notice: order lookup during renewal:", err);
+  }
 
-  // Duplicate Check: block duplicate renewals if next cycle already exists for this exact start date
-  const isDuplicate = existingCycles.some(c => 
+  const clientOrders = allOrders.filter(o => o && o.client_id === clientId && !isWebsiteOrder(o));
+  const clientOrdersByOrderId = new Map(clientOrders.map(o => [o.order_id, o]));
+  const targetBusinessKey = currentOrder
+    ? getOrderBusinessKey(currentOrder, client?.business_type || 'Main Brand')
+    : null;
+  const sameBusinessOrderIds = targetBusinessKey
+    ? new Set(
+        clientOrders
+          .filter(o => getOrderBusinessKey(o, client?.business_type || 'Main Brand') === targetBusinessKey)
+          .map(o => o.order_id)
+      )
+    : new Set();
+
+  const existingCycles = await fetchBillingCycles(clientId);
+  const sameStartPendingCycles = existingCycles.filter(c =>
     c.delivery_start_date === cleanStartDate &&
     c.payment_status === 'Pending'
   );
 
-  if (isDuplicate) {
-    const dup = existingCycles.find(c => c.delivery_start_date === cleanStartDate);
+  // Only treat a same-start Pending cycle as a blocking duplicate when it actually backs an order for this business
+  const blockingDup = sameStartPendingCycles.find(c => {
+    if (!c.order_id) return true;
+    const hasBackedOrder = clientOrdersByOrderId.has(c.order_id);
+    if (!hasBackedOrder) return false;
+    return !targetBusinessKey || sameBusinessOrderIds.size === 0 || sameBusinessOrderIds.has(c.order_id);
+  });
+
+  if (blockingDup) {
+    const dupOrder = blockingDup.order_id ? clientOrdersByOrderId.get(blockingDup.order_id) : currentOrder;
     return {
       success: false,
       isDuplicate: true,
-      message: `A renewal cycle starting on ${cleanStartDate} already exists (Cycle #${dup.cycle_number}).`,
-      existingCycle: dup
+      message: `A renewal cycle starting on ${cleanStartDate} already exists (Cycle #${blockingDup.cycle_number}${dupOrder?.order_id ? ` • ${dupOrder.order_id}` : ''}).`,
+      existingCycle: blockingDup,
+      existingOrder: dupOrder || null
     };
   }
 
-  const nextCycleNumber = latestCycle ? (latestCycle.cycle_number + 1) : (existingCycles.length + 1);
+  // Recover an orphaned billing_cycles row (saved without a backing order) instead of failing
+  const orphanedDup = sameStartPendingCycles.find(c => c.order_id && !clientOrdersByOrderId.has(c.order_id)) || null;
+
+  const validCyclesForCount = existingCycles.filter(c => !orphanedDup || c.id !== orphanedDup.id);
+  const maxExistingCycleNum = validCyclesForCount.reduce(
+    (maxNum, c) => Math.max(maxNum, Number(c.cycle_number || 1)),
+    clientOrders.length > 0 ? 1 : 0
+  );
+  const nextCycleNumber = maxExistingCycleNum + 1;
 
   // 2. Generate Next OMxxxx Order ID
   let nextOrderNum = 1005;
-  try {
-    const { data: allOrders } = await supabase
-      .from('orders')
-      .select('order_id')
-      .order('created_at', { ascending: false });
-
-    if (allOrders && allOrders.length > 0) {
-      const numbers = allOrders
-        .map(o => parseInt((o.order_id || '').replace(/\D/g, ''), 10))
-        .filter(n => !isNaN(n));
-      if (numbers.length > 0) {
-        nextOrderNum = Math.max(...numbers) + 1;
-      }
+  if (allOrders.length > 0) {
+    const numbers = allOrders
+      .map(o => parseInt((o.order_id || '').replace(/\D/g, ''), 10))
+      .filter(n => !isNaN(n));
+    if (numbers.length > 0) {
+      nextOrderNum = Math.max(...numbers) + 1;
     }
-  } catch (err) {
-    console.warn("Notice: order_id generation fallback:", err);
   }
   const newOrderId = `OM${nextOrderNum}`;
 
-  // 3. Determine Quotas for the renewed package
-  const normPkg = (packageName || 'Starter Plan').toLowerCase();
-  const isStarter = normPkg.includes('starter');
-  const isGrowth = normPkg.includes('growth');
-  const isPremium = normPkg.includes('premium');
-
-  const staticQuota = isStarter ? 12 : (isGrowth ? 15 : 15);
-  const reelsQuota = isStarter ? 8 : (isGrowth ? 12 : 12);
-  const storiesQuota = 15;
-  const postersQuota = 0;
-  const hasWebsite = isPremium;
-
-  // 4. Generate Content Calendar in existing format
-  const scheduleConfig = {
-    business_name: client.displayBusinessName || currentOrder?.business_name || client.name || 'Brand',
-    business_type: client.displayBusinessType || currentOrder?.business_type || 'Business',
-    instagram_handle: client.displayInstagram || currentOrder?.instagram_handle || '',
-    firstUploadDate: cleanStartDate,
-    staticPerWeek: isStarter ? 3 : 4,
-    staticInterval: 2,
-    reelsPerWeek: isStarter ? 2 : 3,
-    reelsInterval: 3,
-    storiesPerWeek: 4,
-    storiesInterval: 2,
-    totalStories: storiesQuota,
-    cycle_number: nextCycleNumber,
-    is_renewal: true
-  };
-
-  const generatedSchedule = generateUploadSchedule(
-    cleanStartDate,
+  // 3. Quotas, Receipt Upload, Payment Milestones & Content Calendar
+  const quotas = resolveDeliverableQuotas(packageName, deliverables);
+  const uploadedReceiptUrls = await uploadRenewalReceipts({
+    orderId: newOrderId,
+    cycleNumber: nextCycleNumber,
+    receiptFiles,
+    existingUrls: paymentDetails?.existingReceiptUrls || []
+  });
+  const paymentState = buildRenewalPaymentState({
+    orderId: newOrderId,
+    cycleNumber: nextCycleNumber,
+    amount: numAmount,
+    startDate: cleanStartDate,
+    paymentDetails,
+    uploadedReceiptUrls,
+    isAdminRenewal: true
+  });
+  const { scheduleConfig, generatedSchedule } = buildCycleScheduleAndConfig({
+    client,
+    baseOrder: currentOrder,
+    cycleNumber: nextCycleNumber,
     packageName,
-    staticQuota,
-    reelsQuota,
-    postersQuota,
-    scheduleConfig
-  );
+    startDate: cleanStartDate,
+    quotas,
+    paymentState,
+    uploadedReceiptUrls,
+    isNewRenewal: true
+  });
 
-  // 5. Initial Installment for this Renewal Cycle
-  const renewalInstallments = [
-    {
-      installment_number: 1,
-      amount: numAmount,
-      due_date: cleanStartDate,
-      status: 'pending',
-      paid_at: null,
-      payment_id: `TXN-${newOrderId}-C${nextCycleNumber}`,
-      notes: `Renewal Cycle #${nextCycleNumber} Retainer`,
-      receipt_url: null,
-      receipt_urls: []
-    }
-  ];
-
-  // 6. Create Finance Entry in the existing 'orders' table with status 'pending'
+  // 4. Create Finance Entry in the existing 'orders' table
   const newOrderPayload = {
     order_id: newOrderId,
     client_id: clientId,
     plan_name: packageName,
-    amount_paid: 0,
+    amount_paid: paymentState.paidAmount,
     original_amount: numAmount,
     total_agreed_amount: numAmount,
-    balance_due: numAmount,
-    static_posts_total: staticQuota,
-    reels_total: reelsQuota,
-    stories_total: storiesQuota,
-    posters_total: postersQuota,
-    has_website: hasWebsite,
-    status: 'pending', // Pending payment
-    payment_status: 'pending',
-    payment_id: `TXN-${newOrderId}`,
+    balance_due: paymentState.balanceDue,
+    static_posts_total: quotas.staticQuota,
+    reels_total: quotas.reelsQuota,
+    stories_total: quotas.storiesQuota,
+    posters_total: quotas.postersQuota,
+    has_website: quotas.hasWebsite,
+    status: paymentState.orderStatus,
+    payment_status: paymentState.orderPaymentStatus,
+    payment_id: paymentState.paymentRef || `TXN-${newOrderId}`,
+    payment_receipt_url: paymentState.primaryReceiptUrl,
+    grace_period_days: paymentState.gracePeriodDays,
     first_upload_date: cleanStartDate,
     schedule_config: scheduleConfig,
-    installments: renewalInstallments,
+    installments: paymentState.renewalInstallments,
     business_name: scheduleConfig.business_name,
     business_type: scheduleConfig.business_type,
     instagram_handle: scheduleConfig.instagram_handle,
-    created_at: new Date().toISOString()
+    created_at: paymentState.nowIso
   };
 
   let createdOrder = newOrderPayload;
   try {
-    const { data: dbOrder, error: orderErr } = await supabase
-      .from('orders')
-      .insert([newOrderPayload])
-      .select()
-      .maybeSingle();
-
-    if (!orderErr && dbOrder) {
+    const { data: dbOrder } = await safeOrderWrite('insert', newOrderPayload);
+    if (dbOrder) {
       createdOrder = dbOrder;
     }
   } catch (err) {
-    console.warn("Notice: Supabase orders insert error:", err);
+    throw err instanceof Error ? err : new Error('Could not save renewal order.');
   }
 
-  // 7. Save New Cycle in 'billing_cycles' table
+  // 5. Save New Cycle in 'billing_cycles' table
+  const cycleNotesSummary = formatCycleNotesSummary({
+    notes,
+    paymentStructureLabel: paymentState.paymentStructureLabel,
+    paymentChannel: paymentState.paymentChannel,
+    quotas,
+    receiptCount: uploadedReceiptUrls.length,
+    fallback: `Monthly package renewal for Cycle #${nextCycleNumber}`
+  });
+
   const newCyclePayload = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `bc_${Date.now()}`,
     client_id: clientId,
@@ -442,30 +947,55 @@ export async function createRenewalCycle({
     amount: numAmount,
     delivery_start_date: cleanStartDate,
     delivery_end_date: cleanEndDate,
-    payment_status: 'Pending',
-    notes: notes || `Monthly package renewal for Cycle #${nextCycleNumber}`,
-    created_at: new Date().toISOString()
+    payment_status: paymentState.cyclePaymentStatus,
+    notes: cycleNotesSummary,
+    created_at: paymentState.nowIso
   };
 
   try {
-    const { data: dbCycle, error: cycleErr } = await supabase
-      .from('billing_cycles')
-      .insert([newCyclePayload])
-      .select()
-      .maybeSingle();
+    if (orphanedDup && orphanedDup.id && !String(orphanedDup.id).startsWith('bootstrap_')) {
+      const { data: updatedOrphan, error: orphanErr } = await supabase
+        .from('billing_cycles')
+        .update({
+          order_id: newOrderId,
+          cycle_number: nextCycleNumber,
+          package: packageName,
+          amount: numAmount,
+          delivery_start_date: cleanStartDate,
+          delivery_end_date: cleanEndDate,
+          payment_status: paymentState.cyclePaymentStatus,
+          notes: cycleNotesSummary,
+          updated_at: paymentState.nowIso
+        })
+        .eq('id', orphanedDup.id)
+        .select()
+        .maybeSingle();
 
-    if (cycleErr) {
-      console.warn("Notice: Supabase billing_cycles insert error:", cycleErr.message);
+      if (orphanErr) {
+        console.warn("Notice: Supabase orphaned billing_cycles repair error:", orphanErr.message);
+      } else if (updatedOrphan) {
+        newCyclePayload.id = updatedOrphan.id;
+      }
+    } else {
+      const { data: dbCycle, error: cycleErr } = await supabase
+        .from('billing_cycles')
+        .insert([newCyclePayload])
+        .select()
+        .maybeSingle();
+
+      if (cycleErr) {
+        console.warn("Notice: Supabase billing_cycles insert error:", cycleErr.message);
+      } else if (dbCycle) {
+        newCyclePayload.id = dbCycle.id;
+      }
     }
   } catch (err) {
     console.warn("Notice: billing_cycles database write notice:", err);
   }
 
-  // 8. Update Local Cache
-  const updatedCycles = [...existingCycles, newCyclePayload];
-  setCachedCycles(updatedCycles);
+  // 6. Update Local Cache & Format Payment Details
+  upsertCachedCycles([...validCyclesForCount, newCyclePayload]);
 
-  // 9. Format Payment Details
   const paymentDetailsText = formatPaymentDetailsText({
     client,
     cycle: newCyclePayload,
@@ -473,10 +1003,21 @@ export async function createRenewalCycle({
     amount: numAmount,
     packageName,
     startDate: cleanStartDate,
-    endDate: cleanEndDate
+    endDate: cleanEndDate,
+    paymentMode: paymentState.paymentMode,
+    paymentChannel: paymentState.paymentChannel,
+    paymentRef: paymentState.paymentRef,
+    installments: paymentState.renewalInstallments,
+    deliverables: {
+      staticPosts: quotas.staticQuota,
+      reels: quotas.reelsQuota,
+      stories: quotas.storiesQuota,
+      posters: quotas.postersQuota,
+      hasWebsite: quotas.hasWebsite
+    },
+    uploadedReceiptUrls
   });
 
-  // 10. Broadcast Sync Event
   broadcastRenewalSync({
     client,
     newCycle: newCyclePayload,
@@ -489,6 +1030,295 @@ export async function createRenewalCycle({
     order: createdOrder,
     schedule: generatedSchedule,
     paymentDetailsText,
+    uploadedReceiptUrls,
+    paymentSummary: {
+      paymentMode: paymentState.paymentMode,
+      paymentStructureLabel: paymentState.paymentStructureLabel,
+      paymentChannel: paymentState.paymentChannel,
+      paymentRef: paymentState.paymentRef,
+      paidAmount: paymentState.paidAmount,
+      balanceDue: paymentState.balanceDue,
+      isFullyPaid: paymentState.isFullyPaid,
+      hasPendingVerification: paymentState.hasPendingVerification,
+      installments: paymentState.renewalInstallments
+    },
+    upi: UPI_PAYMENT_DETAILS
+  };
+}
+
+/**
+ * Updates an existing billing cycle (and its linked order, schedule, payment/EMI structure,
+ * deliverables, dates, and receipt screenshots) across both billing_cycles and orders.
+ */
+export async function updateRenewalCycle({
+  client,
+  cycle,
+  order = null,
+  packageName,
+  amount,
+  startDate,
+  endDate = null,
+  notes = '',
+  deliverables = null,
+  paymentDetails = null,
+  receiptFiles = [],
+  savedReceiptUrls = null
+}) {
+  const clientId = resolveClientUuid(client, order, cycle);
+  if (!clientId) {
+    throw new Error("Client identifier is required to edit this cycle.");
+  }
+
+  const numAmount = Number(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    throw new Error("Total plan cost must be a positive number.");
+  }
+
+  if (!startDate) {
+    throw new Error("Delivery start date is required.");
+  }
+
+  const cleanStartDate = String(startDate).split('T')[0];
+  const cleanEndDate = endDate ? String(endDate).split('T')[0] : calculateCycleEndDate(cleanStartDate);
+  if (cleanEndDate < cleanStartDate) {
+    throw new Error("Delivery end date cannot be earlier than the delivery start date.");
+  }
+
+  const resolvedOrderId = order?.order_id || cycle?.order_id || null;
+  let baseOrder = order || null;
+
+  if (resolvedOrderId && (!baseOrder || baseOrder.schedule_config === undefined)) {
+    try {
+      const { data: liveOrder } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('order_id', resolvedOrderId)
+        .maybeSingle();
+      if (liveOrder) baseOrder = liveOrder;
+    } catch (err) {
+      console.warn("Notice: lookup order for edit failed:", err);
+    }
+  }
+
+  const existingCycles = await fetchBillingCycles(clientId);
+
+  const conflictingCycle = existingCycles.find(c =>
+    String(c.id || '') !== String(cycle?.id || '') &&
+    (!resolvedOrderId || c.order_id !== resolvedOrderId) &&
+    c.delivery_start_date === cleanStartDate &&
+    c.payment_status === 'Pending'
+  );
+  if (conflictingCycle) {
+    return {
+      success: false,
+      isDuplicate: true,
+      message: `Another pending renewal cycle starting on ${cleanStartDate} already exists (Cycle #${conflictingCycle.cycle_number}).`,
+      existingCycle: conflictingCycle
+    };
+  }
+
+  const targetCycleNumber = Number(
+    cycle?.cycle_number || baseOrder?.schedule_config?.cycle_number || 1
+  );
+
+  const quotas = resolveDeliverableQuotas(packageName, deliverables);
+  const retainedUrls = Array.isArray(savedReceiptUrls)
+    ? savedReceiptUrls
+    : (Array.isArray(paymentDetails?.existingReceiptUrls) ? paymentDetails.existingReceiptUrls : []);
+
+  const uploadedReceiptUrls = await uploadRenewalReceipts({
+    orderId: resolvedOrderId || `C${targetCycleNumber}`,
+    cycleNumber: targetCycleNumber,
+    receiptFiles,
+    existingUrls: retainedUrls
+  });
+
+  const paymentState = buildRenewalPaymentState({
+    orderId: resolvedOrderId || `C${targetCycleNumber}`,
+    cycleNumber: targetCycleNumber,
+    amount: numAmount,
+    startDate: cleanStartDate,
+    paymentDetails,
+    uploadedReceiptUrls,
+    pruneRemovedReceipts: true,
+    isAdminRenewal: true,
+    existingOrderStatus: baseOrder?.status || null
+  });
+
+  const { scheduleConfig, generatedSchedule } = buildCycleScheduleAndConfig({
+    client,
+    baseOrder,
+    existingScheduleConfig: baseOrder?.schedule_config,
+    cycleNumber: targetCycleNumber,
+    packageName,
+    startDate: cleanStartDate,
+    quotas,
+    paymentState,
+    uploadedReceiptUrls
+  });
+
+  // Update linked finance/order row
+  const orderUpdatePayload = {
+    plan_name: packageName,
+    amount_paid: paymentState.paidAmount,
+    original_amount: numAmount,
+    total_agreed_amount: numAmount,
+    balance_due: paymentState.balanceDue,
+    static_posts_total: quotas.staticQuota,
+    reels_total: quotas.reelsQuota,
+    stories_total: quotas.storiesQuota,
+    posters_total: quotas.postersQuota,
+    has_website: quotas.hasWebsite,
+    status: paymentState.orderStatus,
+    payment_status: paymentState.orderPaymentStatus,
+    payment_id: paymentState.paymentRef || baseOrder?.payment_id || (resolvedOrderId ? `TXN-${resolvedOrderId}` : null),
+    payment_receipt_url: paymentState.primaryReceiptUrl,
+    grace_period_days: paymentState.gracePeriodDays,
+    first_upload_date: cleanStartDate,
+    schedule_config: scheduleConfig,
+    installments: paymentState.renewalInstallments
+  };
+
+  let savedOrder = { ...(baseOrder || {}), ...orderUpdatePayload, order_id: resolvedOrderId };
+  if (resolvedOrderId || baseOrder?.id) {
+    const matchCol = resolvedOrderId ? 'order_id' : 'id';
+    const matchVal = resolvedOrderId || baseOrder.id;
+    const { data: dbUpdatedOrder } = await safeOrderWrite('update', orderUpdatePayload, matchCol, matchVal);
+    if (dbUpdatedOrder) {
+      savedOrder = dbUpdatedOrder;
+    }
+  }
+
+  // Update billing_cycles row (or materialize bootstrapped Cycle #1 into billing_cycles)
+  const cycleNotesSummary = formatCycleNotesSummary({
+    notes,
+    paymentStructureLabel: paymentState.paymentStructureLabel,
+    paymentChannel: paymentState.paymentChannel,
+    quotas,
+    receiptCount: uploadedReceiptUrls.length,
+    fallback: cycle?.notes || `Monthly plan details for Cycle #${targetCycleNumber}`
+  });
+
+  const cycleUpdateFields = {
+    package: packageName,
+    amount: numAmount,
+    delivery_start_date: cleanStartDate,
+    delivery_end_date: cleanEndDate,
+    payment_status: paymentState.cyclePaymentStatus,
+    notes: cycleNotesSummary
+  };
+
+  let updatedCyclePayload = {
+    ...(cycle || {}),
+    ...cycleUpdateFields,
+    client_id: clientId,
+    order_id: resolvedOrderId,
+    cycle_number: targetCycleNumber
+  };
+
+  try {
+    const isBootstrapId = !cycle?.id || String(cycle.id).startsWith('bootstrap_');
+    let dbCycle = null;
+
+    if (!isBootstrapId) {
+      const { data, error } = await supabase
+        .from('billing_cycles')
+        .update(cycleUpdateFields)
+        .eq('id', cycle.id)
+        .select()
+        .maybeSingle();
+      if (error) {
+        console.warn("Notice: billing_cycles update error:", error.message);
+      } else {
+        dbCycle = data;
+      }
+    } else if (resolvedOrderId) {
+      const { data: matched } = await supabase
+        .from('billing_cycles')
+        .update(cycleUpdateFields)
+        .eq('order_id', resolvedOrderId)
+        .select()
+        .maybeSingle();
+
+      if (matched) {
+        dbCycle = matched;
+      } else {
+        const insertPayload = {
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `bc_${Date.now()}`,
+          client_id: clientId,
+          order_id: resolvedOrderId,
+          cycle_number: targetCycleNumber,
+          ...cycleUpdateFields,
+          created_at: cycle?.created_at || paymentState.nowIso
+        };
+        const { data: inserted } = await supabase
+          .from('billing_cycles')
+          .insert([insertPayload])
+          .select()
+          .maybeSingle();
+        dbCycle = inserted || insertPayload;
+      }
+    }
+
+    if (dbCycle) {
+      updatedCyclePayload = dbCycle;
+    }
+  } catch (err) {
+    console.warn("Notice: billing_cycles sync notice:", err);
+  }
+
+  // Update local cache cleanly without overwriting other clients
+  upsertCachedCycles([...existingCycles, updatedCyclePayload]);
+
+  const paymentDetailsText = formatPaymentDetailsText({
+    client,
+    cycle: updatedCyclePayload,
+    orderId: resolvedOrderId || updatedCyclePayload.id,
+    amount: numAmount,
+    packageName,
+    startDate: cleanStartDate,
+    endDate: cleanEndDate,
+    paymentMode: paymentState.paymentMode,
+    paymentChannel: paymentState.paymentChannel,
+    paymentRef: paymentState.paymentRef,
+    installments: paymentState.renewalInstallments,
+    deliverables: {
+      staticPosts: quotas.staticQuota,
+      reels: quotas.reelsQuota,
+      stories: quotas.storiesQuota,
+      posters: quotas.postersQuota,
+      hasWebsite: quotas.hasWebsite
+    },
+    uploadedReceiptUrls
+  });
+
+  broadcastRenewalSync({
+    client,
+    updatedCycle: updatedCyclePayload,
+    updatedOrder: savedOrder,
+    newCycle: updatedCyclePayload,
+    newOrder: savedOrder
+  });
+
+  return {
+    success: true,
+    isEdit: true,
+    cycle: updatedCyclePayload,
+    order: savedOrder,
+    schedule: generatedSchedule,
+    paymentDetailsText,
+    uploadedReceiptUrls,
+    paymentSummary: {
+      paymentMode: paymentState.paymentMode,
+      paymentStructureLabel: paymentState.paymentStructureLabel,
+      paymentChannel: paymentState.paymentChannel,
+      paymentRef: paymentState.paymentRef,
+      paidAmount: paymentState.paidAmount,
+      balanceDue: paymentState.balanceDue,
+      isFullyPaid: paymentState.isFullyPaid,
+      hasPendingVerification: paymentState.hasPendingVerification,
+      installments: paymentState.renewalInstallments
+    },
     upi: UPI_PAYMENT_DETAILS
   };
 }
@@ -526,19 +1356,21 @@ export async function markCyclePaid(cycleId, orderId) {
       const installments = (ord && Array.isArray(ord.installments)) ? ord.installments.map(i => ({
         ...i,
         status: 'paid',
-        paid_at: new Date().toISOString()
+        paid_at: i.paid_at || new Date().toISOString()
       })) : [];
 
-      await supabase
-        .from('orders')
-        .update({
+      await safeOrderWrite(
+        'update',
+        {
           status: 'active',
           payment_status: 'paid',
           amount_paid: amount,
           balance_due: 0,
           installments: installments
-        })
-        .eq('order_id', orderId);
+        },
+        'order_id',
+        orderId
+      );
     } catch (err) {
       console.warn("Notice: orders payment update error:", err);
     }
@@ -564,15 +1396,16 @@ export async function markCyclePaid(cycleId, orderId) {
 export async function markClientPaused(orderId, clientId) {
   if (!orderId && !clientId) return { success: false, error: "Missing identifier" };
 
+  const resolvedClientId = resolveClientUuid({ auth_id: clientId });
   try {
     let query = supabase.from('orders').update({ status: 'paused' });
     if (orderId) query = query.eq('order_id', orderId);
-    else query = query.eq('client_id', clientId);
+    else if (resolvedClientId) query = query.eq('client_id', resolvedClientId);
     await query;
   } catch (err) {
     console.warn("Notice: orders pause update error:", err);
   }
 
-  broadcastRenewalSync({ orderId, clientId, status: 'paused' });
+  broadcastRenewalSync({ orderId, clientId: resolvedClientId, status: 'paused' });
   return { success: true };
 }

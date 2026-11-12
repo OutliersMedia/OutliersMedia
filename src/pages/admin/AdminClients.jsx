@@ -15,6 +15,7 @@ import {
   computeRenewalStatus, 
   markClientPaused,
   calculateCycleEndDate,
+  getOrderBusinessKey,
   RENEWAL_EVENT_NAME 
 } from '../../utils/renewalEngine';
 import { generateUploadSchedule, getNextUpload, getClientSchedule, TYPE_CONFIG } from '../../utils/scheduleEngine';
@@ -69,6 +70,31 @@ export default function AdminClients() {
   const [renewalModalClient, setRenewalModalClient] = useState(null);
   const [expandedCyclesClientId, setExpandedCyclesClientId] = useState(null);
   const [pausingClientId, setPausingClientId] = useState(null);
+  const [ordersByOrderId, setOrdersByOrderId] = useState({});
+
+  const openEditCycleModal = (clientObj, cycleObj, fallbackOrder = null) => {
+    const resolvedCycle = cycleObj || (fallbackOrder ? {
+      cycle_number: fallbackOrder.schedule_config?.cycle_number || 1,
+      package: fallbackOrder.plan_name,
+      amount: fallbackOrder.total_agreed_amount ?? fallbackOrder.amount_paid ?? 0,
+      delivery_start_date: fallbackOrder.first_upload_date || '',
+      delivery_end_date: fallbackOrder.first_upload_date ? calculateCycleEndDate(fallbackOrder.first_upload_date) : '',
+      payment_status: fallbackOrder.payment_status === 'paid' ? 'Paid' : 'Pending',
+      order_id: fallbackOrder.order_id
+    } : null);
+    const matchedOrder = (resolvedCycle?.order_id && ordersByOrderId[resolvedCycle.order_id])
+      || fallbackOrder
+      || clientObj?.latestOrder
+      || null;
+    setRenewalModalClient({
+      mode: 'edit',
+      client: clientObj,
+      order: fallbackOrder || matchedOrder,
+      cycle: resolvedCycle,
+      targetCycle: resolvedCycle,
+      targetOrder: matchedOrder
+    });
+  };
 
   useEffect(() => {
     fetchClients();
@@ -110,6 +136,11 @@ export default function AdminClients() {
 
     if (profiles) {
       const ordersList = orders || [];
+      const orderLookup = {};
+      ordersList.forEach(o => {
+        if (o?.order_id) orderLookup[o.order_id] = o;
+      });
+      setOrdersByOrderId(orderLookup);
       const postsList = posts || [];
       const websitesList = allWebsites || [];
 
@@ -155,17 +186,44 @@ export default function AdminClients() {
             businessCount: 0
           });
         } else {
-          // Decompose each enrolled social media order as its own business item
+          // Group social media orders by business so renewal chains (Cycle #1 -> #2 -> #3)
+          // resolve to the latest active cycle for each business rather than creating duplicate rows.
+          const businessGroupsMap = new Map();
           socialOrders.forEach(order => {
-            let calculatedStatus = order.status;
-            if (calculatedStatus === 'active' && order.created_at) {
-              const expiryDate = new Date(order.created_at);
-              expiryDate.setDate(expiryDate.getDate() + 30);
-              if (new Date() > expiryDate) calculatedStatus = 'expired';
+            const bKey = getOrderBusinessKey(order, profile.business_type || 'Main Brand');
+            if (!businessGroupsMap.has(bKey)) {
+              businessGroupsMap.set(bKey, []);
             }
+            businessGroupsMap.get(bKey).push(order);
+          });
+
+          const businessGroups = Array.from(businessGroupsMap.values());
+          const businessCount = businessGroups.length;
+
+          businessGroups.forEach(groupOrders => {
+            groupOrders.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            const order = groupOrders[0];
+            const groupOrderIds = new Set(groupOrders.map(o => o.order_id).filter(Boolean));
+            const matchingCycles = clientCycles.filter(
+              c => (c.order_id && groupOrderIds.has(c.order_id)) || (!c.order_id && businessCount === 1)
+            );
+            const currentCycle = matchingCycles.length > 0 ? getLatestCycle(matchingCycles) : latestCycle;
 
             const scheduleConfig = getClientSchedule(order);
             const effectiveStart = scheduleConfig?.firstUploadDate || order.first_upload_date || order.created_at;
+            const effectiveEndStr = currentCycle?.delivery_end_date || (effectiveStart ? calculateCycleEndDate(effectiveStart) : null);
+
+            let calculatedStatus = order.status;
+            if (calculatedStatus === 'active' && (effectiveEndStr || order.created_at)) {
+              const expiryDate = effectiveEndStr
+                ? new Date(`${effectiveEndStr}T23:59:59`)
+                : (() => {
+                    const d = new Date(order.created_at);
+                    d.setDate(d.getDate() + 30);
+                    return d;
+                  })();
+              if (new Date() > expiryDate) calculatedStatus = 'expired';
+            }
 
             let scheduleInfo = null;
             if (calculatedStatus === 'active') {
@@ -189,8 +247,11 @@ export default function AdminClients() {
 
               const nextSlot = getNextUpload(schedule, staticDone, reelsDone, postersDone, storiesDone);
 
-              const deadline = new Date(effectiveStart);
-              deadline.setDate(deadline.getDate() + 30);
+              const deadline = effectiveEndStr ? new Date(`${effectiveEndStr}T23:59:59`) : (() => {
+                const d = new Date(effectiveStart);
+                d.setDate(d.getDate() + 30);
+                return d;
+              })();
               const daysLeftCycle = Math.max(0, Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24)));
 
               scheduleInfo = {
@@ -205,10 +266,6 @@ export default function AdminClients() {
             const bName = order.business_name || order.schedule_config?.business_name || profile.business_type || 'Main Brand';
             const bType = order.business_type || order.schedule_config?.business_type || profile.business_type;
             const bInstagram = order.instagram_handle || order.schedule_config?.instagram_handle || profile.instagram_handle;
-
-            // Find cycles matching this client/order
-            const matchingCycles = clientCycles.filter(c => c.order_id === order.order_id || !c.order_id);
-            const currentCycle = matchingCycles.length > 0 ? getLatestCycle(matchingCycles) : latestCycle;
 
             // Compute renewal due status based on cycle end date (ends within 5 days or already ended)
             const renewalStatus = computeRenewalStatus(profile, currentCycle, order);
@@ -231,8 +288,8 @@ export default function AdminClients() {
               calculatedStatus,
               scheduleInfo,
               isAdmin: false,
-              isMultiBusiness: socialOrders.length > 1,
-              businessCount: socialOrders.length
+              isMultiBusiness: businessCount > 1,
+              businessCount
             });
           });
         }
@@ -515,18 +572,40 @@ export default function AdminClients() {
                   {/* Current Cycle Details */}
                   {order && (
                     <div className="bg-[#141414] border border-[#222] rounded-xl p-3 text-xs">
-                      <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center justify-between mb-1.5 gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[#777]">
                           Current Cycle {cycle ? `(Month #${cycle.cycle_number})` : ''}
                         </span>
-                        <span className="font-mono font-bold text-emerald-400">
-                          ₹{Number(cycle?.amount || order.total_agreed_amount || order.amount_paid || 0).toLocaleString()}/mo
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-emerald-400">
+                            ₹{Number(cycle?.amount || order.total_agreed_amount || order.amount_paid || 0).toLocaleString()}/mo
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openEditCycleModal(client, cycle, order)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1d1d1d] hover:bg-[#3428f8] text-[#bbb] hover:text-white border border-[#2c2c2c] text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                            title="Edit deliverables, cost, dates & payment for this cycle"
+                          >
+                            <Edit3 size={10} /> Edit
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-[#aaa]">
                         <span>{cycle?.package || order.plan_name}</span>
                         <span className="font-mono text-[10px] text-[#777]">
                           {cycle?.delivery_start_date || order.first_upload_date ? `${cycle?.delivery_start_date || order.first_upload_date} → ${cycle?.delivery_end_date || calculateCycleEndDate(order.first_upload_date)}` : 'Ongoing'}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-[#777]">
+                        <span>
+                          {order.static_posts_total ?? 0}S • {order.reels_total ?? 0}R • {order.stories_total ?? order.schedule_config?.totalStories ?? 0}St{Number(order.posters_total || 0) > 0 ? ` • ${order.posters_total}P` : ''}
+                        </span>
+                        <span className="text-blue-400">
+                          {Array.isArray(order.installments) && order.installments.length > 1
+                            ? `${order.installments.length}x EMI (${order.installments.filter(i => i.status === 'paid').length}/${order.installments.length} paid)`
+                            : (order.payment_receipt_url || (Array.isArray(order.schedule_config?.receipt_urls) && order.schedule_config.receipt_urls.length > 0)
+                              ? 'Proof Attached'
+                              : (order.schedule_config?.payment_channel || ''))}
                         </span>
                       </div>
 
@@ -547,16 +626,26 @@ export default function AdminClients() {
                       {isExpanded && client.clientCycles && (
                         <div className="mt-2.5 pt-2.5 border-t border-[#222] space-y-1.5">
                           {client.clientCycles.map((cyc, idx) => (
-                            <div key={cyc.id || idx} className="bg-[#0e0e0e] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between text-[10px]">
+                            <div key={cyc.id || idx} className="bg-[#0e0e0e] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between gap-2 text-[10px]">
                               <div>
                                 <span className="font-bold text-white block">Cycle #{cyc.cycle_number}: {cyc.package}</span>
                                 <span className="text-[#666] font-mono">{cyc.delivery_start_date} → {cyc.delivery_end_date}</span>
                               </div>
-                              <div className="text-right">
-                                <span className="font-mono font-bold text-white block">₹{Number(cyc.amount).toLocaleString()}</span>
-                                <span className={`text-[9px] font-bold uppercase ${cyc.payment_status === 'Paid' ? 'text-green-400' : 'text-amber-400'}`}>
-                                  {cyc.payment_status || 'Pending'}
-                                </span>
+                              <div className="flex items-center gap-2">
+                                <div className="text-right">
+                                  <span className="font-mono font-bold text-white block">₹{Number(cyc.amount).toLocaleString()}</span>
+                                  <span className={`text-[9px] font-bold uppercase ${cyc.payment_status === 'Paid' ? 'text-green-400' : 'text-amber-400'}`}>
+                                    {cyc.payment_status || 'Pending'}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditCycleModal(client, cyc, order)}
+                                  className="px-2 py-1 rounded bg-[#181818] hover:bg-[#3428f8] text-[#bbb] hover:text-white border border-[#2a2a2a] text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all"
+                                  title="Edit this cycle"
+                                >
+                                  Edit
+                                </button>
                               </div>
                             </div>
                           ))}
@@ -598,14 +687,32 @@ export default function AdminClients() {
                   {/* Action Buttons Row */}
                   <div className="pt-2.5 border-t border-[#1c1c1c] flex items-center justify-between gap-2">
                     {order ? (
-                      <div className="flex items-center gap-1.5 w-full justify-between">
-                        <button
-                          onClick={() => setRenewalModalClient({ client, order, cycle })}
-                          className="inline-flex items-center gap-1.5 text-xs text-white font-bold bg-[#3428f8] hover:bg-[#281bd6] px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-sm"
-                          title="Renew client's package for next month"
-                        >
-                          <RefreshCw size={12} /> Renew
-                        </button>
+                      <div className="flex items-center gap-1.5 w-full justify-between flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setRenewalModalClient({ client, order, cycle })}
+                            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition-all cursor-pointer ${
+                              isDue || client.calculatedStatus !== 'active'
+                                ? 'bg-[#3428f8] hover:bg-[#281bd6] text-white shadow-sm'
+                                : 'bg-[#1c1c1c] hover:bg-[#3428f8] text-[#ccc] hover:text-white border border-[#2c2c2c]'
+                            }`}
+                            title={isDue || client.calculatedStatus !== 'active' ? "Renew client's package" : "Schedule next month's renewal"}
+                          >
+                            <RefreshCw size={12} /> {isDue || client.calculatedStatus !== 'active' ? 'Renew' : 'Next Cycle'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditCycleModal(client, cycle, order)}
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-2 rounded-xl transition-all cursor-pointer ${
+                              !isDue && client.calculatedStatus === 'active'
+                                ? 'bg-[#3428f8] hover:bg-[#281bd6] text-white shadow-sm'
+                                : 'bg-[#1c1c1c] hover:bg-[#3428f8] text-white border border-[#2c2c2c]'
+                            }`}
+                            title="Edit deliverables, cost, dates & payment for current cycle"
+                          >
+                            <Edit3 size={11} /> Edit Plan
+                          </button>
+                        </div>
 
                         <div className="flex items-center gap-1.5">
                           <button
@@ -754,12 +861,22 @@ export default function AdminClients() {
                             {isExpanded && client.clientCycles && (
                               <div className="mt-2 p-2 bg-[#0a0a0a] border border-[#222] rounded-lg space-y-1">
                                 {client.clientCycles.map((cyc, idx) => (
-                                  <div key={cyc.id || idx} className="flex items-center justify-between text-[9px] border-b border-[#1a1a1a] pb-1 last:border-0 last:pb-0">
+                                  <div key={cyc.id || idx} className="flex items-center justify-between gap-2 text-[9px] border-b border-[#1a1a1a] pb-1 last:border-0 last:pb-0">
                                     <span className="text-white font-bold">#{cyc.cycle_number} {cyc.package}</span>
-                                    <span className="font-mono text-emerald-400">₹{Number(cyc.amount).toLocaleString()}</span>
-                                    <span className={`font-bold uppercase ${cyc.payment_status === 'Paid' ? 'text-green-400' : 'text-amber-400'}`}>
-                                      {cyc.payment_status || 'Pending'}
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono text-emerald-400">₹{Number(cyc.amount).toLocaleString()}</span>
+                                      <span className={`font-bold uppercase ${cyc.payment_status === 'Paid' ? 'text-green-400' : 'text-amber-400'}`}>
+                                        {cyc.payment_status || 'Pending'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditCycleModal(client, cyc, order)}
+                                        className="px-1.5 py-0.5 rounded bg-[#181818] hover:bg-[#3428f8] text-[#bbb] hover:text-white border border-[#2a2a2a] text-[8px] font-bold uppercase cursor-pointer"
+                                        title="Edit this cycle"
+                                      >
+                                        Edit
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -880,10 +997,27 @@ export default function AdminClients() {
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
                             <button
                               onClick={() => setRenewalModalClient({ client, order, cycle })}
-                              className="inline-flex items-center gap-1.5 text-xs text-white font-bold bg-[#3428f8] hover:bg-[#281bd6] px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-sm"
-                              title="Renew client's package for next month"
+                              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                                isDue || client.calculatedStatus !== 'active'
+                                  ? 'bg-[#3428f8] hover:bg-[#281bd6] text-white shadow-sm'
+                                  : 'bg-[#1a1a1a] hover:bg-[#3428f8] text-[#ccc] hover:text-white border border-[#2f2f2f]'
+                              }`}
+                              title={isDue || client.calculatedStatus !== 'active' ? "Renew client's package for next month" : "Schedule next month's renewal"}
                             >
-                              <RefreshCw size={12} /> Renew
+                              <RefreshCw size={12} /> {isDue || client.calculatedStatus !== 'active' ? 'Renew' : 'Next Cycle'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openEditCycleModal(client, cycle, order)}
+                              className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-xl transition-all cursor-pointer ${
+                                !isDue && client.calculatedStatus === 'active'
+                                  ? 'bg-[#3428f8] hover:bg-[#281bd6] text-white shadow-sm'
+                                  : 'bg-[#1a1a1a] hover:bg-[#3428f8] text-white border border-[#2f2f2f]'
+                              }`}
+                              title="Edit deliverables, cost, dates & payment for current cycle"
+                            >
+                              <Edit3 size={11} /> Edit Plan
                             </button>
 
                             <button
@@ -944,7 +1078,7 @@ export default function AdminClients() {
         />
       )}
 
-      {/* Shared Client Renewal Modal */}
+      {/* Shared Client Renewal / Edit Plan Modal */}
       {renewalModalClient && (
         <ClientRenewalModal
           isOpen={Boolean(renewalModalClient)}
@@ -952,6 +1086,9 @@ export default function AdminClients() {
           client={renewalModalClient.client}
           currentOrder={renewalModalClient.order}
           latestCycle={renewalModalClient.cycle}
+          mode={renewalModalClient.mode || 'create'}
+          targetCycle={renewalModalClient.targetCycle || null}
+          targetOrder={renewalModalClient.targetOrder || null}
           onRenewalSuccess={() => {
             fetchClients();
           }}
